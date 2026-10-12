@@ -1,0 +1,355 @@
+/*
+ * MC Almara business UI system
+ * Loaded last so legacy views and their reusable class names inherit a single,
+ * compact visual language without changing markup or application behaviour.
+ */
+:root {
+  --ui-bg: #f3f6f8;
+  --ui-surface: #ffffff;
+  --ui-surface-muted: #f8fafb;
+  --ui-border: #dce4e8;
+  --ui-border-strong: #c8d4d9;
+  --ui-text: #172b33;
+  --ui-text-muted: #65757c;
+  --ui-primary: #176b5b;
+  --ui-primary-hover: #105246;
+  --ui-secondary: #47636d;
+  --ui-success: #16805f;
+  --ui-warning: #b7791f;
+  --ui-danger: #b84242;
+  --ui-info: #286a91;
+  --ui-focus: rgba(23, 107, 91, .18);
+  --ui-shadow: 0 2px 8px rgba(24, 43, 51, .07);
+  --ui-radius: 9px;
+  --ui-sidebar: #102f2b;
+  --ui-sidebar-hover: #1a4841;
+  --ui-sidebar-text: #c2d2ce;
+  --ui-sidebar-muted: #86a39b;
+}
+
+/* Keep all three existing theme choices, while giving the light workspace the
+   same tokens. */
+body.light-theme, body.apv-theme {
+  --ui-bg: #f3f6f8;
+  --ui-surface: #ffffff;
+  --ui-surface-muted: #f8fafb;
+  --ui-border: #dce4e8;
+  --ui-text: #172b33;
+  --ui-text-muted: #65757c;
+}
+body:not(.light-theme):not(.apv-theme) {
+  --ui-bg: #101b22;
+  --ui-surface: #182832;
+  --ui-surface-muted: #1c303b;
+  --ui-border: #2c414c;
+  --ui-border-strong: #405862;
+  --ui-text: #edf4f4;
+  --ui-text-muted: #9db0b7;
+  --ui-shadow: 0 2px 9px rgba(0, 0, 0, .18);
+}
+
+body { background: var(--ui-bg); color: var(--ui-text); }
+body.apv-theme .main-content, body.apv-theme .view-container,
+body.light-theme .main-content, body.light-theme .view-container { background: var(--ui-bg) !important; }
+
+/* Layout and navigation */
+.sidebar { width: 232px; background: var(--ui-sidebar); border-right-color: rgba(255,255,255,.09); }
+.sidebar-header { height: 62px; padding: 0 14px; }
+.sidebar-nav { padding: 10px 0 14px; }
+.sidebar-group-title { color: var(--ui-sidebar-muted) !important; padding: 13px 14px 4px !important; font-size: 9px !important; letter-spacing: 1px !important; }
+.sidebar-nav .nav-item { margin: 1px 8px; padding: 8px 11px; min-height: 36px; gap: 11px; border: 0; border-radius: 7px; color: var(--ui-sidebar-text); font-size: 12.5px; }
+.sidebar-nav .nav-item:hover { background: var(--ui-sidebar-hover); color: #fff; }
+.sidebar-nav .nav-item.active { background: #dceca4; color: #173b34; font-weight: 700; box-shadow: none; }
+.sidebar-nav .nav-item.active i { color: inherit !important; }
+.nav-accordion-header { color: var(--ui-sidebar-muted) !important; padding: 11px 16px 5px !important; font-size: 10px !important; letter-spacing: .7px; }
+.sidebar-footer { padding: 12px 14px; }
+.main-content { margin-left: 232px; }
+.top-header { height: 62px; padding: 0 20px; background: var(--ui-surface); border-color: var(--ui-border); box-shadow: 0 1px 5px rgba(24,43,51,.05); }
+.top-header h1, #pageTitle { font-size: 16px !important; font-weight: 750; letter-spacing: -.01em; color: var(--ui-text) !important; }
+.header-left, .header-right { gap: 13px; }
+.live-clock { padding: 4px 9px; border-radius: 6px; background: var(--ui-surface-muted); border-color: var(--ui-border); color: var(--ui-text-muted); font-size: 12px; }
+.header-env-chip { padding: 4px 7px; background: var(--ui-surface-muted); border-color: var(--ui-border); color: var(--ui-text-muted); font-size: 11px; }
+.view-container { padding: 18px 20px 26px; }
+
+/* Cards, panels, and dashboard density */
+.panel, .stat-card, .summary-box, .stock-item { background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); box-shadow: var(--ui-shadow); }
+.panel { padding: 16px; }
+.panel-header { margin-bottom: 12px; }
+.stats-grid { grid-template-columns: repeat(auto-fit, minmax(205px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-card { padding: 14px; gap: 12px; min-height: 84px; }
+.stat-card:hover { transform: translateY(-1px); border-color: var(--ui-border-strong); }
+.stat-icon { width: 38px; height: 38px; border-radius: 8px; font-size: 16px; background: rgba(23,107,91,.09); color: var(--ui-primary); }
+.stat-details h3 { margin-bottom: 3px; font-size: 11px; font-weight: 650; color: var(--ui-text-muted); }
+.stat-value { font-size: 19px; letter-spacing: -.02em; color: var(--ui-text); }
+.dashboard-content { gap: 12px; }
+.stock-item { padding: 10px; gap: 7px 10px; box-shadow: none; }
+.stock-list { gap: 7px; }
+
+/* Tables */
+.table-responsive { border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface); }
+.table { font-size: 12.5px; }
+.table th, .table td { padding: 8px 10px; border-bottom-color: var(--ui-border); vertical-align: middle; }
+.table th { background: var(--ui-surface-muted); color: var(--ui-text-muted); font-size: 10px; font-weight: 750; letter-spacing: .045em; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table-hover tbody tr:hover { background: rgba(23,107,91,.045); }
+.table td:is(.text-end, .text-right), .table td[data-number] { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Forms and controls */
+.form-group { margin-bottom: 13px; }
+.form-group label, .form-label { margin-bottom: 5px; font-size: 12px; font-weight: 650; color: var(--ui-text-muted); }
+.form-control { min-height: 38px; padding: 8px 10px; background: var(--ui-surface); border-color: var(--ui-border-strong); border-radius: 7px; color: var(--ui-text); font-size: 13px; }
+.form-control::placeholder { color: var(--ui-text-muted); opacity: .78; }
+.form-control:focus { border-color: var(--ui-primary); box-shadow: 0 0 0 3px var(--ui-focus); }
+select.form-control { background-color: var(--ui-surface); color: var(--ui-text); }
+.select2-container--default .select2-selection--single { height: 38px !important; border-color: var(--ui-border-strong) !important; border-radius: 7px !important; background: var(--ui-surface) !important; }
+.select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 36px !important; padding-left: 10px !important; color: var(--ui-text) !important; font-size: 13px; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { height: 36px !important; }
+.select2-dropdown { border-color: var(--ui-border-strong) !important; box-shadow: var(--ui-shadow); }
+
+/* Button system */
+.btn { min-height: 36px; padding: 7px 12px; border-radius: 7px; font-size: 12.5px; font-weight: 650; line-height: 1.2; box-shadow: none; }
+.btn:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--ui-focus); }
+.btn-primary { background: var(--ui-primary); }.btn-primary:hover { background: var(--ui-primary-hover); }
+.btn-secondary { background: var(--ui-secondary); color: #fff; }.btn-secondary:hover { background: #354e57; }
+.btn-danger { background: var(--ui-danger); }.btn-danger:hover { background: #963531; }
+.btn-outline { border-color: var(--ui-border-strong); color: var(--ui-text); background: transparent; }.btn-outline:hover { background: var(--ui-surface-muted); }
+.btn-success { background: var(--ui-success); color: #fff; }.btn-warning { background: var(--ui-warning); color: #fff; }
+.btn-sm, .btn-xs { min-height: 30px; padding: 5px 8px; font-size: 11.5px; }
+.badge, .status-badge { font-size: 10px; font-weight: 750; line-height: 1.2; border-radius: 999px; }
+
+/* Modals, dropdowns, feedback */
+.modal-content, .modal-body, .modal-header, .dropdown-menu { border-color: var(--ui-border); }
+.modal-content, .dropdown-menu { background: var(--ui-surface); color: var(--ui-text); box-shadow: 0 14px 32px rgba(24,43,51,.16); }
+.alert { border-radius: 8px; border-width: 1px; font-size: 12.5px; }
+
+@media (max-width: 900px) {
+  .view-container { padding: 14px; }
+  .top-header { padding: 0 14px; }
+  .dashboard-content { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .sidebar { width: 232px; }
+  .main-content { margin-left: 0; }
+  .top-header { height: 56px; }
+  .header-environment, #liveDate { display: none; }
+  .view-container { padding: 12px; }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .stat-card { padding: 11px; min-height: 76px; }
+  .stat-icon { width: 32px; height: 32px; font-size: 14px; }
+  .stat-value { font-size: 16px; }
+  .panel { padding: 12px; }
+  .table th, .table td { padding: 8px 9px; }
+}
+@media (max-width: 480px) {
+  .header-right { gap: 8px; }
+  .live-clock { display: none; }
+  .stats-grid { grid-template-columns: 1fr; }
+  .btn { min-height: 38px; }
+}
+
+/* APV is the preferred business workspace.  The earlier theme sheet contains
+   compatibility declarations with !important, so its shared primitives are
+   explicitly normalised here as the final cascade layer. */
+body.apv-theme .top-header { height: 62px !important; padding: 0 20px !important; background: var(--ui-surface) !important; border-color: var(--ui-border) !important; box-shadow: 0 1px 5px rgba(24,43,51,.05) !important; }
+body.apv-theme .sidebar { width: 232px !important; background: var(--ui-sidebar) !important; }
+body.apv-theme .sidebar-header { height: 62px !important; padding: 0 14px !important; }
+body.apv-theme .sidebar-nav .nav-item { background: transparent !important; color: var(--ui-sidebar-text) !important; box-shadow: none !important; }
+body.apv-theme .sidebar-nav .nav-item:hover { background: var(--ui-sidebar-hover) !important; color: #fff !important; }
+body.apv-theme .sidebar-nav .nav-item.active { background: #dceca4 !important; color: #173b34 !important; }
+body.apv-theme .main-content, body.apv-theme .view-container { background: var(--ui-bg) !important; }
+body.apv-theme .panel, body.apv-theme .stat-card, body.apv-theme .summary-box, body.apv-theme .stock-item { background: var(--ui-surface) !important; border-color: var(--ui-border) !important; border-radius: var(--ui-radius) !important; box-shadow: var(--ui-shadow) !important; }
+body.apv-theme .panel { padding: 16px !important; }
+body.apv-theme .stat-card { padding: 14px !important; }
+body.apv-theme .table-responsive { border-color: var(--ui-border) !important; }
+body.apv-theme .table th, body.apv-theme .table td { padding: 8px 10px !important; border-color: var(--ui-border) !important; }
+body.apv-theme .table th { background: var(--ui-surface-muted) !important; color: var(--ui-text-muted) !important; font-size: 10px !important; }
+body.apv-theme .form-control { min-height: 38px !important; padding: 8px 10px !important; background: var(--ui-surface) !important; border-color: var(--ui-border-strong) !important; color: var(--ui-text) !important; }
+body.apv-theme .form-control:focus { border-color: var(--ui-primary) !important; box-shadow: 0 0 0 3px var(--ui-focus) !important; }
+body.apv-theme .btn-primary { background: var(--ui-primary) !important; } body.apv-theme .btn-primary:hover { background: var(--ui-primary-hover) !important; }
+body.apv-theme .btn-outline { background: transparent !important; border-color: var(--ui-border-strong) !important; color: var(--ui-text) !important; }
+
+/* APV operational views: force readable ink on legacy dark inline surfaces. */
+body.apv-theme #pos-view { color: var(--ui-text) !important; }
+body.apv-theme #pos-view :is(.pos-card-modern, .pos-flow-card, .pos-entry-panel, .pos-cart-panel, .pos-customer-main, .pos-customer-history-panel, .pos-photo-box, #customerPosHistoryContainer) { color: var(--ui-text) !important; }
+body.apv-theme #pos-view :is(h2, h3, h4, strong, .pos-lane-title, .pos-customer-info-value) { color: var(--ui-text) !important; }
+body.apv-theme #pos-view :is(label, small, .pos-subheader, .pos-customer-info-label, .pos-lane-title small, .text-muted) { color: var(--ui-text-muted) !important; }
+body.apv-theme #pos-view .pos-valas-item-modern { background: #fff !important; border-color: var(--ui-border) !important; color: var(--ui-text) !important; }
+body.apv-theme #pos-view .pos-valas-item-modern:hover { background: #f1f7f4 !important; border-color: #a8cbbd !important; }
+body.apv-theme #pos-view .pos-empty-cart { background: var(--ui-surface-muted) !important; border-color: var(--ui-border) !important; color: var(--ui-text-muted) !important; }
+
+/* Data Nasabah: its inline ledger stylesheet is dark-first. */
+body.apv-theme #customers-view { color: var(--ui-text) !important; }
+body.apv-theme #customers-view :is(.panel, .header-panel, .customer-table-panel) { background: var(--ui-surface) !important; color: var(--ui-text) !important; border-color: var(--ui-border) !important; }
+body.apv-theme #customers-view :is(h2, h3, h4, strong, .customer-name-cell, .customer-address-cell, td) { color: var(--ui-text) !important; }
+body.apv-theme #customers-view :is(label, small, .text-muted) { color: var(--ui-text-muted) !important; }
+body.apv-theme #customers-view .customers-table-wrap { background: var(--ui-surface) !important; border-color: var(--ui-border) !important; }
+body.apv-theme #customers-view .customers-ledger-table thead th { background: #edf3f1 !important; color: #43575a !important; border-color: var(--ui-border) !important; }
+body.apv-theme #customers-view .customers-ledger-table tbody td { color: var(--ui-text) !important; border-color: var(--ui-border) !important; }
+body.apv-theme #customers-view .customers-ledger-table tbody tr:nth-child(even) td { background: #f8fafb !important; }
+body.apv-theme #customers-view .customers-ledger-table tbody tr:hover td { background: #eaf4ef !important; }
+body.apv-theme #customers-view .customers-ledger-table .customer-action-cell { background: #fff !important; box-shadow: -4px 0 10px rgba(24,43,51,.08) !important; }
+body.apv-theme #customers-view .customer-row-actions { background: #f6f9f8 !important; border-color: var(--ui-border) !important; }
+body.apv-theme #customers-view .customer-date-reset-btn { background: #fff !important; color: var(--ui-text-muted) !important; border-color: var(--ui-border-strong) !important; }
+
+/* Riwayat Transaksi uses its own dark ledger card—make it a light ledger. */
+body.apv-theme #reports-view { color: var(--ui-text) !important; }
+body.apv-theme #reports-view :is(.panel, .header-panel) { background: var(--ui-surface) !important; border-color: var(--ui-border) !important; color: var(--ui-text) !important; }
+body.apv-theme #reports-view :is(h2, h3, h4, strong, td) { color: var(--ui-text) !important; }
+body.apv-theme #reports-view :is(label, small, .text-muted) { color: var(--ui-text-muted) !important; }
+body.apv-theme #reports-view .report-ledger-card { background: #f4f8f6 !important; border-color: var(--ui-border) !important; }
+body.apv-theme #reports-view .report-ledger-item { background: #fff !important; border-color: var(--ui-border) !important; }
+body.apv-theme #reports-view .report-ledger-item span { color: var(--ui-text-muted) !important; }
+body.apv-theme #reports-view .report-ledger-item strong { color: var(--ui-text) !important; }
+body.apv-theme #reports-view .report-ledger-wrap { background: #fff !important; border-color: var(--ui-border) !important; }
+body.apv-theme #reports-view .report-ledger-table thead th { background: #edf3f1 !important; color: #43575a !important; border-color: var(--ui-border) !important; }
+body.apv-theme #reports-view .report-ledger-table tbody td { color: var(--ui-text) !important; border-color: var(--ui-border) !important; }
+body.apv-theme #reports-view .report-ledger-table tbody tr:nth-child(even) td { background: #f8fafb !important; }
+body.apv-theme #reports-view .report-ledger-table tbody tr:hover td { background: #eaf4ef !important; }
+
+/* APV dashboard: bank balances and live exchange rates need stronger ink. */
+body.apv-theme #dashboard-view #dashBCA {
+  color: #174f86 !important;
+  font-weight: 800 !important;
+}
+body.apv-theme #dashboard-view #dashMandiri {
+  color: #75510b !important;
+  font-weight: 800 !important;
+}
+body.apv-theme #dashboard-view .stat-card span:has(#dashBCA) {
+  background: #e7f1fb !important;
+  color: #286a91 !important;
+  border-color: #b8d3e8 !important;
+}
+body.apv-theme #dashboard-view .stat-card span:has(#dashMandiri) {
+  background: #fbf3df !important;
+  color: #8a6415 !important;
+  border-color: #e8d49a !important;
+}
+body.apv-theme #dashboard-view .stock-rate-buy {
+  background: #fdebea !important;
+  border-color: #efbbb5 !important;
+}
+body.apv-theme #dashboard-view .stock-rate-buy span { color: #a53d35 !important; }
+body.apv-theme #dashboard-view .stock-rate-sell {
+  background: #e6f4ed !important;
+  border-color: #b6dbc8 !important;
+}
+body.apv-theme #dashboard-view .stock-rate-sell span { color: #176b50 !important; }
+body.apv-theme #dashboard-view .stock-rate-chip strong {
+  color: #172b33 !important;
+  font-weight: 850 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* APV settings: keep long administration cards compact until needed. */
+body.apv-theme #settings-view .settings-tab-content {
+  position: relative;
+  transition: padding .18s ease;
+}
+body.apv-theme #settings-view .settings-card-collapse {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 7px;
+  background: var(--ui-surface-muted);
+  color: var(--ui-text-muted);
+  cursor: pointer;
+  z-index: 2;
+}
+body.apv-theme #settings-view .settings-card-collapse:hover { background: #bbf1d6; color: var(--ui-primary); border-color: #9ec2b2; }
+body.apv-theme #settings-view .settings-tab-content.settings-card-minimized { min-height: 58px; padding: 16px !important; overflow: hidden; }
+body.apv-theme #settings-view .settings-tab-content.settings-card-minimized > :not(h2):not(h3):not(.settings-card-collapse) { display: none !important; }
+body.apv-theme #settings-view .settings-tab-content.settings-card-minimized :is(h2, h3) { margin: 0 !important; padding-right: 40px; font-size: 14px; }
+
+/* Booking entry modal follows the APV workspace instead of legacy dark modal colors. */
+body.apv-theme .swal2-popup:has(#bookingCustomer) {
+  background: #f4f8f5 !important;
+  color: #1b302a !important;
+  border: 1px solid #d1ddd6 !important;
+  box-shadow: 0 18px 42px rgba(22, 54, 45, .16) !important;
+}
+body.apv-theme .swal2-popup:has(#bookingCustomer) .swal2-title { color: #173b34 !important; }
+body.apv-theme .swal2-popup:has(#bookingCustomer) .select2-dropdown { background: #fff !important; border-color: #a8c5b7 !important; }
+body.apv-theme .swal2-popup:has(#bookingCustomer) .select2-results__option { color: #1b302a !important; }
+body.apv-theme .swal2-popup:has(#bookingCustomer) .select2-results__option--highlighted.select2-results__option--selectable { background: #176b5b !important; color: #fff !important; }
+
+/* Active bookings and settlement use the same calm APV operational surface. */
+body.apv-theme #booking-view :is(.panel, .table-responsive) { background: #f7f9f7 !important; border-color: #d3dfd8 !important; }
+body.apv-theme #booking-view .table th { background: #e8efeb !important; color: #476057 !important; }
+body.apv-theme #booking-view .table td { color: #1b302a !important; border-color: #dbe5df !important; }
+body.apv-theme #booking-view .table-hover tbody tr:hover td { background: #edf5f0 !important; }
+body.apv-theme #booking-view #bookingTotalsSummary > div { background: #eef4f0 !important; border-color: #cbdad1 !important; }
+body.apv-theme #booking-view #bookingTotalsSummary > div > div:first-child { color: #5e7168 !important; }
+body.apv-theme #booking-view #bookingTotalsSummary > div > div:last-child { color: #176b5b !important; }
+body.apv-theme .booking-settlement-modal { background: #f4f8f5 !important; color: #1b302a !important; border: 1px solid #d1ddd6 !important; box-shadow: 0 18px 42px rgba(22,54,45,.16) !important; }
+body.apv-theme .booking-settlement-modal .swal2-title { color: #173b34 !important; }
+body.apv-theme .booking-settlement-modal .booking-settle-caption { margin-top:8px; color:#5b7066; font-size:13px; font-weight:650; }
+body.apv-theme .booking-settlement-modal .booking-settle-amount { margin:6px 0 16px; color:#a8423a; font-size:22px; }
+body.apv-theme .booking-settlement-modal .swal2-input { background:#fff !important; border:1px solid #bfcfc6 !important; color:#1b302a !important; border-radius:7px !important; }
+body.apv-theme .booking-settlement-modal .booking-settle-split { background:#eaf2ed !important; border:1px solid #ccdcd2; }
+body.apv-theme .booking-settlement-modal .booking-settle-split label { display:block; color:#486158 !important; font-size:13px; font-weight:700; }
+
+/* Multi-row calculator: use the APV sidebar palette with high-contrast ink. */
+body.apv-theme #floating-multi-calculator {
+  background: #102f2b !important;
+  border-color: #31584f !important;
+  color: #f1f6f3 !important;
+  box-shadow: 0 16px 38px rgba(6, 31, 27, .35) !important;
+}
+body.apv-theme #floating-multi-calculator .calc-header,
+body.apv-theme #floating-multi-calculator .calc-footer { background: #0b2925 !important; border-color: #31584f !important; }
+body.apv-theme #floating-multi-calculator .calc-header > div:first-child { color: #e7c66e !important; }
+body.apv-theme #floating-multi-calculator .calc-global-mode,
+body.apv-theme #floating-multi-calculator .calc-tabs-bar { background: #143a34 !important; border-color: #31584f !important; }
+body.apv-theme #floating-multi-calculator .calc-global-mode > span,
+body.apv-theme #floating-multi-calculator .calc-footer span { color: #d5e3dc !important; }
+body.apv-theme #floating-multi-calculator #calc-sheet-content { background: #102f2b !important; }
+body.apv-theme #floating-multi-calculator .calc-row-header { color: #b8cec4 !important; border-color: #31584f !important; }
+body.apv-theme #floating-multi-calculator .calc-tab { background: #183f38 !important; border-color: #31584f !important; color: #c0d4cc !important; }
+body.apv-theme #floating-multi-calculator .calc-tab.active { background: #f5f0df !important; color: #173b34 !important; border-color: #e7c66e !important; }
+body.apv-theme #floating-multi-calculator :is(input, select) { background: #f7fbf8 !important; border-color: #9db9ad !important; color: #173029 !important; }
+body.apv-theme #floating-multi-calculator :is(input, select):focus { border-color: #e7c66e !important; box-shadow: 0 0 0 2px rgba(231,198,110,.24) !important; outline: none !important; }
+body.apv-theme #floating-multi-calculator .calc-row-item > span { color: #f3d789 !important; }
+body.apv-theme #floating-multi-calculator .btn-outline { color: #e1ede7 !important; border-color: #5a7c70 !important; background: rgba(255,255,255,.04) !important; }
+body.apv-theme #floating-multi-calculator .btn-outline:hover { background: #23574b !important; color: #fff !important; }
+body.apv-theme #floating-multi-calculator #calc-selisih-label { color: #f1f6f3 !important; }
+body.apv-theme #floating-multi-calculator .calc-tabs-bar { min-height: 40px; flex: 0 0 auto; }
+body.apv-theme #floating-multi-calculator #calc-tabs-list { min-width: 0; flex: 1 1 auto; overflow-x: auto; }
+body.apv-theme #floating-multi-calculator:not(.is-minimized) #calc-expandable-content { display: flex !important; }
+
+/* APV dashboard: a calm warm-grey workspace prevents large white areas from
+   feeling harsh while retaining enough separation for operational data. */
+body.apv-theme #dashboard-view {
+  --dashboard-bg: #e9efec;
+  --dashboard-surface: #f7f9f7;
+  --dashboard-surface-muted: #f0f4f1;
+  --dashboard-border: #d3dfd8;
+}
+body.apv-theme .main-content:has(#dashboard-view.active),
+body.apv-theme .view-container:has(#dashboard-view.active) {
+  background: #d3efe8 !important;
+}
+body.apv-theme #dashboard-view :is(.panel, .stat-card, .summary-box, .stock-item) {
+  background: var(--dashboard-surface) !important;
+  border-color: var(--dashboard-border) !important;
+  box-shadow: 0 2px 8px rgba(31, 54, 46, .055) !important;
+}
+body.apv-theme #dashboard-view .table-responsive,
+body.apv-theme #dashboard-view .stock-item,
+body.apv-theme #dashboard-view .stock-search .form-control,
+body.apv-theme #dashboard-view .chart-range-tabs {
+  background: var(--dashboard-surface-muted) !important;
+  border-color: var(--dashboard-border) !important;
+}
+body.apv-theme #dashboard-view .chart-range-btn:not(.active) { background: #e7eeea !important; color: #50645d !important; }
+body.apv-theme #dashboard-view .stat-card:hover,
+body.apv-theme #dashboard-view .stock-item:hover { background: #fbfcfa !important; border-color: #bccfc5 !important; }
+@media (max-width: 768px) {
+  body.apv-theme .top-header { height: 56px !important; padding: 0 14px !important; }
+  body.apv-theme .view-container { padding: 12px !important; }
+  body.apv-theme .panel { padding: 12px !important; }
+}

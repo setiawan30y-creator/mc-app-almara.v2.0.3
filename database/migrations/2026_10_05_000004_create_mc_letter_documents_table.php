@@ -1,0 +1,3 @@
+<?php
+use Illuminate\Database\Migrations\Migration; use Illuminate\Database\Schema\Blueprint; use Illuminate\Support\Facades\Schema;
+return new class extends Migration { public function up(): void { Schema::create('mc_letter_documents',function(Blueprint $t){$t->id();$t->foreignId('letter_record_id')->constrained('mc_letter_records')->cascadeOnDelete();$t->string('file_name',255);$t->string('file_url',500);$t->string('mime_type',150)->nullable();$t->unsignedBigInteger('file_size')->nullable();$t->string('description',255)->nullable();$t->timestamps();}); } public function down(): void {Schema::dropIfExists('mc_letter_documents');} };

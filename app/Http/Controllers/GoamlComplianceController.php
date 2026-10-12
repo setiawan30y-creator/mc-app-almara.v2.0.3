@@ -1,0 +1,307 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\GoamlAlert;
+use App\Models\GoamlRule;
+use App\Models\GoamlLtkmReport;
+use App\Models\Transaction;
+use App\Services\GoamlComplianceService;
+use Illuminate\Http\Request;
+
+class GoamlComplianceController extends Controller
+{
+    public function rules()
+    {
+        return response()->json(
+            GoamlRule::orderBy('priority')->orderBy('id')->get()
+        );
+    }
+
+    public function storeRule(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required','string','max:180'],
+            'code' => ['required','string','max:80'],
+            'rule_type' => ['required','string','max:40'],
+            'regulation_source' => ['nullable','string','max:80'],
+            'regulation_no' => ['nullable','string','max:120'],
+            'regulation_article' => ['nullable','string','max:120'],
+            'effective_from' => ['nullable','date'],
+            'effective_until' => ['nullable','date','after_or_equal:effective_from'],
+            'target' => ['required','string','max:40'],
+            'classification' => ['nullable','string','max:20'],
+            'severity' => ['required','string','max:20'],
+            'action' => ['required','string','max:30'],
+            'result_type' => ['required','string','max:40'],
+            'min_transactions' => ['nullable','integer','min:1'],
+            'period_days' => ['nullable','integer','min:1'],
+            'total_amount_idr' => ['nullable','numeric','min:0'],
+            'amount_operator' => ['nullable','in:>,>=,=,<,<='],
+            'payment_method' => ['nullable','string','max:50'],
+            'conditions' => ['nullable','array'],
+            'internal_note' => ['nullable','string','max:5000'],
+            'is_active' => ['nullable','boolean'],
+            'priority' => ['nullable','integer','min:1'],
+        ]);
+
+        $data['code'] = strtoupper($data['code']);
+        $data['version'] = 1;
+        $data['is_active'] = $data['is_active'] ?? true;
+        $data['priority'] = $data['priority'] ?? 100;
+
+        return response()->json([
+            'status' => 'success',
+            'rule' => GoamlRule::create($data),
+        ], 201);
+    }
+
+    public function updateRule(Request $request, GoamlRule $rule)
+    {
+        $data = $request->validate([
+            'name' => ['sometimes','string','max:180'],
+            'code' => ['sometimes','string','max:80'],
+            'rule_type' => ['sometimes','string','max:40'],
+            'regulation_source' => ['nullable','string','max:80'],
+            'regulation_no' => ['nullable','string','max:120'],
+            'regulation_article' => ['nullable','string','max:120'],
+            'effective_from' => ['nullable','date'],
+            'effective_until' => ['nullable','date','after_or_equal:effective_from'],
+            'target' => ['sometimes','string','max:40'],
+            'classification' => ['nullable','string','max:20'],
+            'severity' => ['sometimes','string','max:20'],
+            'action' => ['sometimes','string','max:30'],
+            'result_type' => ['sometimes','string','max:40'],
+            'min_transactions' => ['nullable','integer','min:1'],
+            'period_days' => ['nullable','integer','min:1'],
+            'total_amount_idr' => ['nullable','numeric','min:0'],
+            'amount_operator' => ['nullable','in:>,>=,=,<,<='],
+            'payment_method' => ['nullable','string','max:50'],
+            'conditions' => ['nullable','array'],
+            'internal_note' => ['nullable','string','max:5000'],
+            'is_active' => ['nullable','boolean'],
+            'priority' => ['nullable','integer','min:1'],
+        ]);
+
+        if (isset($data['code'])) {
+            $data['code'] = strtoupper($data['code']);
+        }
+
+        $data['version'] = $rule->version + 1;
+        $rule->update($data);
+
+        return response()->json(['status' => 'success', 'rule' => $rule->fresh()]);
+    }
+
+    public function alerts(Request $request)
+    {
+        $query = GoamlAlert::with(['rule', 'transactions.transaction'])
+            ->orderByDesc('created_at');
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status'));
+        }
+
+        return response()->json($query->limit(200)->get());
+    }
+
+    public function evaluate(Request $request, GoamlComplianceService $service)
+    {
+        $request->validate([
+            'itemId' => ['required','string','max:100'],
+        ]);
+
+        $transaction = Transaction::where('itemId', $request->string('itemId'))->firstOrFail();
+        $alerts = $service->evaluateTransaction($transaction);
+
+        return response()->json([
+            'status' => 'success',
+            'transaction' => $transaction,
+            'alerts' => $alerts,
+        ]);
+    }
+
+    public function review(Request $request, GoamlAlert $alert)
+    {
+        $data = $request->validate([
+            'status' => ['required','in:IN_REVIEW,APPROVED,REJECTED,ESCALATED'],
+            'review_note' => ['nullable','string','max:5000'],
+        ]);
+
+        $alert->update([
+            'status' => $data['status'],
+            'review_note' => $data['review_note'] ?? null,
+            'reviewed_by' => $request->user()?->name
+                ?? $request->user()?->username
+                ?? ($request->attributes->get('dev_user')['username'] ?? 'SYSTEM'),
+            'reviewed_at' => now(),
+        ]);
+
+        return response()->json(['status' => 'success', 'alert' => $alert->fresh()]);
+    }
+
+    public function createLtkmDraft(Request $request, GoamlAlert $alert)
+    {
+        if ($alert->status !== 'APPROVED') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Draft LTKM hanya dapat dibuat dari Alert dengan status APPROVED.',
+            ], 422);
+        }
+
+        $existing = GoamlLtkmReport::where('alert_id', $alert->id)->first();
+
+        if ($existing) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Draft LTKM untuk Alert ini sudah tersedia.',
+                'report' => $existing->load('alert'),
+            ]);
+        }
+
+        $alert->load([
+            'rule',
+            'transactions.transaction',
+        ]);
+
+        $reportNo = $this->nextLtkmReportNo();
+
+        $snapshot = [
+            'source' => 'GOAML_ALERT',
+            'created_at' => now()->toIso8601String(),
+
+            'alert' => [
+                'id' => $alert->id,
+                'alert_no' => $alert->alert_no,
+                'rule_id' => $alert->rule_id,
+                'rule_type' => $alert->rule_type,
+                'result_type' => $alert->result_type,
+                'classification' => $alert->classification,
+                'severity' => $alert->severity,
+                'status' => $alert->status,
+                'reason' => $alert->reason,
+                'total_amount_idr' => $alert->total_amount_idr,
+                'transaction_count' => $alert->transaction_count,
+                'period_start' => $alert->period_start?->toIso8601String(),
+                'period_end' => $alert->period_end?->toIso8601String(),
+            ],
+
+            'rule' => $alert->rule ? [
+                'id' => $alert->rule->id,
+                'name' => $alert->rule->name,
+                'code' => $alert->rule->code,
+                'result_type' => $alert->rule->result_type,
+                'classification' => $alert->rule->classification,
+                'severity' => $alert->rule->severity,
+                'action' => $alert->rule->action,
+                'target' => $alert->rule->target,
+                'conditions' => $alert->rule->conditions,
+                'regulation_source' => $alert->rule->regulation_source,
+                'regulation_no' => $alert->rule->regulation_no,
+                'regulation_article' => $alert->rule->regulation_article,
+                'version' => $alert->rule->version,
+            ] : null,
+
+            'customer' => [
+                'customer_id' => $alert->customer_id,
+                'customer_name' => $alert->customer_name,
+            ],
+
+            'transactions' => $alert->transactions->map(function ($relation) {
+                $transaction = $relation->transaction;
+
+                return [
+                    'alert_transaction_id' => $relation->id,
+                    'transaction_item_id' => $relation->transaction_item_id,
+                    'transaction_invoice_id' => $relation->transaction_invoice_id,
+                    'amount_idr' => $relation->amount_idr,
+
+                    'transaction' => $transaction ? [
+                        'itemId' => $transaction->itemId,
+                        'id' => $transaction->id,
+                        'timestamp' => $transaction->timestamp?->toIso8601String(),
+                        'tipe' => $transaction->tipe,
+                        'valuta' => $transaction->valuta,
+                        'nominal' => $transaction->nominal,
+                        'rate' => $transaction->rate,
+                        'total' => $transaction->total,
+                        'paymentMethod' => $transaction->paymentMethod,
+                        'customerName' => $transaction->customerName,
+                        'id_cif' => $transaction->id_cif,
+                        'isOldMoney' => $transaction->isOldMoney,
+                        'keterangan' => $transaction->keterangan,
+                    ] : null,
+                ];
+            })->values()->all(),
+        ];
+
+        $report = GoamlLtkmReport::create([
+            'alert_id' => $alert->id,
+            'report_no' => $reportNo,
+            'status' => 'DRAFT',
+            'customer_id' => $alert->customer_id,
+            'customer_name' => $alert->customer_name,
+            'total_amount_idr' => $alert->total_amount_idr ?? 0,
+            'transaction_count' => $alert->transaction_count ?? 0,
+            'period_start' => $alert->period_start,
+            'period_end' => $alert->period_end,
+            'snapshot' => $snapshot,
+            'created_by' => $request->user()?->name
+                ?? $request->user()?->username
+                ?? ($request->attributes->get('dev_user')['username'] ?? 'SYSTEM'),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Draft LTKM berhasil dibuat.',
+            'report' => $report->load('alert'),
+        ], 201);
+    }
+
+    public function ltkmReports(Request $request)
+    {
+        $query = GoamlLtkmReport::with('alert')
+            ->orderByDesc('created_at');
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status'));
+        }
+
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->string('customer_id'));
+        }
+
+        return response()->json(
+            $query->limit(200)->get()
+        );
+    }
+
+    public function ltkmReport(GoamlLtkmReport $report)
+    {
+        return response()->json([
+            'status' => 'success',
+            'report' => $report->load([
+                'alert.rule',
+                'alert.transactions.transaction',
+            ]),
+        ]);
+    }
+    private function nextLtkmReportNo(): string
+    {
+        $date = now()->format('Ymd');
+        $prefix = 'LTKM-DRAFT-' . $date . '-';
+
+        $last = GoamlLtkmReport::where('report_no', 'like', $prefix . '%')
+            ->orderByDesc('id')
+            ->first();
+
+        $sequence = 1;
+
+        if ($last) {
+            $lastNumber = (int) str_replace($prefix, '', $last->report_no);
+            $sequence = $lastNumber + 1;
+        }
+
+        return $prefix . str_pad((string) $sequence, 5, '0', STR_PAD_LEFT);
+    }
+}

@@ -1,0 +1,3 @@
+<?php
+use Illuminate\Database\Migrations\Migration; use Illuminate\Database\Schema\Blueprint; use Illuminate\Support\Facades\Schema;
+return new class extends Migration { public function up(): void { Schema::create('mc_letter_records',function(Blueprint $t){$t->id();$t->string('letter_number',120)->unique();$t->unsignedInteger('sequence');$t->string('company_code',20);$t->string('letter_type',20);$t->date('letter_date');$t->string('subject',255)->nullable();$t->string('status',30)->default('MENUNGGU DOKUMEN');$t->timestamps();$t->index(['company_code','letter_type','letter_date']);}); } public function down(): void {Schema::dropIfExists('mc_letter_records');} };

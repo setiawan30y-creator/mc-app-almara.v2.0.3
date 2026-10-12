@@ -1,0 +1,145 @@
+/*
+ * MC-Almara Ledger UI
+ * Global compact ERP visual standard.
+ * Presentation-only: does not alter transaction/business logic.
+ */
+:root {
+    --mc-ledger-row-height: 30px;
+    --mc-ledger-cell-y: 6px;
+    --mc-ledger-cell-x: 8px;
+    --mc-ledger-line: rgba(100, 116, 139, .22);
+    --mc-ledger-line-strong: rgba(100, 116, 139, .32);
+    --mc-card-radius: 8px;
+    --mc-card-padding: 10px;
+    --mc-section-gap: 10px;
+}
+
+/* Cards: compact, dense, ERP-like */
+.card,
+.kpi-card,
+.stat-card,
+.summary-card,
+.dashboard-card,
+.panel,
+.erp-card,
+[class*="card"] {
+    border-radius: var(--mc-card-radius);
+}
+
+.card,
+.kpi-card,
+.stat-card,
+.summary-card,
+.dashboard-card,
+.panel,
+.erp-card {
+    padding: var(--mc-card-padding);
+}
+
+/* Avoid excessive vertical whitespace in common card content. */
+.card > .card-header,
+.card > .card-body,
+.card > .card-footer,
+.panel > .panel-header,
+.panel > .panel-body,
+.panel > .panel-footer {
+    padding-top: 7px;
+    padding-bottom: 7px;
+}
+
+/* Ledger tables: thin notebook-style horizontal rules. */
+table {
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+table thead th {
+    padding: var(--mc-ledger-cell-y) var(--mc-ledger-cell-x);
+    min-height: var(--mc-ledger-row-height);
+    border-top: 1px solid var(--mc-ledger-line-strong);
+    border-bottom: 1px solid var(--mc-ledger-line-strong);
+    font-size: .78rem;
+    line-height: 1.2;
+    font-weight: 700;
+}
+
+table tbody td {
+    padding: var(--mc-ledger-cell-y) var(--mc-ledger-cell-x);
+    min-height: var(--mc-ledger-row-height);
+    border-bottom: 1px solid var(--mc-ledger-line);
+    font-size: .82rem;
+    line-height: 1.25;
+    vertical-align: middle;
+}
+
+table tbody tr:last-child td {
+    border-bottom-color: var(--mc-ledger-line-strong);
+}
+
+/* Keep the ledger readable without boxed cells. */
+table th,
+table td {
+    border-left: 0;
+    border-right: 0;
+}
+
+table tbody tr:hover td {
+    background: rgba(100, 116, 139, .045);
+}
+
+/* Compact controls inside tables/cards. */
+table .btn,
+table button,
+.card .btn,
+.panel .btn,
+input,
+select,
+textarea {
+    min-height: 30px;
+}
+
+table .btn,
+table button {
+    padding: 4px 8px;
+    line-height: 1.2;
+}
+
+/* Numeric ledger columns. */
+table td.amount,
+table td.number,
+table td.numeric,
+table th.amount,
+table th.number,
+table th.numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Compact section spacing. */
+.card + .card,
+.panel + .panel,
+.dashboard-card + .dashboard-card,
+.kpi-card + .kpi-card {
+    margin-top: var(--mc-section-gap);
+}
+
+/* Do not let global rules destroy explicitly designed modals/forms. */
+.modal table td,
+.modal table th {
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+@media (max-width: 768px) {
+    :root {
+        --mc-ledger-cell-x: 6px;
+        --mc-ledger-cell-y: 5px;
+        --mc-ledger-row-height: 28px;
+        --mc-card-padding: 8px;
+    }
+
+    table thead th,
+    table tbody td {
+        font-size: .76rem;
+    }
+}

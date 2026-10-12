@@ -1,0 +1,16 @@
+
+cara pakai kamera untuk aplikasi almara
+
+🛠️ SOLUSI CEPAT & MUDAH (Untuk Google Chrome / Microsoft Edge)
+Anda tidak perlu membeli sertifikat SSL SSL/HTTPS. Anda hanya perlu memberitahukan browser agar menganggap alamat web aplikasi Anda sebagai alamat yang aman dengan langkah-langkah berikut:
+
+Buka tab baru di browser Anda (Chrome/Edge), lalu ketik di bilah alamat:
+Untuk Google Chrome: chrome://flags/#unsafely-treat-insecure-origin-as-secure
+Untuk Microsoft Edge: edge://flags/#unsafely-treat-insecure-origin-as-secure
+Tekan Enter. Anda akan masuk ke halaman pengaturan eksperimental browser.
+Cari opsi bertuliskan "Insecure origins treated as secure".
+Ubah status opsi tersebut dari Disabled menjadi Enabled.
+Pada kolom teks di bawahnya, masukkan alamat URL lengkap aplikasi Anda.
+Contoh: http://192.168.1.100 (atau http://mc-app-almara.test sesuai dengan domain yang Anda gunakan saat ini).
+Setelah diisi, klik tombol Relaunch yang muncul di pojok kanan bawah layar browser untuk memuat ulang browser.
+Setelah browser terbuka kembali, klik tombol "Kamera USB" pada aplikasi Anda. Browser sekarang akan mengaktifkan kamera dengan lancar dan mendeteksi list kamera Anda!

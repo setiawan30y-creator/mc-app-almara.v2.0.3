@@ -1,0 +1,92 @@
+/* POS ERP workspace — visual layer only. Keeps existing transaction logic intact. */
+#posDraftFloatingBar {
+    position: sticky;
+    top: 0;
+    z-index: 80;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border: 1px solid rgba(148,163,184,.20);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(15,23,42,.96), rgba(15,23,42,.90));
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 30px rgba(2,6,23,.18);
+}
+#posDraftFloatingBar .pos-erp-workspace-head {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-bottom:8px;
+}
+.pos-erp-workspace-title {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:.78rem;
+    font-weight:800;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:#cbd5e1;
+}
+.pos-erp-workspace-title .dot {
+    width:8px;height:8px;border-radius:999px;background:#10b981;
+    box-shadow:0 0 0 4px rgba(16,185,129,.12);
+}
+.pos-erp-workspace-actions { display:flex; gap:6px; align-items:center; }
+.pos-erp-workspace-actions button { white-space:nowrap; }
+#posDraftSessionList {
+    display:flex;
+    gap:7px;
+    overflow-x:auto;
+    padding:2px 1px 3px;
+    scrollbar-width:thin;
+}
+#posDraftSessionList .btn {
+    min-height:34px;
+    border-radius:9px;
+    white-space:nowrap;
+    border-color:rgba(148,163,184,.25);
+}
+#posDraftSessionList .btn-primary {
+    box-shadow:0 0 0 1px rgba(59,130,246,.20), 0 4px 14px rgba(37,99,235,.14);
+}
+.pos-erp-session-badge {
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    margin-left:4px;
+    padding:2px 6px;
+    border-radius:999px;
+    font-size:.68rem;
+    background:rgba(148,163,184,.12);
+    color:#94a3b8;
+}
+.pos-erp-session-badge.completed { background:rgba(16,185,129,.12); color:#6ee7b7; }
+.pos-erp-invoice-note {
+    display:flex;
+    align-items:center;
+    gap:7px;
+    margin-top:8px;
+    padding:7px 9px;
+    border-radius:9px;
+    background:rgba(59,130,246,.08);
+    border:1px solid rgba(59,130,246,.14);
+    color:#93c5fd;
+    font-size:.74rem;
+}
+.pos-erp-customer-context {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:0 0 10px;
+    padding:8px 10px;
+    border-radius:10px;
+    background:rgba(15,23,42,.045);
+    border:1px solid rgba(148,163,184,.14);
+}
+.pos-erp-customer-context strong { color:inherit; }
+.pos-erp-customer-context small { color:#94a3b8; }
+@media (max-width: 768px) {
+    #posDraftFloatingBar .pos-erp-workspace-head { align-items:flex-start; }
+    .pos-erp-workspace-actions .pos-erp-secondary { display:none; }
+}

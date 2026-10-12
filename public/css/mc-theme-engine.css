@@ -1,0 +1,64 @@
+:root {
+    --mc-primary:#1D6C5D;
+    --mc-primary-hover:#123D35;
+    --mc-secondary:#69736F;
+    --mc-page-bg:#F0F4F8;
+    --mc-card-bg:#FFFFFF;
+    --mc-sidebar-bg:#0B2F29;
+    --mc-sidebar-text:#B8CEC4;
+    --mc-header-bg:#FFFFFF;
+    --mc-text:#18221F;
+    --mc-text-muted:#64748B;
+    --mc-border:#E2E8F0;
+    --mc-input-bg:#FFFFFF;
+    --mc-input-border:#D7D8CF;
+    --mc-button-bg:#1D6C5D;
+    --mc-button-text:#FFFFFF;
+    --mc-shadow:0 2px 12px rgba(0,0,0,.06);
+    --mc-radius:12px;
+    --mc-buy:#16A34A;
+    --mc-sell:#A94138;
+    --mc-draft:#EAB308;
+    --mc-final:#16A34A;
+}
+
+body { background:var(--mc-page-bg); color:var(--mc-text); }
+
+/* Global bridge: the existing APV selectors remain intact; these variables
+   become the single control point for the shared visual primitives. */
+body.apv-theme,
+body.apv-theme .main-content,
+body.apv-theme .view-container { background-color:var(--mc-page-bg) !important; color:var(--mc-text) !important; }
+body.apv-theme .sidebar,
+body.apv-theme .sidebar-header,
+body.apv-theme .sidebar-footer { background:var(--mc-sidebar-bg) !important; }
+body.apv-theme .sidebar-nav .nav-item { color:var(--mc-sidebar-text) !important; }
+body.apv-theme .sidebar-nav .nav-item:hover { background:var(--mc-primary-hover) !important; }
+body.apv-theme .sidebar-nav .nav-item.active { background:var(--mc-primary) !important; color:var(--mc-button-text) !important; }
+body.apv-theme .sidebar-nav .nav-item.active i { color:var(--mc-button-text) !important; }
+body.apv-theme .top-header { background:var(--mc-header-bg) !important; border-bottom-color:var(--mc-border) !important; }
+body.apv-theme .panel,
+body.apv-theme .stat-card,
+body.apv-theme .card,
+body.apv-theme .modal-content { background:var(--mc-card-bg) !important; border-color:var(--mc-border) !important; box-shadow:var(--mc-shadow) !important; border-radius:var(--mc-radius) !important; }
+body.apv-theme .panel-header { border-bottom-color:var(--mc-border) !important; }
+body.apv-theme input,
+body.apv-theme select,
+body.apv-theme textarea { background:var(--mc-input-bg) !important; border-color:var(--mc-input-border) !important; color:var(--mc-text) !important; }
+body.apv-theme .btn-primary,
+body.apv-theme button.btn-primary,
+body.apv-theme .mc-btn-primary { background:var(--mc-button-bg) !important; color:var(--mc-button-text) !important; border-color:var(--mc-button-bg) !important; }
+body.apv-theme .btn-primary:hover,
+body.apv-theme button.btn-primary:hover,
+body.apv-theme .mc-btn-primary:hover { background:var(--mc-primary-hover) !important; border-color:var(--mc-primary-hover) !important; }
+body.apv-theme .text-green { color:var(--mc-buy) !important; }
+body.apv-theme .text-red { color:var(--mc-sell) !important; }
+
+/* Theme settings page primitives */
+.mc-theme-card,.card,.panel,.modal-content { border-color:var(--mc-border); box-shadow:var(--mc-shadow); border-radius:var(--mc-radius); }
+button.btn-primary,.btn-primary,.mc-btn-primary { background:var(--mc-button-bg); color:var(--mc-button-text); border-color:var(--mc-button-bg); }
+button.btn-primary:hover,.btn-primary:hover,.mc-btn-primary:hover { background:var(--mc-primary-hover); border-color:var(--mc-primary-hover); }
+input,select,textarea { background:var(--mc-input-bg); border-color:var(--mc-input-border); color:var(--mc-text); }
+.mc-theme-sidebar,aside { background:var(--mc-sidebar-bg); color:var(--mc-sidebar-text); }
+.mc-theme-header,header { background:var(--mc-header-bg); }
+.mc-muted { color:var(--mc-text-muted); }
