@@ -8,6 +8,11 @@ use App\Http\Middleware\InjectClosingBridge;
 use App\Models\Datastore;
 use Illuminate\Support\Facades\Route;
 
+// Semua route /erp/* wajib login. Di lokal dengan DEV_BYPASS_AUTH=true tetap memakai bypass dev.
+$erpAuth = app()->environment('local') && (bool) config('app.dev_bypass_auth', false)
+    ? [DevelopmentBypassAuth::class]
+    : ['auth', 'single.session'];
+
 function decodeDatastorePayload($payload)
 {
     $decoded = $payload;
@@ -110,19 +115,19 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware(['auth', '
 Route::get('/auth/me', [AuthController::class, 'me'])->middleware(['auth', 'single.session']);
 
 Route::post('/erp/transactions/{transactionId}/payments', [ErpPaymentController::class, 'store'])
-    ->middleware(DevelopmentBypassAuth::class)->name('erp.transactions.payments.store');
+    ->middleware($erpAuth)->name('erp.transactions.payments.store');
 Route::get('/erp/closing/summary', [ErpCashClosingController::class, 'summary'])
-    ->middleware(DevelopmentBypassAuth::class)->name('erp.closing.summary');
+    ->middleware($erpAuth)->name('erp.closing.summary');
 Route::get('/erp/closing', [ErpCashClosingController::class, 'index'])
-    ->middleware([DevelopmentBypassAuth::class, InjectClosingBridge::class])->name('erp.closing.index');
+    ->middleware(array_merge($erpAuth, [InjectClosingBridge::class]))->name('erp.closing.index');
 Route::post('/erp/closing', [ErpCashClosingController::class, 'store'])
-    ->middleware(DevelopmentBypassAuth::class)->name('erp.closing.store');
+    ->middleware($erpAuth)->name('erp.closing.store');
 Route::get('/erp/gantungan', [ErpCashClosingController::class, 'gantungan'])
-    ->middleware(DevelopmentBypassAuth::class)->name('erp.gantungan.index');
+    ->middleware($erpAuth)->name('erp.gantungan.index');
 Route::post('/erp/gantungan', [ErpCashClosingController::class, 'gantunganStore'])
-    ->middleware(DevelopmentBypassAuth::class)->name('erp.gantungan.store');
+    ->middleware($erpAuth)->name('erp.gantungan.store');
 Route::post('/erp/gantungan/{gantungan}/return', [ErpCashClosingController::class, 'gantunganReturn'])
-    ->middleware(DevelopmentBypassAuth::class)->name('erp.gantungan.return');
+    ->middleware($erpAuth)->name('erp.gantungan.return');
 
 Route::get('/papan-kurs', function () {
     $profileData = null; $papanSettings = null;

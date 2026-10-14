@@ -266,7 +266,7 @@
                 var user = result.user;
                 if(result.csrfToken) window.setCsrfToken(result.csrfToken);
                 localStorage.setItem('mc_currentUser', JSON.stringify(user));
-                try { sessionStorage.setItem('mc_currentUser_password', pw); } catch(e) {}
+                try { sessionStorage.removeItem('mc_currentUser_password'); } catch(e) {}
                 localStorage.setItem('mc_last_login_at', String(Date.now()));
                 errorEl.style.display = 'none';
                 if (String(user.role || '').toLowerCase() === 'papan') {
@@ -469,20 +469,6 @@
                 var fileName = url ? url.split('/').pop() : 'inline';
                 list.innerHTML += '<div>ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ <strong>' + msg + '</strong> (' + fileName + ':' + lineNo + ')</div>';
             }
-            try {
-                fetch('/debug_logger.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        msg: msg,
-                        url: url,
-                        lineNo: lineNo,
-                        columnNo: columnNo,
-                        stack: error ? error.stack : '',
-                        userAgent: navigator.userAgent
-                    })
-                }).catch(function() {});
-            } catch(e) {}
             return false;
         };
         
@@ -493,17 +479,6 @@
             if(_u && _u.username) _isLoggedIn = true;
         } catch(e) {}
         
-        try {
-            fetch('/debug_logger.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    msg: "DUMP_STORAGE",
-                    mc_currencies: localStorage.getItem('mc_currencies'),
-                    mc_currentUser: localStorage.getItem('mc_currentUser')
-                })
-            }).catch(function() {});
-        } catch(e) {}
     </script>
 
     <!-- Login Screen -->
