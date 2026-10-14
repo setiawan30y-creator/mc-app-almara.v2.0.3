@@ -29,3 +29,12 @@ Thumbs.db
 *.db
 2.env
 cara dapat key api gemini gratis.txt
+
+backups/
+*.sql
+*.bak
+*.backup-*
+*.before-*
+*.patch
+public/browser_errors.log
+.env

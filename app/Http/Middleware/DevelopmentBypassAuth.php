@@ -38,6 +38,7 @@ class DevelopmentBypassAuth
             $bootstrap = <<<'HTML'
 <script>
 (function () {
+    window.__MC_DEV_BYPASS = true;
     try {
         localStorage.setItem('mc_currentUser', JSON.stringify({
             username: 'admin',

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ErpCashClosingController;
@@ -26,11 +26,26 @@ function decodeDatastorePayload($payload)
 }
 
 Route::get('/', function () {
+    $devBypass = app()->environment('local') && (bool) config('app.dev_bypass_auth', false);
+
+    // Belum login: langsung ke halaman login baru (tidak menampilkan login lama di dasbor).
+    if (!$devBypass && !auth()->check()) {
+        return redirect('/login');
+    }
+
     if (auth()->check() && strtolower((string) auth()->user()->role) === 'papan') {
         return redirect('/papan-kurs');
     }
 
     $html = view('dashboard')->render();
+
+    // Sudah login di server: tanamkan identitas ke browser sebelum skrip dasbor berjalan,
+    // supaya layar login tidak sempat tampil.
+    if (auth()->check()) {
+        $mcUser = json_encode(auth()->user()->publicProfile(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE);
+        $mcUserScript = '<script>try{localStorage.setItem("mc_currentUser",JSON.stringify(' . $mcUser . '));}catch(e){}</script>';
+        $html = str_ireplace('</head>', $mcUserScript . "\n</head>", $html);
+    }
     $currencyMasterCss = '<link rel="stylesheet" href="' . asset('css/currency-master-ui-override.css?v=20260923-3') . '">';
     $themeCss = '<link rel="stylesheet" href="' . asset('css/mc-theme-engine.css?v=20260924-1') . '">';
     $posErpCss = '<link rel="stylesheet" href="' . asset('css/pos-erp-ux.css?v=20260926-1') . '">';
@@ -109,7 +124,7 @@ Route::get('/settings/theme', function () {
     return view('theme-settings');
 })->middleware([DevelopmentBypassAuth::class])->name('settings.theme');
 
-Route::get('/login', function () { return redirect('/'); })->name('login.form');
+Route::get('/login', [AuthController::class, 'showLogin'])->name('login.form');
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/logout', [AuthController::class, 'logout'])->middleware(['auth', 'single.session'])->name('logout');
 Route::get('/auth/me', [AuthController::class, 'me'])->middleware(['auth', 'single.session']);

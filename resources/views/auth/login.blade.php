@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="manifest" href="{{ asset('manifest.json?v=1.0.0') }}">
     <meta name="theme-color" content="#047857">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="MC Almara">
     <link rel="apple-touch-icon" href="{{ asset('favicon.png') }}">
     <title>Login — MC App Almara</title>
+    <script>try{localStorage.removeItem('mc_currentUser');sessionStorage.clear();}catch(e){}</script>
     <style>
         *{box-sizing:border-box}
         html,body{margin:0;min-height:100%;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}

@@ -14,6 +14,10 @@ class AuthController extends Controller
 {
     public function showLogin(Request $request)
     {
+        if (Auth::check()) {
+            return redirect('/');
+        }
+
         return view('auth.login');
     }
 
@@ -73,6 +77,12 @@ class AuthController extends Controller
             $user->forceFill([
                 'active_session_token' => $sessionToken,
             ])->save();
+        }
+
+        // Form login biasa (halaman /login): arahkan ke dasbor, bukan menampilkan JSON.
+        if (!$request->expectsJson()) {
+            $request->session()->forget('url.intended');
+            return redirect('/');
         }
 
         return response()->json([

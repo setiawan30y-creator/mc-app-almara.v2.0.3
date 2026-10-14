@@ -1,11 +1,10 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="id">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link rel="manifest" href="{{ asset('manifest.json?v=1.0.0') }}">
     <meta name="theme-color" content="#047857">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -34,6 +33,26 @@
             window._jsErrors.push({msg, url, lineNo, error: error ? error.stack : ''});
             return true; // suppress red screen
         };
+
+        // Pencatat & pemutus loop muat ulang (diagnostik). Lihat: sessionStorage 'mc_reload_log'.
+        window.mcSafeReload = function(reason) {
+            try {
+                var log = JSON.parse(sessionStorage.getItem('mc_reload_log') || '[]');
+                log.push({ t: Date.now(), reason: reason, url: location.href });
+                log = log.slice(-30);
+                sessionStorage.setItem('mc_reload_log', JSON.stringify(log));
+                var recent = log.filter(function(x) { return x.reason !== 'unload' && Date.now() - x.t < 15000; }).length;
+                if (recent >= 4) { console.error('[MC] Loop muat ulang dihentikan. Log:', log); window.__mcReloadBlocked = true; return; }
+            } catch (e) {}
+            window.location.reload();
+        };
+        window.addEventListener('beforeunload', function() {
+            try {
+                var log = JSON.parse(sessionStorage.getItem('mc_reload_log') || '[]');
+                log.push({ t: Date.now(), reason: 'unload', url: location.href });
+                sessionStorage.setItem('mc_reload_log', JSON.stringify(log.slice(-30)));
+            } catch (e) {}
+        });
 
         window.getCsrfToken = function() {
             var meta = document.querySelector('meta[name="csrf-token"]');
@@ -85,7 +104,7 @@
                 }
             } catch (e) {}
 
-            window.location.reload();
+            window.mcSafeReload('single-session-conflict');
         }
 
         async function silentReLogin() {
@@ -177,6 +196,14 @@
                 }
                 
                 try {
+                    // Belum login: jangan panggil API (mencegah sesi/cookie ditimpa oleh polling otomatis).
+                    if (isSameOriginApi && !window.__MC_DEV_BYPASS) {
+                        var _p = '';
+                        try { _p = new URL(url, window.location.origin).pathname; } catch (e) {}
+                        if (/^\/api\//.test(_p) && !/^\/api\/public\//.test(_p) && !localStorage.getItem('mc_currentUser')) {
+                            return new Response(JSON.stringify({ status: 'error', message: 'Unauthenticated.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+                        }
+                    }
                     var response = await nativeFetch(resource, options);
                     if (isSameOriginApi && response.status === 423) {
                         var conflictMessage = 'Akun ini sudah dipakai di perangkat lain. Silakan login ulang.';
@@ -203,6 +230,14 @@
                                 return await nativeFetch(resource, options);
                             }
                             
+                            // Password tidak lagi disimpan di browser, jadi re-login otomatis tidak mungkin.
+                            // Sesi server tidak valid: bersihkan status login lokal dan kembali ke layar login.
+                            // Mode dev bypass menyuntik login admin di setiap muat ulang; jangan redirect (bisa loop).
+                            if (!window.__MC_DEV_BYPASS) {
+                                handleSingleSessionConflict('Sesi login berakhir. Silakan login kembali.');
+                                return response;
+                            }
+
                             // Jika re-login otomatis gagal, dan belum diakui (acknowledged) oleh user
                             if (!window.isHandlingSessionExpiry && !window.sessionExpiredAcknowledged) {
                                 window.isHandlingSessionExpiry = true;
