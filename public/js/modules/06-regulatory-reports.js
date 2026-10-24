@@ -951,161 +951,7 @@ window.loadLaporanPosisiValuta = async function() {
 // ==============================
 // ASSET REPORT LOGIC
 // ==============================
-function loadAssetReport() {
-    let assets = getAssets();
-    const tbody = document.getElementById('assetTableBody');
-    if(!tbody) return;
-    
-    // Safety check for old assets without IDs
-    let needsSave = false;
-    assets = assets.map(a => {
-        if(!a.id) {
-            a.id = 'AST-' + Math.random().toString(36).substr(2, 6).toUpperCase();
-            needsSave = true;
-        }
-        return a;
-    });
-    if(needsSave) saveAssets(assets);
-
-    let html = '';
-    let sumPrice = 0;
-    let sumDepreciation = 0;
-    let sumBookValue = 0;
-    const today = new Date();
-
-    assets.forEach(asset => {
-        const purchaseDate = new Date(asset.purchaseDate);
-        
-        let monthsElapsed = (today.getFullYear() - purchaseDate.getFullYear()) * 12;
-        monthsElapsed -= purchaseDate.getMonth();
-        monthsElapsed += today.getMonth();
-        if (today.getDate() < purchaseDate.getDate()) {
-            monthsElapsed--;
-        }
-        
-        if (monthsElapsed < 0) monthsElapsed = 0;
-
-        const usefulLifeMonths = asset.usefulLifeYears * 12;
-        const monthlyDepreciation = asset.purchasePrice / usefulLifeMonths;
-        
-        let accumulatedDepreciation = monthlyDepreciation * monthsElapsed;
-        if (accumulatedDepreciation > asset.purchasePrice) {
-            accumulatedDepreciation = asset.purchasePrice;
-        }
-
-        const bookValue = asset.purchasePrice - accumulatedDepreciation;
-
-        sumPrice += asset.purchasePrice;
-        sumDepreciation += accumulatedDepreciation;
-        sumBookValue += bookValue;
-
-        html += `
-            <tr>
-                <td>${asset.name}</td>
-                <td>${purchaseDate.toLocaleDateString('id-ID')}</td>
-                <td class="text-end">${formatIdr(asset.purchasePrice)}</td>
-                <td class="text-center">${asset.usefulLifeYears}</td>
-                <td class="text-end text-danger">${formatIdr(accumulatedDepreciation)}</td>
-                <td class="text-end text-info">${formatIdr(bookValue)}</td>
-                <td class="text-center" style="white-space: nowrap;">
-                    <button class="btn btn-sm" style="background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: none; padding: 4px 8px; border-radius: 4px; margin-right: 5px;" onclick="openAssetModal('${asset.id}')">
-                        <i class="fa-solid fa-edit"></i>
-                    </button>
-                    <button class="btn btn-sm" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: none; padding: 4px 8px; border-radius: 4px;" onclick="deleteAsset('${asset.id}')">
-                        <i class="fa-solid fa-trash"></i>
-                    </button>
-                </td>
-            </tr>
-        `;
-    });
-
-    if(assets.length === 0) {
-        html = '<tr><td colspan="7" class="text-center text-muted">Belum ada data aset terdaftar</td></tr>';
-    }
-
-    tbody.innerHTML = html;
-    
-    document.getElementById('totalAssetPrice').textContent = formatIdr(sumPrice);
-    document.getElementById('totalAssetDepreciation').textContent = formatIdr(sumDepreciation);
-    document.getElementById('totalAssetBookValue').textContent = formatIdr(sumBookValue);
-}
-
-window.openAssetModal = function(id = null) {
-    if(id) {
-        const assets = getAssets();
-        const asset = assets.find(a => a.id === id);
-        if(asset) {
-            document.getElementById('modalAssetTitle').textContent = 'Edit Aset';
-            document.getElementById('modalAssetId').value = asset.id;
-            document.getElementById('modalAssetName').value = asset.name;
-            document.getElementById('modalAssetDate').value = asset.purchaseDate;
-            document.getElementById('modalAssetPrice').value = asset.purchasePrice;
-            document.getElementById('modalAssetLife').value = asset.usefulLifeYears;
-        }
-    } else {
-        document.getElementById('modalAssetTitle').textContent = 'Tambah Aset Baru';
-        document.getElementById('modalAssetId').value = '';
-        document.getElementById('modalAssetName').value = '';
-        document.getElementById('modalAssetDate').value = new Date().toISOString().split('T')[0];
-        document.getElementById('modalAssetPrice').value = '';
-        document.getElementById('modalAssetLife').value = '';
-    }
-    
-    document.getElementById('assetModal').style.display = 'block';
-};
-
-window.closeAssetModal = function() {
-    document.getElementById('assetModal').style.display = 'none';
-};
-
-window.saveAsset = function saveAsset() {
-    const name = document.getElementById('modalAssetName').value.trim();
-    const idElem = document.getElementById('modalAssetId');
-    const id = idElem ? idElem.value : '';
-    const date = document.getElementById('modalAssetDate').value;
-    const price = parseFloat(document.getElementById('modalAssetPrice').value);
-    const life = parseInt(document.getElementById('modalAssetLife').value);
-
-    if(!name || !date || !price || !life) {
-        alert("Harap lengkapi semua form!");
-        return;
-    }
-
-    let assets = getAssets();
-    
-    if(id) {
-        // Edit mode
-        const index = assets.findIndex(a => a.id === id);
-        if(index > -1) {
-            assets[index].name = name;
-            assets[index].purchaseDate = date;
-            assets[index].purchasePrice = price;
-            assets[index].usefulLifeYears = life;
-        }
-    } else {
-        // Create mode
-        assets.push({
-            id: 'AST-' + Date.now().toString().slice(-6),
-            name: name,
-            purchaseDate: date,
-            purchasePrice: price,
-            usefulLifeYears: life
-        });
-    }
-
-    saveAssets(assets);
-    closeAssetModal();
-    loadAssetReport();
-};
-
-window.deleteAsset = function(id) {
-    if(confirm('Yakin ingin menghapus aset ini?')) {
-        let assets = getAssets();
-        assets = assets.filter(a => a.id === id ? false : true);
-        saveAssets(assets);
-        loadAssetReport();
-    }
-};
+// Dipindahkan ke 63-assets.js (register aset, penyusutan, laporan). Mesin hitung: window.MCAssets.
 
 // ==============================
 // GRANULAR BI REPORT LOGIC
@@ -1406,9 +1252,7 @@ window.loadBukuBesar = function() {
 };
 
 // --- LABA RUGI ---
-window.loadLabaRugi = function() {
-    const m = document.getElementById('plMonth').value;
-    const y = document.getElementById('plYear').value;
+window.computeLabaRugi = function(y, m) {
     const prefix = `${y}-${m}`;
     
     const trxs = getTransactions().filter(t => t.timestamp.startsWith(prefix));
@@ -1473,26 +1317,11 @@ window.loadLabaRugi = function() {
     });
 
     expenses.forEach(e => {
-        let prefixCat = e.kategori ? e.kategori.substring(0,2) : '';
-        if(d[prefixCat] !== undefined) d[prefixCat] += e.nominal;
-        else {
-            if(e.tipe === 'PENDAPATAN') d['23'] += e.nominal;
-            else d['15'] += e.nominal;
-        }
+        const code = window.lkbuCodeOf(e);
+        d[code] += Number(e.nominal) || 0;
     });
 
-    const assets = getAssets();
-    let dep = 0;
-    assets.forEach(a => {
-        const pd = new Date(a.purchaseDate);
-        const reportTarget = new Date(y, parseInt(m)-1, 1);
-        if(pd <= reportTarget) {
-            const lifeMonths = a.usefulLifeYears * 12;
-            const monthlyDep = a.purchasePrice / lifeMonths;
-            let msElapsed = (reportTarget.getFullYear() - pd.getFullYear()) * 12 + (reportTarget.getMonth() - pd.getMonth());
-            if(msElapsed <= lifeMonths && msElapsed >= 0) dep += monthlyDep;
-        }
-    });
+    const dep = (window.MCAssets && window.MCAssets.expenseForMonth) ? window.MCAssets.expenseForMonth(parseInt(y, 10), parseInt(m, 10) - 1) : 0;
     d['13'] += dep;
 
     d['21'] += margin > 0 ? margin : 0;
@@ -1506,6 +1335,14 @@ window.loadLabaRugi = function() {
     let totalBebanNonOp = d['17']+d['18']+d['20']+d['22']+d['24'];
     let labaSebelumPajak = opBersih + totalPendapatanNonOp - totalBebanNonOp;
     let labaBersih = labaSebelumPajak - d['25'];
+
+    return { d, opKotorUkaTc, opKotor, totalBebanOp, opBersih, totalPendapatanNonOp, totalBebanNonOp, labaSebelumPajak, labaBersih };
+};
+
+window.loadLabaRugi = function() {
+    const m = document.getElementById('plMonth').value;
+    const y = document.getElementById('plYear').value;
+    const { d, opKotorUkaTc, opKotor, totalBebanOp, opBersih, labaSebelumPajak, labaBersih } = window.computeLabaRugi(y, m);
 
     let html = `
         <tr><td style="padding-left: 15px;">01-Penjualan UKA</td><td class="text-end">${formatIdr(d['01'])}</td></tr>
@@ -1553,102 +1390,12 @@ window.loadLabaRugi = function() {
 };
 
 window.kalkulasiLabaRugiB0003 = function() {
-    const monthInput = document.getElementById('lkbuB0003Month');
-    const yearInput = document.getElementById('lkbuB0003Year');
-    const monthSelect = document.getElementById('plMonth');
-    const yearSelect = document.getElementById('plYear');
-
-    if (!monthInput || !yearInput || !monthSelect || !yearSelect) {
-        alert('Kontrol periode B0003 tidak lengkap.');
-        return;
-    }
-
-    const month = monthInput.value;
-    const year = String(yearInput.value || '').trim();
-
-    if (!month || !/^\d{4}$/.test(year) || Number(year) < 2000 || Number(year) > 2100) {
-        alert('Pilih bulan dan masukkan tahun laporan yang valid.');
-        return;
-    }
-
-    const ensureOption = (select, value, label) => {
-        if (![...select.options].some(option => option.value === value)) {
-            select.add(new Option(label, value));
-        }
-        select.value = value;
-    };
-
-    const monthNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-    ensureOption(monthSelect, month, monthNames[Number(month) - 1]);
-    ensureOption(yearSelect, year, year);
-
-    if (typeof window.loadLabaRugi !== 'function') {
-        alert('Fungsi perhitungan Laba/Rugi belum tersedia.');
-        return;
-    }
-
-    window.loadLabaRugi();
-
-    const sourceRows = document.querySelectorAll('#plTable tbody tr');
-    const targetRows = document.querySelectorAll('#lkbu-panel-b0003 table tbody tr');
-
-    if (!sourceRows.length || !targetRows.length) {
-        alert('Tabel hasil perhitungan atau tabel LKBU B0003 tidak ditemukan.');
-        return;
-    }
-
-    const valuesByCode = {};
-    const totalsByLabel = {};
-
-    sourceRows.forEach(row => {
-        const cells = row.querySelectorAll('td');
-        if (cells.length < 2) return;
-
-        const label = (cells[0].textContent || '').trim();
-        const value = (cells[1].textContent || '').trim();
-        const match = label.match(/^(\d{2})\s*-/);
-
-        if (match) valuesByCode[match[1]] = value;
-        else if (label) totalsByLabel[label.toLowerCase()] = value;
-    });
-
-    const totalLabels = [
-        'Pendapatan/(Rugi) Operasional Kotor UKA-TC',
-        'Pendapatan/(Rugi) Operasional Kotor',
-        'Pendapatan/(Rugi) Operasional Bersih',
-        'Laba/(Rugi) Sebelum Pajak Penghasilan',
-        'Laba (Rugi) Bersih'
-    ];
-
-    let updated = 0;
-    targetRows.forEach(row => {
-        const cells = row.querySelectorAll('td');
-        if (cells.length < 3) return;
-
-        const code = (cells[0].textContent || '').trim();
-        const label = (cells[1].textContent || '').trim().toLowerCase();
-        let value;
-
-        if (/^\d{2}$/.test(code) && valuesByCode[code] !== undefined) {
-            value = valuesByCode[code];
-        } else {
-            const matchedLabel = totalLabels.find(item => item.toLowerCase() === label);
-            if (matchedLabel) value = totalsByLabel[matchedLabel.toLowerCase()];
-        }
-
-        if (value !== undefined) {
-            cells[cells.length - 1].textContent = value;
-            updated++;
-        }
-    });
-
-    if (updated === 0) {
-        alert('Kalkulasi selesai, tetapi nilai belum cocok dengan baris tabel B0003.');
-        return;
-    }
-
-    alert('Kalkulasi B0003 selesai. ' + updated + ' baris diperbarui. Periksa hasil sebelum ekspor.');
+    // Perhitungan & pengisian tabel B0003 ada di 36-lkbu.js (tanpa membaca DOM #plTable).
+    if (typeof window.lkbuRenderB0003 !== 'function') { alert('Modul LKBU belum termuat.'); return; }
+    const res = window.lkbuRenderB0003({ silent: false });
+    if (res && res.updated) alert('Kalkulasi B0003 selesai. ' + res.updated + ' baris diperbarui. Periksa hasil sebelum ekspor.');
 };
+
 // --- NERACA & EKUITAS ---
 window.loadNeraca = function() {
     const dateStr = document.getElementById('bsDate').value;
@@ -1664,24 +1411,9 @@ window.loadNeraca = function() {
     const currencies = getCurrencies();
     currencies.forEach(c => { valasInventoryValue += (c.stock * c.buy); });
     
-    const assets = getAssets();
-    let fixedAssets = 0;
-    let accDep = 0;
-    
-    assets.forEach(a => {
-        const pd = new Date(a.purchaseDate);
-        if(pd <= targetDate) {
-            fixedAssets += a.purchasePrice;
-            let msElapsed = (targetDate.getFullYear() - pd.getFullYear()) * 12 + (targetDate.getMonth() - pd.getMonth());
-            if(targetDate.getDate() < pd.getDate()) msElapsed--;
-            if(msElapsed < 0) msElapsed = 0;
-            const lifeMonths = a.usefulLifeYears * 12;
-            let dep = (a.purchasePrice / lifeMonths) * msElapsed;
-            if(dep > a.purchasePrice) dep = a.purchasePrice;
-            accDep += dep; // Accumulation is positive here, will display negative
-        }
-    });
-
+    const assetTotals = (window.MCAssets && window.MCAssets.totalsAt) ? window.MCAssets.totalsAt(targetDate) : { cost: 0, acc: 0 };
+    let fixedAssets = assetTotals.cost;
+    let accDep = assetTotals.acc;
     let bookValue = fixedAssets - accDep;    
     let adjsMap = {};
     const adjKeys = ['105','106','107','108','111','201','202','203','204','205','206'];
@@ -1723,8 +1455,9 @@ window.loadNeraca = function() {
     let ytdExp = 0; 
     let ytdIncLain = 0;
     exps.forEach(e => {
-        if(e.tipe === 'PENGELUARAN') ytdExp += e.nominal;
-        else ytdIncLain += e.nominal;
+        const nominal = Number(e.nominal) || 0;
+        if (typeof window.lkbuIsIncome === 'function' ? window.lkbuIsIncome(e) : e.tipe === 'PENDAPATAN') ytdIncLain += nominal;
+        else ytdExp += nominal;
     });
 
     let currentYearEarnings = ytdMargin + ytdIncLain - ytdExp; 
@@ -1827,9 +1560,6 @@ window.backupDatabase = function() {
     }
 };
 
-window.triggerRestore = function() {
-    document.getElementById('restoreFileInput').click();
-};
 
 window.restoreDatabase = function(event) {
     let file = event.target.files[0];
@@ -1907,56 +1637,8 @@ function processRestoreData(backupData) {
 // ==============================
 // DATABASE RESET
 // ==============================
-window.resetSelectedData = async function() {
-    const scopes = Array.from(document.querySelectorAll('[data-reset-scope]:checked')).map(el => el.dataset.resetScope);
-    if (!scopes.length) {
-        alert('Pilih minimal satu halaman/data yang akan direset.');
-        return;
-    }
-    if (!confirm(`Reset ${scopes.length} pilihan data? Data yang dipilih tidak dapat dikembalikan.`)) return;
-    if (prompt('Ketik "RESET" untuk mengonfirmasi penghapusan data yang dipilih:') !== 'RESET') {
-        alert('Konfirmasi tidak valid. Reset dibatalkan.');
-        return;
-    }
-
-    const arrayKeys = new Set();
-    const scalarValues = {};
-    const add = (...keys) => keys.forEach(key => arrayKeys.add(key));
-    if (scopes.includes('transactions')) { add('mc_transactions'); localStorage.removeItem('mc_invoice_seq'); }
-    if (scopes.includes('customers')) add('mc_customers');
-    if (scopes.includes('cashBank')) Object.assign(scalarValues, { mc_cash: 0, mc_bank_bca: 0, mc_bank_mandiri: 0 });
-    if (scopes.includes('currencyStock')) {
-        const resetCurrencies = getCurrencies().map(c => ({ ...c, stock: 0, initialStock: 0, initial_rate_locked: 0, initial_rate_source: '', avg_buy_rate: 0, modalRate: 0, avgCost: 0, costRate: 0, modalValue: 0 }));
-        saveCurrencies(resetCurrencies);
-    }
-    if (scopes.includes('expenses')) add('mc_expenses');
-    if (scopes.includes('operations')) add('mc_mutations', 'mc_closings', 'mc_adjustments', 'mc_assets', 'mc_investors', 'mc_hris_employees', 'mc_hris_attendance', 'mc_hris_kasbon', 'mc_hris_bpjs', 'mc_hris_leave');
-    if (scopes.includes('bookingDemo')) add('mc_bookings', 'mc_demo_transactions', 'mc_demo_stock', 'mc_demo_customers');
-    if (scopes.includes('gantungan')) add('mc_gantungans');
-    if (scopes.includes('oldMoney')) { add('mc_old_money_stock', 'mc_old_money_suppliers', 'mc_old_money_trxs'); scalarValues.mc_old_money_cash = 0; }
-    if (scopes.includes('biRates')) { add('mc_bi_rates'); localStorage.setItem('mc_bi_rates_reset_at', new Date().toISOString()); }
-
-    Object.entries(scalarValues).forEach(([key, value]) => localStorage.setItem(key, String(value)));
-    arrayKeys.forEach(key => localStorage.setItem(key, JSON.stringify([])));
-    const syncTasks = [];
-    if (typeof pushToUniversalDatastore === 'function') {
-        Object.entries(scalarValues).forEach(([key, value]) => syncTasks.push(pushToUniversalDatastore(key, value)));
-        arrayKeys.forEach(key => syncTasks.push(pushToUniversalDatastore(key, [])));
-    }
-    if (scopes.includes('transactions')) syncTasks.push(fetch('api/transactions/clear-all', { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error('Gagal membersihkan transaksi server'); }));
-    if (scopes.includes('customers')) syncTasks.push(fetch('api/customers/clear-all', { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error('Gagal membersihkan nasabah server'); }));
-    try {
-        await Promise.all(syncTasks);
-        alert('Data pilihan berhasil direset. Aplikasi akan dimuat ulang.');
-        setTimeout(() => window.location.reload(), 1200);
-    } catch (error) {
-        console.error('Reset pilihan gagal:', error);
-        alert(`Sebagian reset tidak tersinkron ke server: ${error.message}. Jangan refresh; periksa koneksi lalu ulangi.`);
-    }
-};
 
 // Kompatibilitas untuk tombol lama/custom shortcut.
-window.resetDatabase = window.resetSelectedData;
 
 // ==============================
 // EXCEL EXPORT HELPERS (GLOBAL)
@@ -2290,31 +1972,10 @@ window.exportLabaRugiExcel = async function() {
     });
 
     // Populate standard BI categories from expenses.kategori
-    expenses.forEach(e => {
-        let prefixCat = e.kategori ? e.kategori.substring(0,2) : '';
-        if(d[prefixCat] !== undefined) {
-            d[prefixCat] += e.nominal;
-        } else {
-            if(e.tipe === 'PENDAPATAN') d['23'] += e.nominal; // 23-Pendapatan Lain-Lain
-            else d['15'] += e.nominal; // 15-Beban Lain-Lain (Operasional)
-        }
-    });
+    expenses.forEach(e => { d[window.lkbuCodeOf(e)] += Number(e.nominal) || 0; });
 
     // Depreciation
-    const assets = getAssets();
-    let dep = 0;
-    assets.forEach(a => {
-        const pd = new Date(a.purchaseDate);
-        const reportTarget = new Date(y, parseInt(m)-1, 1);
-        if(pd <= reportTarget) {
-            const lifeMonths = a.usefulLifeYears * 12;
-            const monthlyDep = a.purchasePrice / lifeMonths;
-            let msElapsed = (reportTarget.getFullYear() - pd.getFullYear()) * 12 + (reportTarget.getMonth() - pd.getMonth());
-            if(msElapsed <= lifeMonths && msElapsed >= 0) {
-                dep += monthlyDep;
-            }
-        }
-    });
+    const dep = (window.MCAssets && window.MCAssets.expenseForMonth) ? window.MCAssets.expenseForMonth(parseInt(y, 10), parseInt(m, 10) - 1) : 0;
     d['13'] += dep;
 
     d['01'] = penjualanUka;
@@ -2392,164 +2053,6 @@ window.exportLabaRugiExcel = async function() {
         console.error(err);
         alert("Gagal melakukan export Rugi-Laba BI.");
     }
-};
-
-window.loadEkuitasUi = function() {
-    const today = new Date().toISOString().split('T')[0];
-    if(!document.getElementById('eqDate')) return;
-    if(!document.getElementById('eqDate').value) document.getElementById('eqDate').value = today;
-    
-    document.getElementById('bsDate').value = document.getElementById('eqDate').value;
-    loadNeraca();
-
-    setTimeout(() => {
-        const safeParse = (id) => {
-            const el = document.getElementById(id);
-            if(!el) return 0;
-            let txt = el.textContent.replace(/\./g, '').replace(/,/g, '').replace(/Rp\s?/g, '').trim();
-            if(txt.startsWith('(') && txt.endsWith(')')) txt = '-' + txt.slice(1, -1);
-            return parseFloat(txt) || 0;
-        };
-
-        const bsRetained = safeParse('bsRetainedEarnings');
-        const bsCurrentYear = safeParse('bsCurrentYearEarnings');
-        const bsPrive = safeParse('bsPrive');
-
-        // To map exactly to Ekuitas (06/07): find Modal entries for THIS YEAR
-        const yStr = document.getElementById('eqDate').value.substring(0,4);
-        const adjs = getAdjustments().filter(a => a.timestamp.substring(0,4) === yStr && new Date(a.timestamp) <= new Date(document.getElementById('eqDate').value + 'T23:59:59'));
-        let modalTambahYTD = 0;
-        let modalKurangYTD = 0;
-        adjs.forEach(a => {
-            if(a.kategori === '206-Modal Disetor') {
-                if(a.tipe === 'PENAMBAHAN') modalTambahYTD += a.nominal;
-                else modalKurangYTD += a.nominal;
-            }
-        });
-
-        // The Saldo Awal formula = bsRetained - modalTambahYTD + modalKurangYTD (since bsRetained includes ALL modal)
-        const saldoAwal = bsRetained - modalTambahYTD + modalKurangYTD;
-
-        const eq01 = saldoAwal > 0 ? saldoAwal : 0;
-        const eq02 = saldoAwal < 0 ? Math.abs(saldoAwal) : 0;
-        const eq03 = bsCurrentYear > 0 ? bsCurrentYear : 0;
-        const eq04 = bsCurrentYear < 0 ? Math.abs(bsCurrentYear) : 0;
-        const eq05 = Math.abs(bsPrive);
-
-        if(document.getElementById('ui_e_01')) document.getElementById('ui_e_01').textContent = formatIdr(eq01);
-        if(document.getElementById('ui_e_02')) document.getElementById('ui_e_02').textContent = eq02 ? `(${formatIdr(eq02)})` : '0';
-        if(document.getElementById('ui_e_03')) document.getElementById('ui_e_03').textContent = formatIdr(eq03);
-        if(document.getElementById('ui_e_04')) document.getElementById('ui_e_04').textContent = eq04 ? `(${formatIdr(eq04)})` : '0';
-        if(document.getElementById('ui_e_05')) document.getElementById('ui_e_05').textContent = eq05 ? `(${formatIdr(eq05)})` : '0';
-        if(document.getElementById('ui_e_06')) document.getElementById('ui_e_06').textContent = formatIdr(modalTambahYTD);
-        if(document.getElementById('ui_e_07')) document.getElementById('ui_e_07').textContent = modalKurangYTD ? `(${formatIdr(modalKurangYTD)})` : '0';
-        
-        let totalEkuitas = eq01 - eq02 + eq03 - eq04 - eq05 + modalTambahYTD - modalKurangYTD;
-        if(document.getElementById('ui_e_total')) document.getElementById('ui_e_total').textContent = formatIdr(totalEkuitas);
-    }, 100);
-};
-
-window.exportEkuitasExcel = async function() {
-    const dateStr = document.getElementById('bsDate').value;
-    if(!dateStr) {
-        alert("Mohon kalkulasi Neraca/Ekuitas per tanggal terlebih dahulu.");
-        return;
-    }
-    
-    const safeParse = (id) => {
-        const el = document.getElementById(id);
-        if(!el) return 0;
-        let txt = el.textContent.replace(/\./g, '').replace(/,/g, '').replace(/Rp\s?/g, '').trim();
-        if(txt.startsWith('(') && txt.endsWith(')')) txt = '-' + txt.slice(1, -1);
-        return parseFloat(txt) || 0;
-    };
-    
-    const bsRetained = safeParse('bsRetainedEarnings');
-    const bsCurrentYear = safeParse('bsCurrentYearEarnings');
-    const bsPrive = safeParse('bsPrive');
-
-    const yStr = document.getElementById('eqDate').value.substring(0,4);
-    const adjs = getAdjustments().filter(a => a.timestamp.substring(0,4) === yStr && new Date(a.timestamp) <= new Date(document.getElementById('eqDate').value + 'T23:59:59'));
-    let modalTambahYTD = 0;
-    let modalKurangYTD = 0;
-    adjs.forEach(a => {
-        if(a.kategori === '206-Modal Disetor') {
-            if(a.tipe === 'PENAMBAHAN') modalTambahYTD += a.nominal;
-            else modalKurangYTD += a.nominal;
-        }
-    });
-
-    const saldoAwal = bsRetained - modalTambahYTD + modalKurangYTD;
-
-    const eq01 = saldoAwal > 0 ? saldoAwal : 0;
-    const eq02 = saldoAwal < 0 ? Math.abs(saldoAwal) : 0;
-    const eq03 = bsCurrentYear > 0 ? bsCurrentYear : 0;
-    const eq04 = bsCurrentYear < 0 ? Math.abs(bsCurrentYear) : 0;
-    const eq05 = Math.abs(bsPrive);
-
-    const aoaEq = [
-        ["PT ALMARA PUTRA VALASINDO", "", "", ""],
-        ["LAPORAN EKUITAS", "", "", ""],
-        [`Periode Posisi: ${dateStr}`, "", "", ""],
-        ["Keterangan", "Modal Disetor", "Laba Ditahan/Akumulasi Rugi", "Jumlah"],
-        ["01-Saldo Positif", eq01, 0, eq01],
-        ["02-Saldo Negatif", "", eq02, ""],
-        ["03-Laba periode berjalan (net)", "", eq03, eq03],
-        ["04-Rugi periode berjalan (-/-)", "", eq04, ""],
-        ["05-Pembagian Dividen(-/-)", "", eq05, -eq05],
-        ["06-Menambah ekuitas (net)", modalTambahYTD, 0, modalTambahYTD],
-        ["07-Mengurangi ekuitas (-/-)", modalKurangYTD, 0, -modalKurangYTD],
-        ["", eq01 + modalTambahYTD - modalKurangYTD, eq03 - eq05, eq01 - eq02 + eq03 - eq04 - eq05 + modalTambahYTD - modalKurangYTD]
-    ];
-
-    try {
-        const ws = XLSX.utils.aoa_to_sheet(aoaEq);
-        ws['!cols'] = [{wch: 35}, {wch: 20}, {wch: 30}, {wch: 20}];
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Ekuitas");
-        const ok = await window.safeExportXLSX(wb, `Laporan_BI_Ekuitas_${dateStr}.xlsx`);
-        if(ok) alert("Laporan Ekuitas BI berhasil diekspor ke Excel!");
-    } catch(err) {
-        console.error(err);
-        alert("Gagal melakukan export Ekuitas BI.");
-    }
-};
-
-window.exportCustomersCsv = async function() {
-    const customers = getCustomers();
-    if (customers.length === 0) {
-        alert("Data Nasabah kosong, tidak ada yang diekspor.");
-        return;
-    }
-    const aoa = [
-        ["ID Nasabah", "Tipe", "Nama Lengkap", "Tempat Lahir", "Tanggal Lahir", "Alamat", "Jenis Kelamin", "Warga Negara", "Pekerjaan", "Jenis ID", "No Identitas", "ID Lain", "No HP", "No Rekening", "No CIF", "NPWP", "Local ID"]
-    ];
-    customers.forEach(c => {
-        const knLabel = c.kn === '1' ? 'Perorangan' : (c.kn === '2' ? 'Corporate' : '-');
-        const isKtp = c.no_ktp && c.no_ktp !== '-';
-        const jenisId = isKtp ? 'KTP' : 'Lainnya';
-        const idUtama = isKtp ? c.no_ktp : (c.selain_ktp || '-');
-        aoa.push([
-            c.id_nasabah, knLabel, c.nama || '-', c.tempat_lahir || '-',
-            c.tanggal_lahir || '-', c.alamat || '-', c.jenis_kelamin || '-', c.warga_negara || '-', c.pekerjaan || '-',
-            jenisId, idUtama, c.selain_ktp || '-', c.no_hp || '-', c.no_rekening || '-',
-            c.no_cif || '-', c.npwp || '-', c.local_id || '-'
-        ]);
-    });
-    try {
-        const ws = XLSX.utils.aoa_to_sheet(aoa);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Nasabah");
-        const ok = await window.safeExportXLSX(wb, `Data_Nasabah_${new Date().toISOString().slice(0,10)}.xlsx`);
-        if(ok) alert("Data Nasabah berhasil diekspor ke Excel!");
-    } catch(err) {
-        console.error(err);
-        alert("Gagal melakukan export Data Nasabah.");
-    }
-};
-
-window.printCustomersPdf = function() {
-    alert("Fitur Cetak PDF Data Nasabah sedang dalam pengembangan.");
 };
 
 // ==============================

@@ -28,6 +28,15 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Dibaca lewat config() agar tetap berfungsi setelah `php artisan config:cache`.
+    'google_vision' => [
+        'key' => env('GOOGLE_VISION_API_KEY') ?: env('GOOGLE_CLOUD_VISION_API_KEY') ?: env('GOOGLE_API_KEY'),
+    ],
+
+    'gemini' => [
+        'key' => env('GEMINI_API_KEY'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

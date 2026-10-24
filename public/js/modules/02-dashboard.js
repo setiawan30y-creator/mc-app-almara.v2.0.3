@@ -599,7 +599,7 @@ function renderChart(trxs, baseDateStr) {
                     position: 'top',
                     align: 'start',
                     labels: {
-                        color: '#CBD5E1',
+                        color: '#475569',
                         boxWidth: 9,
                         boxHeight: 9,
                         usePointStyle: true,
@@ -625,15 +625,15 @@ function renderChart(trxs, baseDateStr) {
             scales: {
                 yQty: {
                     beginAtZero: true,
-                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    grid: { color: 'rgba(100,116,139,0.16)' },
                     border: { dash: [5, 5] },
                     title: {
                         display: true,
                         text: 'Qty',
-                        color: '#94A3B8'
+                        color: '#64748B'
                     },
                     ticks: {
-                        color: '#94A3B8',
+                        color: '#64748B',
                         maxTicksLimit: 5,
                         callback: value => formatChartNumber(value)
                     }
@@ -645,10 +645,10 @@ function renderChart(trxs, baseDateStr) {
                     title: {
                         display: true,
                         text: 'Kurs',
-                        color: '#FBBF24'
+                        color: '#D97706'
                     },
                     ticks: {
-                        color: '#FBBF24',
+                        color: '#D97706',
                         maxTicksLimit: 5,
                         callback: value => formatChartNumber(value)
                     }
@@ -656,7 +656,7 @@ function renderChart(trxs, baseDateStr) {
                 x: {
                     grid: { display: false },
                     ticks: {
-                        color: '#94A3B8',
+                        color: '#64748B',
                         maxRotation: 0,
                         autoSkip: true,
                         maxTicksLimit: 6

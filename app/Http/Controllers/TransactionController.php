@@ -3,12 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Transaction;
-use App\Models\TransactionAudit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Services\GoamlComplianceService;
+use App\Services\Erp\TransactionLedgerPoster;
+use Illuminate\Validation\ValidationException;
 
 class TransactionController extends Controller
 {
@@ -21,7 +22,7 @@ class TransactionController extends Controller
         return response()->json($transactions);
     }
 
-    public function store(Request $request, GoamlComplianceService $goaml)
+    public function store(Request $request, GoamlComplianceService $goaml, TransactionLedgerPoster $ledger)
     {
         $validated = $request->validate([
             'id' => ['nullable', 'string', 'max:50', 'required_without:itemId'],
@@ -63,26 +64,29 @@ class TransactionController extends Controller
         ];
 
         try {
-            $transaction = Transaction::updateOrCreate(
-                ['itemId' => $itemId],
-                $data
-            );
-
-            // Jalankan compliance engine setelah transaksi tersimpan.
-            $goaml->evaluateTransaction($transaction);
-
-            // RWT independen: hanya dibuat saat invoice belum memiliki audit.
-            if (!TransactionAudit::where('id', $invoiceId)->exists()) {
-                TransactionAudit::updateOrCreate(
+            // Transaksi dan pencatatan ledger (kas/bank/stok) disimpan dalam
+            // satu transaksi database: jika salah satu gagal, semuanya dibatalkan.
+            DB::transaction(function () use ($itemId, $data, $goaml, $ledger, $request) {
+                $transaction = Transaction::updateOrCreate(
                     ['itemId' => $itemId],
                     $data
                 );
-            }
+
+                // Jalankan compliance engine setelah transaksi tersimpan.
+                $goaml->evaluateTransaction($transaction);
+
+                $this->postToLedger($ledger, $transaction, $request->input('erpPayments'));
+            });
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Transaksi Disimpan ke Database (Laravel)',
             ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Transaksi dibatalkan: ' . $this->firstValidationMessage($e),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -91,7 +95,7 @@ class TransactionController extends Controller
         }
     }
 
-    public function bulkStore(Request $request, GoamlComplianceService $goaml)
+    public function bulkStore(Request $request, GoamlComplianceService $goaml, TransactionLedgerPoster $ledger)
     {
         // WAJIB didefinisikan sebelum dipakai.
         $transactions = $request->input('transactions', []);
@@ -116,28 +120,6 @@ class TransactionController extends Controller
         $successCount = 0;
         $failedCount = 0;
         $errors = [];
-
-        $invoiceIdsToClear = [];
-
-        foreach ($transactions as $trx) {
-            if (!is_array($trx)) {
-                continue;
-            }
-
-            $invoiceId = $trx['id'] ?? $trx['itemId'] ?? null;
-
-            if ($invoiceId) {
-                $invoiceIdsToClear[$invoiceId] = true;
-            }
-        }
-
-        $existingAudits = [];
-
-        foreach (array_keys($invoiceIdsToClear) as $invoiceId) {
-            if (TransactionAudit::where('id', $invoiceId)->exists()) {
-                $existingAudits[$invoiceId] = true;
-            }
-        }
 
         DB::beginTransaction();
 
@@ -180,26 +162,27 @@ class TransactionController extends Controller
                         'raw_json' => json_encode($input),
                     ];
 
-                    $transaction = Transaction::updateOrCreate(
-                        ['itemId' => $itemId],
-                        $data
-                    );
-
-                    // Jalankan compliance engine untuk setiap transaksi yang berhasil disimpan.
-                    $goaml->evaluateTransaction($transaction);
-
-                    // RWT tetap independen dan tidak diubah jika invoice sudah pernah diaudit.
-                    if (!isset($existingAudits[$invoiceId])) {
-                        TransactionAudit::updateOrCreate(
+                    // Satu baris = satu savepoint: kegagalan pencatatan ledger hanya
+                    // membatalkan baris tersebut, bukan seluruh kiriman.
+                    DB::transaction(function () use ($itemId, $data, $goaml, $ledger, $input) {
+                        $transaction = Transaction::updateOrCreate(
                             ['itemId' => $itemId],
                             $data
                         );
-                    }
+
+                        // Jalankan compliance engine untuk setiap transaksi yang berhasil disimpan.
+                        $goaml->evaluateTransaction($transaction);
+
+                        $this->postToLedger($ledger, $transaction, $input['erpPayments'] ?? null);
+                    });
 
                     $successCount++;
                 } catch (\Exception $e) {
                     $failedCount++;
-                    $errors[] = 'Baris ' . ($index + 1) . ' (Item ID: ' . $itemId . '): ' . $e->getMessage();
+                    $message = $e instanceof ValidationException
+                        ? $this->firstValidationMessage($e)
+                        : $e->getMessage();
+                    $errors[] = 'Baris ' . ($index + 1) . ' (Item ID: ' . $itemId . '): ' . $message;
                 }
             }
 
@@ -220,6 +203,38 @@ class TransactionController extends Controller
             'failed_count' => $failedCount,
             'errors' => $errors,
         ]);
+    }
+
+    /**
+     * Catat sisi keuangan transaksi baru ke ledger ERP.
+     *
+     * Hanya dijalankan untuk transaksi yang BARU dibuat dan membawa daftar
+     * pembayaran (erpPayments) dari POS. Kiriman ulang atau pengeditan baris
+     * lama tidak mencatat mutasi lagi.
+     */
+    private function postToLedger(TransactionLedgerPoster $ledger, Transaction $transaction, mixed $payments): void
+    {
+        if (!$transaction->wasRecentlyCreated) {
+            return;
+        }
+
+        if (!is_array($payments) || $payments === []) {
+            return;
+        }
+
+        $tipe = strtoupper(trim((string) $transaction->tipe));
+        if (!in_array($tipe, ['BELI', 'JUAL'], true)) {
+            return;
+        }
+
+        $ledger->post($transaction, $payments, optional(request()->user())->id);
+    }
+
+    private function firstValidationMessage(ValidationException $e): string
+    {
+        $messages = collect($e->errors())->flatten();
+
+        return (string) ($messages->first() ?? $e->getMessage());
     }
 
     public function destroy(Request $request)
@@ -256,52 +271,15 @@ class TransactionController extends Controller
         }
     }
 
-    public function audit()
-    {
-        $audit = TransactionAudit::orderBy('timestamp', 'desc')
-            ->orderBy('itemId', 'desc')
-            ->get();
-
-        return response()->json($audit);
-    }
-
-    public function destroyAudit(Request $request)
-    {
-        $itemId = trim((string) $request->input('itemId', ''));
-
-        if ($itemId === '') {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'ID RWT tidak ditemukan',
-            ], 422);
-        }
-
-        try {
-            $deleted = TransactionAudit::where('itemId', $itemId)->delete();
-
-            return response()->json([
-                'status' => 'success',
-                'message' => $deleted ? 'Baris RWT berhasil dihapus' : 'Data RWT sudah tidak ditemukan',
-                'deleted_count' => $deleted,
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Gagal menghapus RWT: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
     public function clearAll()
     {
         try {
-            // Riwayat transaksi boleh dikosongkan dari tampilan operasional,
-            // tetapi audit harus tetap tersimpan sebagai jejak administrasi.
+            // Penghapusan permanen: pastikan backup database sudah dibuat sebelum memakai fitur ini.
             Transaction::query()->delete();
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Semua riwayat transaksi telah dikosongkan. Audit transaksi tetap tersimpan.',
+                'message' => 'Semua riwayat transaksi telah dihapus.',
             ]);
         } catch (\Exception $e) {
             return response()->json([

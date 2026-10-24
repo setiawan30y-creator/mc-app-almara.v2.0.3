@@ -19,7 +19,7 @@ class AiChatController extends Controller
         }
 
         // Get Gemini API Key
-        $apiKey = $request->header('X-Gemini-Key') ?: env('GEMINI_API_KEY');
+        $apiKey = $request->header('X-Gemini-Key') ?: config('services.gemini.key');
         if (!$apiKey) {
             return response()->json([
                 'status' => 'error',
@@ -90,16 +90,15 @@ class AiChatController extends Controller
                 ]
             ];
 
-            // Send request to Gemini API (using gemini-2.5-flash which is fastest and supports vision)
-            $apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $apiKey;
-            
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json'
-            ])->timeout(30)->post($apiUrl, $payload);
+            // Model dipilih otomatis (model lama sering dipensiunkan Google); key dikirim lewat header, bukan URL.
+            $response = \App\Support\GeminiModel::post($apiKey, $payload, 45);
 
             if (!$response->successful()) {
                 $errData = $response->json();
                 $errMessage = $errData['error']['message'] ?? 'Gagal menghubungi server Gemini.';
+                if ($response->status() === 503 || preg_match('/high demand|overloaded/i', (string) $errMessage)) {
+                    $errMessage = 'Layanan Gemini sedang padat. Sudah dicoba ulang otomatis; coba lagi beberapa saat.';
+                }
                 Log::warning('Gemini API Error: ' . json_encode($errData));
                 return response()->json([
                     'status' => 'error',
@@ -123,10 +122,10 @@ class AiChatController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Exception in AiChatController: ' . $e->getMessage());
+            Log::error('Exception in AiChatController: ' . preg_replace('/key=[^\s&\"\']+/i', 'key=***', $e->getMessage()));
             return response()->json([
                 'status' => 'error',
-                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan sistem: ' . preg_replace('/key=[^\s&\"\']+/i', 'key=***', $e->getMessage())
             ], 500);
         }
     }

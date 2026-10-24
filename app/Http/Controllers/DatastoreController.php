@@ -18,6 +18,10 @@ class DatastoreController extends Controller
         $stores = Datastore::all();
         $data = [];
         foreach ($stores as $item) {
+            // Rahasia integrasi tidak boleh sampai ke browser.
+            if (str_starts_with((string) $item->store_key, 'security_') || in_array($item->store_key, ['mc_vision_api_key', 'mc_wa_gateway'], true)) {
+                continue;
+            }
             $raw = $item->json_data;
             if (is_string($raw)) {
                 $decoded = json_decode($raw, true);
@@ -26,6 +30,12 @@ class DatastoreController extends Controller
                     : $raw;
             } else {
                 $data[$item->store_key] = $raw;
+            }
+            if ($item->store_key === 'mc_hris_employees') {
+                $data['mc_hris_employees'] = self::stripPins($data['mc_hris_employees']);
+            }
+            if ($item->store_key === 'mc_profile' && is_array($data['mc_profile'] ?? null)) {
+                unset($data['mc_profile']['visionKey']);
             }
         }
 
@@ -72,6 +82,20 @@ class DatastoreController extends Controller
         return response()->json(['status' => 'success', 'data' => $data]);
     }
 
+    /** PIN karyawan tidak pernah disimpan/dikirim lewat datastore (ada di tabel hash terpisah). */
+    private static function stripPins($list)
+    {
+        if (!is_array($list)) {
+            return $list;
+        }
+        foreach ($list as $i => $emp) {
+            if (is_array($emp)) {
+                unset($list[$i]['pin']);
+            }
+        }
+        return $list;
+    }
+
     private function erpAccountBalance($accounts): float
     {
         return (float) $accounts->sum(function ($account) {
@@ -102,6 +126,42 @@ class DatastoreController extends Controller
             'json_data' => ['required'],
         ]);
 
+        // Key Vision tidak lagi disimpan di browser/datastore umum. Browser lama yang masih
+        // mengirimnya: simpan terenkripsi (hanya bila pengirim admin) dan buang dari data.
+        if (in_array($validated['store_key'], ['mc_vision_api_key', 'mc_wa_gateway'], true)) {
+            return response()->json(['status' => 'success', 'message' => 'Diabaikan (key dikelola server).']);
+        }
+        if ($validated['store_key'] === 'mc_profile') {
+            $incoming = $validated['json_data'];
+            if (is_string($incoming)) {
+                $dec = json_decode($incoming, true);
+                $incoming = json_last_error() === JSON_ERROR_NONE ? $dec : $incoming;
+            }
+            if (is_array($incoming) && array_key_exists('visionKey', $incoming)) {
+                $legacyKey = trim((string) $incoming['visionKey']);
+                $actorRole = strtolower((string) ($request->user()?->role ?? ''));
+                if (in_array($actorRole, ['owner', 'superadmin', 'admin'], true) && \App\Support\SecretStore::plausible($legacyKey)
+                    && !\App\Support\SecretStore::visionMeta()['configured']) {
+                    \App\Support\SecretStore::setVision($legacyKey, (string) ($request->user()?->username ?? ''));
+                }
+                unset($incoming['visionKey']);
+                $validated['json_data'] = $incoming;
+            }
+        }
+
+        if ($validated['store_key'] === 'mc_hris_employees') {
+            $incoming = $validated['json_data'];
+            if (is_string($incoming)) {
+                $dec = json_decode($incoming, true);
+                $incoming = json_last_error() === JSON_ERROR_NONE ? $dec : $incoming;
+            }
+            $validated['json_data'] = self::stripPins($incoming);
+        }
+
+        if (str_starts_with($validated['store_key'], 'security_')) {
+            return response()->json(['status' => 'error', 'message' => 'Kunci ini dikelola lewat pengaturan khusus.'], 403);
+        }
+
         try {
             $jsonData = $validated['json_data'];
             if (is_string($jsonData)) {
@@ -129,6 +189,10 @@ class DatastoreController extends Controller
         $storeKey = $request->input('store_key');
         if (!$storeKey) {
             return response()->json(['status' => 'error', 'message' => 'store_key wajib diisi'], 400);
+        }
+
+        if (str_starts_with((string) $storeKey, 'security_')) {
+            return response()->json(['status' => 'error', 'message' => 'Kunci ini dikelola lewat pengaturan khusus.'], 403);
         }
 
         try {

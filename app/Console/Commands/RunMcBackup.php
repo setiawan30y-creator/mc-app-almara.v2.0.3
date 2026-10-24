@@ -7,13 +7,16 @@ use Illuminate\Console\Command;
 
 class RunMcBackup extends Command
 {
-    protected $signature = 'mc:backup {--automatic : Jalankan sebagai backup otomatis jika jadwal cocok}';
-    protected $description = 'Membuat backup database MC-App-Almara';
+    protected $signature = 'mc:backup {--automatic : Jalankan sebagai backup otomatis jika jadwal sudah jatuh tempo}';
+    protected $description = 'Membuat backup database (dan foto/dokumen) MC-App-Almara';
 
     public function handle(BackupService $backup): int
     {
         try {
             if ($this->option('automatic')) {
+                // Tanda bahwa penjadwal Windows hidup (dibaca oleh status di menu Backup).
+                $backup->beat();
+
                 if (!$backup->shouldRunAutomatically()) {
                     return self::SUCCESS;
                 }
@@ -24,9 +27,11 @@ class RunMcBackup extends Command
 
             $log = $backup->run($type);
             $this->info("Backup berhasil: {$log->filename}");
+
             return self::SUCCESS;
         } catch (\Throwable $e) {
             $this->error('Backup gagal: '.$e->getMessage());
+
             return self::FAILURE;
         }
     }

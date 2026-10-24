@@ -127,16 +127,7 @@ const DEFAULT_WA_TEMPLATES = [
         content: `Halo [NAMA_NASABAH], berikut detail transaksi Anda di [NAMA_MC].\n\nInvoice: [NO_INVOICE]\nTanggal: [TANGGAL]\nRincian:\n[VALUTA_LIST]\nTotal: [GRAND_TOTAL]\nMetode: [METODE_BAYAR]\n\nTerima kasih.`
     }
 ];
-const DEFAULT_PROFILE = { name: 'MC-ALMARA', address: 'Pusat Valuta Asing Terpercaya', phone: '-', phoneWA: '', biLicense: '', footer: 'Terima Kasih Atas Kunjungan Anda', waTemplate: DEFAULT_WA_TEMPLATE };
-
-function getWaGatewayConfig() {
-    try {
-        const config = JSON.parse(localStorage.getItem('mc_wa_gateway') || '{}');
-        return config && typeof config === 'object' ? config : {};
-    } catch (error) {
-        return {};
-    }
-}
+const DEFAULT_PROFILE = { name: 'Money Changer', address: 'Pusat Valuta Asing Terpercaya', phone: '-', phoneWA: '', biLicense: '', footer: 'Terima Kasih Atas Kunjungan Anda' };
 
 function normalizeGatewayWhatsAppNumber(phone) {
     let value = String(phone || '').replace(/\D/g, '');
@@ -149,17 +140,14 @@ function normalizeGatewayWhatsAppNumber(phone) {
 
 // Satu pintu untuk semua pengiriman WA dari aplikasi.
 window.sendWhatsAppGateway = async function(phone, message, options = {}) {
-    const config = getWaGatewayConfig();
+    // Konfigurasi (URL, header, token) ada di server; browser hanya mengirim nomor + pesan.
     const target = normalizeGatewayWhatsAppNumber(phone);
-    if (!config.enabled || !config.endpoint || !config.token) {
-        throw new Error('WA Gateway belum aktif atau belum lengkap. Buka Pengaturan → WA Gateway.');
-    }
     if (!target || target.length < 10 || target.length > 16) {
         throw new Error('Nomor WhatsApp tujuan tidak valid. Gunakan contoh 081234567890 atau 6281234567890.');
     }
     if (!String(message || '').trim()) throw new Error('Pesan WhatsApp tidak boleh kosong.');
 
-    const response = await fetch('api/wa-gateway/send', {
+    const response = await (window.authFetch || fetch)('api/wa-gateway/send', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -167,16 +155,8 @@ window.sendWhatsAppGateway = async function(phone, message, options = {}) {
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
         },
         body: JSON.stringify({
-            endpoint: config.endpoint,
-            token: config.token,
-            provider: config.provider || '',
-            method: config.method || 'POST',
-            body_format: config.bodyFormat || 'form',
-            headers: config.headers || '',
-            payload: config.payload || '',
             target,
             message: String(message),
-            sender: config.sender || undefined,
             reference: options.reference || undefined
         })
     });
@@ -188,19 +168,33 @@ window.sendWhatsAppGateway = async function(phone, message, options = {}) {
     return result;
 };
 
-// Membuat pesan WA dari template yang diperuntukkan bagi fitur tertentu.
-window.buildWaMessageForPurpose = function(purpose, fallback, values = {}) {
-    const profile = typeof getProfile === 'function' ? getProfile() : (DEFAULT_PROFILE || {});
-    const template = typeof window.getWaTemplateForPurpose === 'function'
-        ? window.getWaTemplateForPurpose(purpose)
-        : null;
-    const replacements = {
-        NAMA_MC: profile.name || 'MC-ALMARA',
-        NO_HP_MC: profile.phoneWA || profile.phone || '',
-        NAMA_NASABAH: values.customerName || values.name || 'Nasabah',
-        PELANGGAN: values.customerName || values.name || 'Nasabah',
-        NASABAH: values.customerName || values.name || 'Nasabah',
-        NAMA: values.customerName || values.name || 'Nasabah',
+// ------------------------------------------------------------------
+// Mesin template WhatsApp: SATU tempat untuk mengisi tag [..] pada pesan.
+// Semua tombol WA (kasir, riwayat, booking, uang lama, kurs, broadcast, audit,
+// kontak nasabah) dan pratinjau di Pengaturan > Template WA memakai fungsi ini,
+// sehingga tag yang didukung dan hasilnya selalu sama.
+// ------------------------------------------------------------------
+window.WA_TAGS = [
+    { tag: 'NAMA_MC', desc: 'Nama perusahaan', sample: 'Nama Perusahaan' },
+    { tag: 'NO_HP_MC', desc: 'Nomor WhatsApp / telepon perusahaan', sample: '081234567890' },
+    { tag: 'ALAMAT_MC', desc: 'Alamat perusahaan', sample: 'Alamat perusahaan' },
+    { tag: 'NAMA_NASABAH', desc: 'Nama nasabah', sample: 'Nama Nasabah' },
+    { tag: 'NO_INVOICE', desc: 'Nomor invoice / referensi', sample: 'INV-0001' },
+    { tag: 'TANGGAL', desc: 'Tanggal transaksi', sample: '01/01/2026' },
+    { tag: 'VALUTA_LIST', desc: 'Daftar rincian valuta / item', sample: '- BELI 100 USD @ 16.000 = Rp 1.600.000' },
+    { tag: 'GRAND_TOTAL', desc: 'Total transaksi', sample: 'Rp 1.600.000' },
+    { tag: 'METODE_BAYAR', desc: 'Metode pembayaran', sample: 'CASH' },
+    { tag: 'METODE_RINCIAN', desc: 'Rincian pembayaran (split / DP)', sample: '-' }
+];
+
+window.renderWaTemplate = function(content, values = {}) {
+    const profile = typeof getProfile === 'function' ? (getProfile() || {}) : (DEFAULT_PROFILE || {});
+    const customer = values.customerName || values.name || 'Nasabah';
+    const map = {
+        NAMA_MC: profile.name || '',
+        NO_HP_MC: profile.phoneWA || (profile.phone && profile.phone !== '-' ? profile.phone : ''),
+        ALAMAT_MC: profile.address || '',
+        NAMA_NASABAH: customer, PELANGGAN: customer, NASABAH: customer, NAMA: customer,
         NO_INVOICE: values.invoice || values.reference || '-',
         TANGGAL: values.date || new Date().toLocaleDateString('id-ID'),
         VALUTA_LIST: values.currencyList || values.details || '-',
@@ -208,11 +202,26 @@ window.buildWaMessageForPurpose = function(purpose, fallback, values = {}) {
         METODE_BAYAR: values.paymentMethod || '-',
         METODE_RINCIAN: values.paymentDetail || '-'
     };
-    let message = String(template?.content || fallback || '');
-    Object.entries(replacements).forEach(([tag, value]) => {
-        message = message.replace(new RegExp(`\\[${tag}\\]`, 'gi'), String(value ?? ''));
-    });
-    return message;
+    return String(content == null ? '' : content)
+        .replace(/\[([A-Z_]+)\]/gi, (all, tag) => {
+            const key = tag.toUpperCase();
+            return Object.prototype.hasOwnProperty.call(map, key) ? String(map[key] == null ? '' : map[key]) : all;
+        })
+        .replace(/\n[ \t]*\n([ \t]*\n)+/g, '\n\n')
+        .trim();
+};
+
+// Pesan WA untuk satu tombol/fitur (purpose). Urutan sumber isi pesan:
+//   1) options.template (pilihan pengguna saat itu, mis. dropdown riwayat / ketikan broadcast)
+//   2) template yang diperuntukkan bagi purpose itu di Pengaturan > Template WA (atau template default)
+//   3) fallback bawaan fitur
+window.buildWaMessageForPurpose = function(purpose, fallback, values = {}, options = {}) {
+    let content = options && options.template && options.template.content;
+    if (!content) {
+        const assigned = typeof window.getWaTemplateForPurpose === 'function' ? window.getWaTemplateForPurpose(purpose) : null;
+        content = assigned && assigned.content;
+    }
+    return window.renderWaTemplate(content || fallback || '', values);
 };
 const MASTER_JOBS_SEED_VERSION = '2026-05-05-rba-jobs';
 const MASTER_CITIZENS_SEED_VERSION = '2026-05-05-rba-citizens';
@@ -367,17 +376,17 @@ const DEFAULT_MASTER_CURRENCIES = [
 
 const DEFAULT_ROLE_PERMISSIONS = {
     owner: {
-        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','mutation-view','currency-view','closing-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','audit-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-ekuitas-view','laporan-coretax-view','masterdata-view','settings-view','almara-regulatory-ai-view'],
+        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','pt-rep-view','mutation-view','currency-view','closing-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-coretax-view','masterdata-view','settings-view','almara-regulatory-ai-view'],
         special: { menuKeuangan: true, menuBi: true, userManagement: true, accessSettings: true, dangerZone: true, customerImportTools: true, transactionLedgerCard: true, oldMoneySupplierManagement: true, closingHistoryReset: true },
         actions: { edit: true, delete: true, export: true, print: true, profit: true, valasProfit: true, trxDate: true, manualInvoice: true, oldMoneyEdit: true, oldMoneyDelete: true }
     },
     superadmin: {
-        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','mutation-view','currency-view','closing-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','audit-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-ekuitas-view','laporan-coretax-view','masterdata-view','settings-view','almara-regulatory-ai-view'],
+        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','pt-rep-view','mutation-view','currency-view','closing-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-coretax-view','masterdata-view','settings-view','almara-regulatory-ai-view'],
         special: { menuKeuangan: true, menuBi: true, userManagement: true, accessSettings: true, dangerZone: true, customerImportTools: true, transactionLedgerCard: true, oldMoneySupplierManagement: true, closingHistoryReset: true },
         actions: { edit: true, delete: true, export: true, print: true, profit: true, valasProfit: true, trxDate: true, manualInvoice: true, oldMoneyEdit: true, oldMoneyDelete: true }
     },
     admin: {
-        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','mutation-view','currency-view','closing-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','audit-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-ekuitas-view','laporan-coretax-view','masterdata-view','settings-view'],
+        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','pt-rep-view','mutation-view','currency-view','closing-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-coretax-view','masterdata-view','settings-view'],
         special: { menuKeuangan: true, menuBi: true, userManagement: false, accessSettings: false, dangerZone: false, customerImportTools: true, transactionLedgerCard: true, oldMoneySupplierManagement: true, closingHistoryReset: false },
         actions: { edit: true, delete: true, export: true, print: true, profit: true, valasProfit: true, trxDate: true, manualInvoice: false, oldMoneyEdit: true, oldMoneyDelete: true }
     },
@@ -1608,11 +1617,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(!document.getElementById('granularEndDate').value) document.getElementById('granularEndDate').value = today;
                 loadLaporanGranular();
             }
+            if(targetId === 'pt-rep-view' && typeof window.initPtReps === 'function') {
+                window.initPtReps();
+            }
             if(targetId === 'laporan-sipesat-view') {
-                const today = new Date().toISOString().split('T')[0];
-                if(!document.getElementById('sipesatStartDate').value) document.getElementById('sipesatStartDate').value = today;
-                if(!document.getElementById('sipesatEndDate').value) document.getElementById('sipesatEndDate').value = today;
-                loadLaporanSipesat();
+                if (typeof window.initSipesat === 'function') window.initSipesat();
             }
             if(targetId === 'laporan-bukubesar-view') {
                 const d = new Date();
@@ -1628,10 +1637,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(!document.getElementById('bsDate').value) document.getElementById('bsDate').value = today;
                 loadNeraca();
             }
-            if(targetId === 'laporan-ekuitas-view') {
-                if(typeof loadEkuitasUi === 'function') loadEkuitasUi();
-            }
             if(targetId === 'laporan-coretax-view') loadCoretaxReport();
+            if(targetId === 'laporan-goaml-view' && typeof window.loadGoamlView === 'function') window.loadGoamlView();
             if(targetId === 'customers-view') loadCustomersTable();
             if(targetId === 'mutation-view') loadMutationsTable();
             if(targetId === 'expense-view') loadExpensesTable();
@@ -1645,7 +1652,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const currentUser = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
                 const accessRole = typeof getAccessRoleForUserRole === 'function' ? getAccessRoleForUserRole(currentUser?.role) : 'kasir';
                 const permissions = typeof getRolePermissions === 'function' ? getRolePermissions() : {};
-                const canManageHris = Array.isArray(permissions[accessRole]?.menus) && permissions[accessRole].menus.includes('hris-view');
+                const hrisConfig = (typeof getEffectiveAccessConfig === 'function' && currentUser) ? getEffectiveAccessConfig(currentUser) : permissions[accessRole];
+                const canManageHris = Array.isArray(hrisConfig?.menus) && hrisConfig.menus.includes('hris-view');
                 switchHrisTab(canManageHris ? 'emp' : 'leave');
             }
         });
@@ -1737,12 +1745,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cash > total) { this.value = total; cash = total; }
         const transferEl = document.getElementById('splitTransferAmount');
         if(transferEl) transferEl.value = total - cash;
-    });
-
-    // Denominations for Closing Kasir
-    document.querySelectorAll('.denom-input').forEach(input => {
-        input.addEventListener('input', calculateClosingPhysical);
-        input.addEventListener('change', calculateClosingPhysical);
     });
 
     safeAddListener('btnProcessPayment', 'click', processPayment);

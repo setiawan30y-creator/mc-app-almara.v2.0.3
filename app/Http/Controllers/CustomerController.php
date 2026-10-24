@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\PrivateUploads;
 use App\Models\Customer;
 use App\Models\Datastore;
 use Illuminate\Http\Request;
@@ -311,12 +312,7 @@ class CustomerController extends Controller
         }
 
         try {
-            $directory = public_path('uploads/customers/photos');
-            if (!File::exists($directory)) {
-                if (!File::makeDirectory($directory, 0755, true)) {
-                    throw new \Exception("Gagal membuat direktori: " . $directory);
-                }
-            }
+            $directory = PrivateUploads::ensureDirectory('customers/photos');
 
             $safeId = Str::slug($internalId) ?: 'customer';
             $filename = $safeId . '-' . now()->format('YmdHis') . '-' . Str::random(6) . '.' . $extension;
@@ -327,19 +323,21 @@ class CustomerController extends Controller
 
             return '/uploads/customers/photos/' . $filename;
         } catch (\Exception $e) {
-            throw new \Exception("Gagal menyimpan foto nasabah ke server. Silakan periksa hak akses tulis (write permission) pada folder public/uploads di server Anda. Detail: " . $e->getMessage());
+            throw new \Exception("Gagal menyimpan foto nasabah ke server. Silakan periksa hak akses tulis (write permission) pada folder storage/app/private/uploads di server Anda. Detail: " . $e->getMessage());
         }
     }
 
     private function clearCustomerPhotos(): void
     {
-        $directory = public_path('uploads/customers/photos');
-        if (!File::isDirectory($directory)) {
-            return;
-        }
+        // Bersihkan di penyimpanan privat dan (bila belum dipindah) di folder lama.
+        foreach ([PrivateUploads::path('customers/photos'), PrivateUploads::legacyRoot() . DIRECTORY_SEPARATOR . 'customers' . DIRECTORY_SEPARATOR . 'photos'] as $directory) {
+            if (!File::isDirectory($directory)) {
+                continue;
+            }
 
-        collect(File::files($directory))
-            ->reject(fn ($file) => $file->getFilename() === '.gitignore')
-            ->each(fn ($file) => File::delete($file->getPathname()));
+            collect(File::files($directory))
+                ->reject(fn ($file) => $file->getFilename() === '.gitignore')
+                ->each(fn ($file) => File::delete($file->getPathname()));
+        }
     }
 }

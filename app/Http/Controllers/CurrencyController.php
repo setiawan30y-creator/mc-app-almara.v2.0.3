@@ -13,6 +13,16 @@ class CurrencyController extends Controller
         return response()->json($currencies);
     }
 
+    /**
+     * Kode valuta: 3 huruf pertama (kode ISO 4217) selalu kapital; bagian turunan
+     * (mis. "AUD (kc)", "SGD (B)") dipertahankan persis seperti yang diketik.
+     */
+    private function normalizeCode($code): string
+    {
+        $code = trim((string) $code);
+        return strtoupper(substr($code, 0, 3)) . substr($code, 3);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -23,7 +33,7 @@ class CurrencyController extends Controller
             'stock' => ['nullable', 'numeric'],
         ]);
 
-        $code = strtoupper(trim((string) $validated['code']));
+        $code = $this->normalizeCode($validated['code']);
         $input = $request->except(['raw_json']);
 
         try {
@@ -65,7 +75,7 @@ class CurrencyController extends Controller
             'code' => ['required', 'string', 'max:10'],
         ]);
 
-        $code = strtoupper(trim((string) $validated['code']));
+        $code = $this->normalizeCode($validated['code']);
 
         try {
             $deleted = Currency::where('code', $code)->delete();

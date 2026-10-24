@@ -1,0 +1,111 @@
+/* @2026-Alifiandra
+ * sipesat-modern.css — Tampilan halaman Laporan SIPESAT (filter triwulan & tanggal).
+ * Hanya berlaku di #laporan-sipesat-view. Perilaku: js/modules/67-sipesat.js */
+
+#laporan-sipesat-view {
+    --s-primary: var(--mc-primary, #1D6C5D);
+    --s-surface: var(--mc-card-bg, #fff);
+    --s-bg: var(--mc-page-bg, #F0F4F8);
+    --s-text: var(--mc-text, #18221F);
+    --s-muted: var(--mc-text-muted, #64748B);
+    --s-line: var(--mc-border, #E2E8F0);
+    --s-radius: 16px;
+}
+#laporan-sipesat-view *, #laporan-sipesat-view *::before, #laporan-sipesat-view *::after { box-sizing: border-box; }
+
+body #laporan-sipesat-view .sp-head {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 20px 24px; margin-bottom: 16px; border-radius: 20px; color: #fff;
+    background: linear-gradient(135deg, var(--s-primary), color-mix(in srgb, var(--s-primary) 62%, #000));
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--s-primary) 28%, transparent);
+}
+body #laporan-sipesat-view .sp-head h2 { margin: 0; color: #fff !important; font-size: 1.35rem; font-weight: 800; }
+body #laporan-sipesat-view .sp-head p { margin: 4px 0 0; color: rgba(255,255,255,.85) !important; font-size: .86rem; }
+#laporan-sipesat-view .sp-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+body #laporan-sipesat-view .sp-btn {
+    display: inline-flex; align-items: center; gap: 8px; border: 0; cursor: pointer;
+    padding: 10px 16px; border-radius: 12px; font-weight: 700; font-size: .85rem;
+    background: #fff; color: var(--s-primary); transition: transform .15s, box-shadow .15s;
+}
+body #laporan-sipesat-view .sp-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,.15); }
+body #laporan-sipesat-view .sp-btn.ghost { background: rgba(255,255,255,.16); color: #fff; }
+
+body #laporan-sipesat-view .sp-card {
+    background: var(--s-surface); border: 1px solid var(--s-line); border-radius: var(--s-radius);
+    padding: 16px 18px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 6px 18px rgba(15,23,42,.05);
+}
+#laporan-sipesat-view .sp-filter { display: grid; gap: 14px; }
+#laporan-sipesat-view .sp-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 18px; }
+#laporan-sipesat-view .sp-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+body #laporan-sipesat-view .sp-field > label, body #laporan-sipesat-view .sp-lbl {
+    font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--s-muted) !important; margin: 0;
+}
+body #laporan-sipesat-view .sp-field .form-control, body #laporan-sipesat-view .sp-search {
+    height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--s-line);
+    background: var(--s-surface); color: var(--s-text); font-size: .9rem; min-width: 150px;
+}
+#laporan-sipesat-view .sp-seg { display: inline-flex; padding: 4px; gap: 4px; border-radius: 12px; background: color-mix(in srgb, var(--s-muted) 12%, transparent); }
+body #laporan-sipesat-view .sp-seg button {
+    border: 0; background: transparent; cursor: pointer; padding: 7px 14px; border-radius: 9px;
+    font-weight: 700; font-size: .82rem; color: var(--s-muted);
+}
+body #laporan-sipesat-view .sp-seg button.on { background: var(--s-surface); color: var(--s-primary); box-shadow: 0 1px 4px rgba(15,23,42,.12); }
+
+#laporan-sipesat-view .sp-quarters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+body #laporan-sipesat-view .sp-q {
+    text-align: left; cursor: pointer; padding: 12px 14px; border-radius: 14px;
+    border: 1.5px solid var(--s-line); background: var(--s-surface); color: var(--s-text); transition: .15s;
+}
+body #laporan-sipesat-view .sp-q:hover { border-color: var(--s-primary); }
+body #laporan-sipesat-view .sp-q.on {
+    border-color: var(--s-primary); background: color-mix(in srgb, var(--s-primary) 9%, var(--s-surface));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-primary) 16%, transparent);
+}
+#laporan-sipesat-view .sp-q b { display: block; font-size: 1rem; font-weight: 800; }
+#laporan-sipesat-view .sp-q small { display: block; color: var(--s-muted); font-size: .74rem; margin-top: 2px; }
+#laporan-sipesat-view .sp-q em { display: inline-block; margin-top: 6px; font-style: normal; font-size: .72rem; font-weight: 700; color: var(--s-primary); }
+
+#laporan-sipesat-view .sp-period { font-size: .86rem; color: var(--s-muted); }
+#laporan-sipesat-view .sp-period strong { color: var(--s-text); }
+
+#laporan-sipesat-view .sp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+body #laporan-sipesat-view .sp-stat { background: var(--s-surface); border: 1px solid var(--s-line); border-radius: 14px; padding: 12px 14px; }
+#laporan-sipesat-view .sp-stat span { display: block; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--s-muted); }
+#laporan-sipesat-view .sp-stat b { display: block; margin-top: 4px; font-size: 1.5rem; font-weight: 800; color: var(--s-text); font-variant-numeric: tabular-nums; }
+#laporan-sipesat-view .sp-stat.main b { color: var(--s-primary); }
+#laporan-sipesat-view .sp-mini { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+#laporan-sipesat-view .sp-mini div { display: grid; grid-template-columns: 38px 1fr 30px; align-items: center; gap: 8px; font-size: .75rem; color: var(--s-muted); }
+#laporan-sipesat-view .sp-mini i { display: block; height: 6px; border-radius: 99px; background: var(--s-primary); min-width: 2px; }
+#laporan-sipesat-view .sp-mini u { text-decoration: none; text-align: right; font-weight: 700; color: var(--s-text); }
+
+#laporan-sipesat-view .sp-warn {
+    display: none; margin-bottom: 14px; padding: 10px 14px; border-radius: 12px; font-size: .84rem;
+    background: color-mix(in srgb, #D97706 12%, var(--s-surface)); border: 1px solid color-mix(in srgb, #D97706 40%, transparent); color: var(--s-text);
+}
+#laporan-sipesat-view .sp-warn.show { display: block; }
+
+#laporan-sipesat-view .sp-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+body #laporan-sipesat-view .sp-search { width: min(100%, 320px); }
+#laporan-sipesat-view .sp-wrap { overflow: auto; max-height: 62vh; border: 1px solid var(--s-line); border-radius: 12px; }
+body #laporan-sipesat-view table.sp-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .82rem; margin: 0; border: 0 !important; }
+body #laporan-sipesat-view .sp-table th {
+    position: sticky; top: 0; z-index: 2; padding: 10px 12px; text-align: left; white-space: nowrap;
+    background: color-mix(in srgb, var(--s-primary) 10%, var(--s-surface)) !important; color: var(--s-text) !important;
+    font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; border: 0 !important; border-bottom: 1px solid var(--s-line) !important;
+}
+body #laporan-sipesat-view .sp-table td { padding: 9px 12px; color: var(--s-text) !important; background: transparent !important; border: 0 !important; border-bottom: 1px solid var(--s-line) !important; vertical-align: top; }
+body #laporan-sipesat-view .sp-table tbody tr:hover td { background: color-mix(in srgb, var(--s-primary) 6%, transparent) !important; }
+#laporan-sipesat-view .sp-table .nw { white-space: nowrap; }
+#laporan-sipesat-view .sp-table .c { text-align: center; }
+#laporan-sipesat-view .sp-table .addr { min-width: 220px; }
+#laporan-sipesat-view .sp-empty { text-align: center; padding: 34px 12px !important; color: var(--s-muted) !important; }
+
+@media (max-width: 760px) {
+    #laporan-sipesat-view .sp-quarters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #laporan-sipesat-view .sp-field .form-control { min-width: 0; width: 100%; }
+    #laporan-sipesat-view .sp-field { flex: 1 1 140px; }
+}
+@media print {
+    #laporan-sipesat-view .sp-actions, #laporan-sipesat-view .sp-filter, #laporan-sipesat-view .sp-tools { display: none !important; }
+    #laporan-sipesat-view .sp-wrap { max-height: none; overflow: visible; }
+}

@@ -19,6 +19,7 @@ function getRealBankMutations() {
 }
 
 function loadMutationsTable() {
+    if (typeof window.loadBankMutationCards === 'function') window.loadBankMutationCards();
     const mutations = getRealBankMutations();
     const tbody = document.getElementById('mutationsTableBody');
     const currentUserRole = getCurrentUser() ? getCurrentUser().role : 'kasir';
@@ -180,6 +181,7 @@ function saveMutation() {
     saveBankMandiri(bankMandiri);
     closeMutationModal();
     loadMutationsTable();
+    if (typeof window.syncBankMutationsToLedger === 'function') window.syncBankMutationsToLedger([], true);
     if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
     alert("Mutasi bank berhasil disimpan!");
 }
@@ -208,6 +210,7 @@ window.deleteMutation = function(id) {
             saveBankBCA(bankBCA);
             saveBankMandiri(bankMandiri);
             loadMutationsTable();
+            if (typeof window.syncBankMutationsToLedger === 'function') window.syncBankMutationsToLedger([id], true);
             if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
         }
     }
@@ -216,75 +219,7 @@ window.deleteMutation = function(id) {
 // ==============================
 // EXPENSES (PENGELUARAN)
 // ==============================
-function loadExpensesTable() {
-    const expenses = getExpenses();
-    const tbody = document.getElementById('expensesTableBody');
-    if(!tbody) return;
-    tbody.innerHTML = '';
-    
-    const currentUserRole = getCurrentUser() ? getCurrentUser().role : 'kasir';
-
-    expenses.forEach(e => {
-        const tipe = e.tipe || 'PENGELUARAN';
-        const color = tipe === 'PENDAPATAN' ? 'text-green' : 'text-red';
-        const sign = tipe === 'PENDAPATAN' ? '+' : '-';
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${window.formatDateToDMY(e.timestamp)}</td>
-            <td><strong>${e.id_pengeluaran}</strong></td>
-            <td><span class="${color} font-weight-bold">${tipe}</span></td>
-            <td>${e.kategori || '-'}</td>
-            <td>
-                ${e.deskripsi}
-                ${(currentUserRole === 'admin' || currentUserRole === 'owner') && (e.inputBy || e.editBy) ? `
-                    <div style="margin-top:5px; font-size:0.7rem; color:#64748b; line-height:1.1;">
-                        ${e.inputBy ? `Input: ${e.inputBy}<br>` : ''}
-                        ${e.editBy ? `Edit: ${e.editBy}` : ''}
-                    </div>
-                ` : ''}
-            </td>
-            <td>${e.sumber === 'CASH' ? 'Kas Tunai' : 'Saldo Bank'}</td>
-            <td class="text-end font-weight-bold ${color}">${sign}${formatIdr(e.nominal)}</td>
-            <td class="text-center">
-                <button class="btn btn-sm btn-danger" onclick="deleteExpense('${e.id_pengeluaran}')" title="Hapus"><i class="fa-solid fa-trash"></i></button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-
-function updateExpCategoryOptions() {
-    const type = document.getElementById('modalExpType').value;
-    const catSelect = document.getElementById('modalExpCategory');
-    if(!catSelect) return;
-    let opts = [];
-    if(type === 'PENGELUARAN') {
-        opts = [
-            '07-Beban Gaji, Upah dan Tunjangan',
-            '08-Beban Sewa',
-            '09-Beban Iklan dan promosi',
-            '10-Beban Air, Listrik dan Telepon',
-            '11-Beban Transportasi dan perjalanan',
-            '12-Beban Pemeliharaan kendaraan',
-            '14-Beban Asuransi',
-            '15-Beban Lain-Lain (Operasional)',
-            '17-Beban Administrasi Bank',
-            '18-Beban Bunga Pinjaman',
-            '20-Rugi Penjualan Aset Tetap',
-            '22-Rugi Selisih Kurs',
-            '24-Beban Lain-Lain (Non Operasional)',
-            '25-Pajak Penghasilan'
-        ];
-    } else {
-        opts = [
-            '06-Pendapatan Pengiriman Uang',
-            '16-Pendapatan Bunga bank',
-            '19-Laba Penjualan Aset Tetap',
-            '23-Pendapatan Lain-Lain'
-        ];
-    }
-    catSelect.innerHTML = opts.map(o => `<option value="${o}">${o}</option>`).join('');
-}
+// Tampilan, form, simpan dan hapus Jurnal Keuangan ada di 37-expenses.js (kategori = kode akun BI, tersimpan di MySQL).
 
 // Auto-migrate old expenses without prefixes
 (function migrateOldExpenses() {
@@ -318,125 +253,6 @@ function updateExpCategoryOptions() {
     }
 })();
 
-
-function openExpenseModal() {
-    document.getElementById('expenseModal').classList.add('show');
-    document.getElementById('modalExpDate').value = new Date().toISOString().split('T')[0];
-    document.getElementById('modalExpType').value = 'PENGELUARAN';
-    updateExpCategoryOptions();
-    document.getElementById('modalExpDesc').value = '';
-    document.getElementById('modalExpSource').value = 'CASH';
-    document.getElementById('modalExpAmount').value = '';
-}
-
-function closeExpenseModal() {
-    document.getElementById('expenseModal').classList.remove('show');
-}
-
-function saveExpense() {
-    const type = document.getElementById('modalExpType').value;
-    const category = document.getElementById('modalExpCategory').value;
-    const desc = document.getElementById('modalExpDesc').value;
-    const source = document.getElementById('modalExpSource').value;
-    const amount = parseFloat(document.getElementById('modalExpAmount').value);
-
-    if(!amount || !desc) {
-        alert("Nominal dan Deskripsi wajib diisi!");
-        return;
-    }
-
-    let cash = getCash();
-    let bankBCA = getBankBCA();
-    let bankMandiri = getBankMandiri();
-
-    if (type === 'PENGELUARAN') {
-        if(source === 'CASH' && cash < amount) {
-            alert("Kas Tunai tidak mencukupi!");
-            return;
-        }
-        if(source === 'BCA' && bankBCA < amount) {
-            alert("Saldo Bank BCA tidak mencukupi!");
-            return;
-        }
-        if(source === 'MANDIRI' && bankMandiri < amount) {
-            alert("Saldo Bank Mandiri tidak mencukupi!");
-            return;
-        }
-        
-        if(source === 'CASH') { cash -= amount; } 
-        else if(source === 'BCA') { bankBCA -= amount; }
-        else if(source === 'MANDIRI') { bankMandiri -= amount; }
-    } else {
-        if(source === 'CASH') { cash += amount; } 
-        else if(source === 'BCA') { bankBCA += amount; }
-        else if(source === 'MANDIRI') { bankMandiri += amount; }
-    }
-
-    let exTime = new Date().toISOString();
-    const expDateEl = document.getElementById('modalExpDate');
-    if(expDateEl && expDateEl.value) {
-        const currTime = new Date().toISOString().substring(11);
-        exTime = expDateEl.value + 'T' + currTime;
-    }
-
-    const expenses = getExpenses();
-    const prefix = type === 'PENDAPATAN' ? 'INC-' : 'EXP-';
-    const currUser = getCurrentUser() ? getCurrentUser().fullName : 'Admin Kasir';
-    expenses.push({
-        id_pengeluaran: prefix + Date.now().toString().slice(-6),
-        timestamp: exTime,
-        tipe: type,
-        kategori: category,
-        deskripsi: desc,
-        sumber: source,
-        nominal: amount,
-        inputBy: currUser,
-        editBy: ''
-    });
-
-    saveExpenses(expenses);
-    if(source === 'CASH') saveCash(cash);
-    if(source === 'BCA') saveBankBCA(bankBCA);
-    if(source === 'MANDIRI') saveBankMandiri(bankMandiri);
-    
-    closeExpenseModal();
-    loadExpensesTable();
-    if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
-    alert("Jurnal Keuangan berhasil disimpan!");
-}
-
-function deleteExpense(id) {
-    if(confirm('Hapus jurnal ini? Tindakan ini akan mengembalikan saldo Kas/Bank secara otomatis.')) {
-        let expenses = getExpenses();
-        const index = expenses.findIndex(x => x.id_pengeluaran === id);
-        if(index > -1) {
-            const e = expenses[index];
-            let cash = getCash();
-            let bankBCA = getBankBCA();
-            let bankMandiri = getBankMandiri();
-            
-            let eSource = e.sumber === 'BANK' ? 'BCA' : e.sumber; // Fallback for old 'BANK' entries
-            
-            if(e.tipe === 'PENDAPATAN') {
-                if(eSource === 'CASH') cash -= e.nominal;
-                else if(eSource === 'BCA') bankBCA -= e.nominal;
-                else if(eSource === 'MANDIRI') bankMandiri -= e.nominal;
-            } else { // PENGELUARAN
-                if(eSource === 'CASH') cash += e.nominal;
-                else if(eSource === 'BCA') bankBCA += e.nominal;
-                else if(eSource === 'MANDIRI') bankMandiri += e.nominal;
-            }
-            
-            expenses.splice(index, 1);
-            saveExpenses(expenses);
-            saveCash(cash);
-            saveBankBCA(bankBCA);
-            saveBankMandiri(bankMandiri);
-            loadExpensesTable();
-            if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
-        }
-    }
-}
 
 // ==============================
 // MODAL & JURNAL EKUITAS / KEWAJIBAN
@@ -579,426 +395,6 @@ function deleteAdjustment(id) {
 }
 
 // ==============================
-// CLOSING KASIR HARIAN
-// ==============================
-function initClosingView() {
-    const cash = getCash();
-    document.getElementById('closingKasSistem').textContent = formatIdr(cash);
-    const bankSummary = getClosingBankSummary();
-    if(document.getElementById('closingBankSistem')) document.getElementById('closingBankSistem').textContent = formatIdr(bankSummary.total);
-    setupClosingKoinFormatter();
-    
-    // Reset inputs
-    document.querySelectorAll('.denom-input').forEach(i => i.value = '');
-    document.getElementById('closingNote').value = '';
-    const typeEl = document.getElementById('closingType');
-    if(typeEl) typeEl.value = 'temporary';
-    
-    window.updateClosingModeUi();
-    calculateClosingPhysical();
-}
-
-function getClosingTypeLabel(type) {
-    return type === 'final' ? 'Closing Final' : 'Cek Sementara';
-}
-
-function parseClosingRupiahInput(value) {
-    return parseInt(String(value || '').replace(/[^\d]/g, ''), 10) || 0;
-}
-
-function getClosingBankSummary() {
-    const bca = typeof getBankBCA === 'function' ? (parseInt(getBankBCA()) || 0) : 0;
-    const mandiri = typeof getBankMandiri === 'function' ? (parseInt(getBankMandiri()) || 0) : 0;
-    return {
-        bca,
-        mandiri,
-        total: bca + mandiri
-    };
-}
-
-function getClosingExpenseSummary() {
-    const selectedDate = document.getElementById('closingDateInput')?.value?.slice(0, 10)
-        || new Date().toISOString().slice(0, 10);
-    return (typeof getExpenses === 'function' ? getExpenses() : []).reduce((total, expense) => {
-        const expenseDate = String(expense?.timestamp || expense?.date || '').slice(0, 10);
-        return expense?.tipe === 'PENGELUARAN' && expenseDate === selectedDate
-            ? total + (parseFloat(expense.nominal) || 0)
-            : total;
-    }, 0);
-}
-
-function getClosingValasValue() {
-    const currencies = typeof getCurrencies === 'function' ? getCurrencies() : [];
-    const transactions = typeof getTransactions === 'function' ? getTransactions() : [];
-    return currencies.reduce((total, currency) => {
-        const stock = parseFloat(currency?.stock) || 0;
-        let rate = parseFloat(currency?.avg_buy_rate ?? currency?.initial_rate_locked) || 0;
-        if (typeof calculateCurrencyAverageCost === 'function') {
-            rate = calculateCurrencyAverageCost(currency, transactions).rate || rate;
-        }
-        return total + (stock * (rate || parseFloat(currency?.buy) || 0));
-    }, 0);
-}
-
-function setupClosingKoinFormatter() {
-    const input = document.getElementById('denomKoin');
-    if(!input || input.dataset.rupiahFormatterReady === '1') return;
-
-    input.dataset.rupiahFormatterReady = '1';
-    input.addEventListener('input', function() {
-        const amount = parseClosingRupiahInput(this.value);
-        this.value = amount > 0 ? formatIdr(amount) : '';
-        calculateClosingPhysical();
-    });
-    input.addEventListener('blur', function() {
-        const amount = parseClosingRupiahInput(this.value);
-        this.value = amount > 0 ? formatIdr(amount) : '';
-    });
-}
-
-window.updateClosingModeUi = function() {
-    const type = document.getElementById('closingType')?.value || 'temporary';
-    const btn = document.getElementById('btnSaveClosing');
-    const help = document.getElementById('closingModeHelp');
-    if(btn) {
-        btn.innerHTML = type === 'final'
-            ? '<i class="fa-solid fa-lock"></i> Simpan & Kunci Closing Final'
-            : '<i class="fa-solid fa-clipboard-check"></i> Simpan Cek Sementara';
-    }
-    if(help) {
-        help.textContent = type === 'final'
-            ? 'Closing final menyesuaikan saldo kas sistem menjadi kas fisik. Saldo bank ikut tampil dalam total rekonsiliasi, tetapi tidak diubah.'
-            : 'Cek sementara mencatat posisi kas dan bank untuk rekonsiliasi tanpa mengubah saldo sistem.';
-    }
-};
-
-function getClosingDenomValue(id) {
-    const input = document.getElementById(id);
-    return input ? parseClosingRupiahInput(input.value) : 0;
-}
-
-function calculateClosingPhysical() {
-    const d100 = getClosingDenomValue('denom100k');
-    const d50  = getClosingDenomValue('denom50k');
-    const d20  = getClosingDenomValue('denom20k');
-    const d10  = getClosingDenomValue('denom10k');
-    const d5   = getClosingDenomValue('denom5k');
-    const d2   = getClosingDenomValue('denom2k');
-    const d1   = getClosingDenomValue('denom1k');
-    const dKoin= getClosingDenomValue('denomKoin');
-
-    const totalFisik = (d100 * 100000) + (d50 * 50000) + (d20 * 20000) + 
-                       (d10 * 10000) + (d5 * 5000) + (d2 * 2000) + 
-                       (d1 * 1000) + dKoin;
-    
-    // Ambil data gantungan aktif (menghitung sisa saldo setelah cicilan)
-    const gantungans = window.safeArrayGet('mc_gantungans');
-    let gantunganPiutang = 0;
-    let gantunganUtang = 0;
-    gantungans.forEach(item => {
-        if (item.status === 'BELUM_LUNAS') {
-            const sisa = item.nominal - (item.terbayar || 0);
-            if (item.tipe === 'PIUTANG') gantunganPiutang += sisa;
-            else if (item.tipe === 'UTANG') gantunganUtang += sisa;
-        }
-    });
-
-    const kasSistem = getCash();
-    const bankSummary = getClosingBankSummary();
-    const totalExpenses = getClosingExpenseSummary();
-    const totalValasValue = getClosingValasValue();
-    const totalSistemRupiah = kasSistem + bankSummary.total;
-    const totalFisikPlusBank = totalFisik + bankSummary.total;
-    // Rumus total: (Kas Fisik + Bank Sistem) - (Kas Sistem + Bank Sistem) + Gantungan Piutang - Gantungan Utang
-    const selisih = totalFisikPlusBank - totalSistemRupiah + gantunganPiutang - gantunganUtang;
-
-    const fisikNode = document.getElementById('closingFisik');
-    const kasNode = document.getElementById('closingKasSistem');
-    const bankNode = document.getElementById('closingBankSistem');
-    const bankBcaNode = document.getElementById('closingBankBca');
-    const bankMandiriNode = document.getElementById('closingBankMandiri');
-    const valasNode = document.getElementById('closingValasValue');
-    const totalSistemNode = document.getElementById('closingTotalSistemRupiah');
-    const totalFisikBankNode = document.getElementById('closingTotalFisikBank');
-    const piutangNode = document.getElementById('closingGantunganPiutang');
-    const utangNode = document.getElementById('closingGantunganUtang');
-    const expensesNode = document.getElementById('closingTotalExpenses');
-    const selNode = document.getElementById('closingSelisih');
-
-    if(fisikNode) fisikNode.textContent = formatIdr(totalFisik);
-    if(kasNode) kasNode.textContent = formatIdr(kasSistem);
-    if(bankNode) bankNode.textContent = formatIdr(bankSummary.total);
-    if(bankBcaNode) bankBcaNode.textContent = formatIdr(bankSummary.bca);
-    if(bankMandiriNode) bankMandiriNode.textContent = formatIdr(bankSummary.mandiri);
-    if(valasNode) valasNode.textContent = formatIdr(totalValasValue);
-    if(totalSistemNode) totalSistemNode.textContent = formatIdr(totalSistemRupiah);
-    if(totalFisikBankNode) totalFisikBankNode.textContent = formatIdr(totalFisikPlusBank);
-    if(piutangNode) piutangNode.textContent = formatIdr(gantunganPiutang);
-    if(utangNode) utangNode.textContent = formatIdr(gantunganUtang);
-    if(expensesNode) expensesNode.textContent = formatIdr(totalExpenses);
-    if(!selNode) return;
-
-    selNode.textContent = formatIdr(Math.abs(selisih));
-    
-    if(selisih === 0) {
-        selNode.style.color = '#10B981'; // Green
-    } else if (selisih < 0) {
-        selNode.style.color = '#F87171'; // Red
-        selNode.textContent = '-' + selNode.textContent;
-    } else {
-        selNode.style.color = '#3B82F6'; // Blue
-        selNode.textContent = '+' + selNode.textContent;
-    }
-}
-
-function saveClosing() {
-    const totalFisikStr = document.getElementById('closingFisik').textContent.replace(/[^\d]/g, '');
-    const totalFisik = parseInt(totalFisikStr) || 0;
-    
-    // Hitung ulang gantungan aktif saat save (menghitung sisa saldo setelah cicilan)
-    const gantungans = window.safeArrayGet('mc_gantungans');
-    let gantunganPiutang = 0;
-    let gantunganUtang = 0;
-    gantungans.forEach(item => {
-        if (item.status === 'BELUM_LUNAS') {
-            const sisa = item.nominal - (item.terbayar || 0);
-            if (item.tipe === 'PIUTANG') gantunganPiutang += sisa;
-            else if (item.tipe === 'UTANG') gantunganUtang += sisa;
-        }
-    });
-
-    const kasSistem = getCash();
-    const bankSummary = getClosingBankSummary();
-    const totalExpenses = getClosingExpenseSummary();
-    const totalValasValue = getClosingValasValue();
-    const totalSistemRupiah = kasSistem + bankSummary.total;
-    const totalFisikPlusBank = totalFisik + bankSummary.total;
-    const selisih = totalFisikPlusBank - totalSistemRupiah + gantunganPiutang - gantunganUtang;
-    const note = document.getElementById('closingNote').value;
-    const closingType = document.getElementById('closingType')?.value || 'temporary';
-    const dateInput = document.getElementById('closingDateInput');
-    let ts = new Date().toISOString();
-    if(dateInput && dateInput.value) {
-        ts = new Date(dateInput.value).toISOString();
-    }
-
-    if(closingType === 'final' && !confirm('Closing Final akan mengunci catatan dan menyesuaikan saldo kas sistem menjadi kas fisik. Lanjutkan?')) {
-        return;
-    }
-
-    const closingData = {
-        id: 'CLS-' + Date.now().toString().slice(-6),
-        timestamp: ts,
-        type: closingType,
-        kasSistem: kasSistem,
-        bankBCA: bankSummary.bca,
-        bankMandiri: bankSummary.mandiri,
-        bankSistem: bankSummary.total,
-        totalValasRp: totalValasValue,
-        totalSistemRupiah: totalSistemRupiah,
-        totalFisikPlusBank: totalFisikPlusBank,
-        kasFisik: totalFisik,
-        gantunganPiutang: gantunganPiutang,
-        gantunganUtang: gantunganUtang,
-        pengeluaranHari: totalExpenses,
-        selisih: selisih,
-        catatan: note
-    };
-
-    const closings = getClosings();
-    closings.push(closingData);
-    saveClosings(closings);
-
-    if(closingType === 'final') {
-        saveCash(totalFisik);
-    }
-
-    alert(closingType === 'final'
-        ? "Closing Final berhasil disimpan! Saldo Kas Sistem telah disesuaikan menjadi Rp " + totalFisik.toLocaleString()
-        : "Cek Sementara berhasil disimpan. Saldo Kas Sistem tidak berubah.");
-    initClosingView(); 
-    if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
-}
-
-window.openClosingHistoryModal = function() {
-    document.getElementById('closingHistoryModal').classList.add('show');
-    
-    const closings = getClosings();
-    const tbody = document.getElementById('closingHistoryTableBody');
-    if(!tbody) return;
-    tbody.innerHTML = '';
-    
-    // Sort from newest to oldest
-    const sorted = closings.slice().reverse();
-    
-    sorted.forEach(c => {
-        const tr = document.createElement('tr');
-        const type = c.type || c.closingType || 'final';
-        const typeHtml = type === 'final'
-            ? '<span style="color:#f59e0b; font-weight:700;">Final</span>'
-            : '<span style="color:#93c5fd; font-weight:700;">Sementara</span>';
-        
-        const gPiutang = c.gantunganPiutang || 0;
-        const gUtang = c.gantunganUtang || 0;
-        const gNet = gPiutang - gUtang;
-        const bankTotal = parseInt(c.bankSistem ?? ((c.bankBCA || 0) + (c.bankMandiri || 0))) || 0;
-        const totalSistemRupiah = parseInt(c.totalSistemRupiah ?? ((c.kasSistem || 0) + bankTotal)) || 0;
-        let gantunganText = '-';
-        if (gNet !== 0) {
-            const sign = gNet > 0 ? '+' : '-';
-            gantunganText = `<span style="color: ${gNet > 0 ? '#F59E0B' : '#3B82F6'}; font-weight: 500;">${sign}${formatIdr(Math.abs(gNet))}</span>`;
-        }
-
-        let selisihHtml = `<span style="color: ${c.selisih < 0 ? '#ef4444' : (c.selisih > 0 ? '#10b981' : 'inherit')}">${formatIdr(c.selisih)}</span>`;
-        
-        tr.innerHTML = `
-            <td>${window.formatDateToDMY(c.timestamp)}</td>
-            <td>${c.id}</td>
-            <td>${typeHtml}</td>
-            <td>${formatIdr(c.kasSistem)}</td>
-            <td>${formatIdr(bankTotal)}</td>
-            <td>${formatIdr(totalSistemRupiah)}</td>
-            <td>${formatIdr(c.kasFisik)}</td>
-            <td>${gantunganText}</td>
-            <td><strong>${selisihHtml}</strong></td>
-            <td>${c.catatan || '-'}</td>
-            <td>
-                <button class="btn btn-sm btn-primary" onclick="openEditClosingModal('${c.id}')"><i class="fa-solid fa-pen"></i></button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-    
-    if(sorted.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" class="text-center">Belum ada riwayat closing.</td></tr>';
-    }
-};
-
-window.closeClosingHistoryModal = function() {
-    document.getElementById('closingHistoryModal').classList.remove('show');
-};
-
-window.resetClosingHistory = async function() {
-    const confirmReset = async () => {
-        if (typeof Swal === 'undefined') {
-            return confirm('Hapus seluruh riwayat Closing Harian?')
-                && prompt('Ketik RESET untuk melanjutkan:') === 'RESET';
-        }
-        const first = await Swal.fire({
-            title: 'Reset Riwayat Closing?',
-            text: 'Seluruh riwayat closing akan dihapus. Saldo kas, bank, stok valas, dan transaksi utama tidak berubah.',
-            icon: 'warning', showCancelButton: true,
-            confirmButtonText: 'Lanjutkan', cancelButtonText: 'Batal',
-            confirmButtonColor: '#ef4444'
-        });
-        if (!first.isConfirmed) return false;
-        const final = await Swal.fire({
-            title: 'Konfirmasi Terakhir', input: 'text', inputLabel: 'Ketik RESET untuk menghapus riwayat closing',
-            inputPlaceholder: 'RESET', showCancelButton: true,
-            inputValidator: value => value === 'RESET' ? undefined : 'Ketik RESET dengan huruf besar.'
-        });
-        return final.isConfirmed;
-    };
-    if (!await confirmReset()) return;
-    saveClosings([]);
-    window.openClosingHistoryModal();
-    if (typeof Swal !== 'undefined') {
-        Swal.fire({ icon: 'success', title: 'Riwayat Closing Direset', text: 'Data operasional utama tidak diubah.', timer: 1600, showConfirmButton: false });
-    } else {
-        alert('Riwayat Closing berhasil direset.');
-    }
-};
-
-window.openEditClosingModal = function(id) {
-    const closings = getClosings();
-    const c = closings.find(x => x.id === id);
-    if(!c) return;
-
-    document.getElementById('editClosingId').value = c.id;
-    document.getElementById('editClosingKasSistem').value = c.kasSistem;
-    
-    const dt = new Date(c.timestamp);
-    dt.setMinutes(dt.getMinutes() - dt.getTimezoneOffset());
-    document.getElementById('editClosingDate').value = dt.toISOString().slice(0,16);
-
-    document.getElementById('editClosingFisik').value = formatIdr(c.kasFisik);
-    const typeEl = document.getElementById('editClosingType');
-    if(typeEl) typeEl.value = c.type || c.closingType || 'final';
-    document.getElementById('editClosingNote').value = c.catatan || '';
-
-    document.getElementById('editClosingModal').classList.add('show');
-};
-
-window.closeEditClosingModal = function() {
-    document.getElementById('editClosingModal').classList.remove('show');
-};
-
-window.saveEditClosing = function() {
-    const id = document.getElementById('editClosingId').value;
-    const kasSistem = parseInt(document.getElementById('editClosingKasSistem').value) || 0;
-    const dateVal = document.getElementById('editClosingDate').value;
-    const fisikStr = document.getElementById('editClosingFisik').value.replace(/[^\d]/g, '');
-    const kasFisik = parseInt(fisikStr) || 0;
-    const closingType = document.getElementById('editClosingType')?.value || 'temporary';
-    const note = document.getElementById('editClosingNote').value;
-
-    const closings = getClosings();
-    const idx = closings.findIndex(x => x.id === id);
-    if(idx === -1) return;
-
-    closings[idx].timestamp = dateVal ? new Date(dateVal).toISOString() : new Date().toISOString();
-    closings[idx].type = closingType;
-    closings[idx].kasFisik = kasFisik;
-    const gPiutang = closings[idx].gantunganPiutang || 0;
-    const gUtang = closings[idx].gantunganUtang || 0;
-    const bankTotal = parseInt(closings[idx].bankSistem ?? ((closings[idx].bankBCA || 0) + (closings[idx].bankMandiri || 0))) || 0;
-    const totalSistemRupiah = kasSistem + bankTotal;
-    const totalFisikPlusBank = kasFisik + bankTotal;
-    closings[idx].bankSistem = bankTotal;
-    closings[idx].totalSistemRupiah = totalSistemRupiah;
-    closings[idx].totalFisikPlusBank = totalFisikPlusBank;
-    closings[idx].selisih = totalFisikPlusBank - totalSistemRupiah + gPiutang - gUtang;
-    closings[idx].catatan = note;
-
-    saveClosings(closings);
-    
-    closeEditClosingModal();
-    openClosingHistoryModal();
-    
-    alert("Data riwayat berhasil diubah! PENTING: Saldo kas aktual pada sistem hari ini tidak berubah dan tetap aman.");
-    if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
-};
-
-window.printClosingHistory = function() {
-    const tableHtml = document.getElementById('closingHistoryTable').outerHTML;
-    
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-        <html>
-        <head>
-            <title>Cetak Riwayat Closing</title>
-            <style>
-                body { font-family: sans-serif; padding: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                th { background-color: #f2f2f2; }
-                h2 { text-align: center; }
-            </style>
-        </head>
-        <body>
-            <h2>Laporan Riwayat Closing Rupiah</h2>
-            <p>Dicetak pada: ${window.formatDateToDMY(new Date())}</p>
-            ${tableHtml}
-        </body>
-        </html>
-    `);
-    printWindow.document.close();
-    printWindow.setTimeout(() => {
-        printWindow.print();
-    }, 500);
-};
-
-// ==============================
 // SETTINGS / PROFILE
 // ==============================
 function loadSettingsProfile() {
@@ -1008,14 +404,11 @@ function loadSettingsProfile() {
     if(document.getElementById('profBiLicense')) document.getElementById('profBiLicense').value = p.biLicense || '';
     if(document.getElementById('profIdpjk')) document.getElementById('profIdpjk').value = p.idpjk || '';
     if(document.getElementById('profReporterCode')) document.getElementById('profReporterCode').value = p.reporterCode || '';
-    if(document.getElementById('profVisionKey')) {
-        const valKey = p.visionKey || localStorage.getItem('mc_vision_api_key') || '';
-        document.getElementById('profVisionKey').value = (valKey === 'null' || valKey === 'undefined') ? '' : valKey;
-    }
+    if(document.getElementById('profGoamlOrgId')) document.getElementById('profGoamlOrgId').value = p.goamlOrgId || '';
     document.getElementById('profPhone').value = p.phone || '';
     if(document.getElementById('profWaNumber')) document.getElementById('profWaNumber').value = p.phoneWA || '';
     document.getElementById('profFooter').value = p.footer || '';
-    document.getElementById('profWaTemplate').value = p.waTemplate || DEFAULT_WA_TEMPLATE;
+    if (typeof window.migrateProfileWaTemplate === 'function') window.migrateProfileWaTemplate();
 
     // Load Start Balances
     let initCash = localStorage.getItem('mc_initial_cash');
@@ -1107,276 +500,22 @@ function getDefaultWaTemplate() {
         name: 'Default',
         category: 'Transaksi',
         isDefault: true,
-        content: getProfile().waTemplate || DEFAULT_WA_TEMPLATE
+        content: DEFAULT_WA_TEMPLATE
     };
 }
 
 window.getDefaultWaTemplate = getDefaultWaTemplate;
 
-const WA_TEMPLATE_PURPOSES = [
-    { id: 'pos', label: 'POS / Bukti Transaksi' },
-    { id: 'riwayat', label: 'Riwayat Transaksi' },
-    { id: 'booking', label: 'Booking Valas' },
-    { id: 'waiting', label: 'Antrean / Valas Ready' },
-    { id: 'old-money', label: 'Uang Lama' },
-    { id: 'kurs', label: 'Kirim Kurs' },
-    { id: 'broadcast', label: 'Broadcast Nasabah' },
-    { id: 'audit', label: 'Audit Transaksi' },
-    { id: 'customer', label: 'Kontak Nasabah' }
-];
-
 function normalizeWaTemplatePurposes(template) {
     return Array.isArray(template?.purposes) ? template.purposes : [];
 }
 
+// Template untuk satu tombol WA: yang ditugaskan ke purpose itu, jika tidak ada pakai template default.
+// (Daftar purpose dan layar pengelolaannya ada di modul 52-wa-template.js.)
 window.getWaTemplateForPurpose = function(purpose) {
     const templates = getWaTemplates();
     return templates.find(template => normalizeWaTemplatePurposes(template).includes(purpose))
         || getDefaultWaTemplate();
-};
-
-function renderWaTemplatePurposeChoices(selected = []) {
-    const box = document.getElementById('waTemplatePurposes');
-    if (!box) return;
-    box.innerHTML = WA_TEMPLATE_PURPOSES.map(purpose => `
-        <label style="display:flex;align-items:center;gap:7px;font-size:.78rem;cursor:pointer;">
-            <input type="checkbox" class="wa-template-purpose" value="${purpose.id}" ${selected.includes(purpose.id) ? 'checked' : ''}>
-            ${purpose.label}
-        </label>
-    `).join('');
-}
-
-function getWaTemplatePurposeLabels(template) {
-    const selected = normalizeWaTemplatePurposes(template);
-    if (!selected.length) return '<span class="text-muted">Default / semua</span>';
-    return WA_TEMPLATE_PURPOSES.filter(purpose => selected.includes(purpose.id))
-        .map(purpose => `<span style="display:inline-block;margin:2px 3px 2px 0;padding:2px 5px;border-radius:4px;background:rgba(37,211,102,.12);color:#86efac;font-size:.68rem;">${purpose.label}</span>`)
-        .join('');
-}
-
-window.loadWaTemplatesSettings = function() {
-    const tbody = document.getElementById('waTemplatesTableBody');
-    if(!tbody) return;
-    const templates = getWaTemplates();
-    tbody.innerHTML = templates.map(t => `
-        <tr>
-            <td><strong>${t.name || '-'}</strong><br><small class="text-muted">${(t.content || '').substring(0, 80)}${(t.content || '').length > 80 ? '...' : ''}</small></td>
-            <td>${t.category || '-'}</td>
-            <td>${getWaTemplatePurposeLabels(t)}</td>
-            <td class="text-center">${t.isDefault ? '<span class="badge" style="background:#10b981;color:white;padding:4px 8px;border-radius:4px;">Ya</span>' : '-'}</td>
-            <td class="text-center" style="white-space:nowrap;">
-                <button class="btn btn-sm btn-primary mx-1" onclick="editWaTemplate('${t.id}')"><i class="fa-solid fa-pen"></i></button>
-                <button class="btn btn-sm btn-danger mx-1" onclick="deleteWaTemplate('${t.id}')"><i class="fa-solid fa-trash"></i></button>
-            </td>
-        </tr>
-    `).join('') || '<tr><td colspan="5" class="text-center text-muted">Belum ada template.</td></tr>';
-    const purposeBox = document.getElementById('waTemplatePurposes');
-    if (purposeBox && !purposeBox.children.length) renderWaTemplatePurposeChoices([]);
-};
-
-window.newWaTemplate = function() {
-    document.getElementById('waTemplateId').value = '';
-    document.getElementById('waTemplateName').value = '';
-    document.getElementById('waTemplateCategory').value = 'Transaksi';
-    document.getElementById('waTemplateContent').value = '';
-    document.getElementById('waTemplateDefault').checked = getWaTemplates().length === 0;
-    renderWaTemplatePurposeChoices([]);
-};
-
-window.editWaTemplate = function(id) {
-    const template = getWaTemplates().find(t => t.id === id);
-    if(!template) return;
-    document.getElementById('waTemplateId').value = template.id;
-    document.getElementById('waTemplateName').value = template.name || '';
-    document.getElementById('waTemplateCategory').value = template.category || '';
-    document.getElementById('waTemplateContent').value = template.content || '';
-    document.getElementById('waTemplateDefault').checked = !!template.isDefault;
-    renderWaTemplatePurposeChoices(normalizeWaTemplatePurposes(template));
-};
-
-window.saveWaTemplateFromSettings = function() {
-    const id = document.getElementById('waTemplateId').value || ('wa-' + Date.now());
-    const name = document.getElementById('waTemplateName').value.trim();
-    const category = document.getElementById('waTemplateCategory').value.trim() || 'Transaksi';
-    const content = document.getElementById('waTemplateContent').value.trim();
-    const isDefault = document.getElementById('waTemplateDefault').checked;
-    const purposes = Array.from(document.querySelectorAll('.wa-template-purpose:checked')).map(input => input.value);
-
-    if(!name || !content) {
-        alert('Nama template dan isi pesan wajib diisi.');
-        return;
-    }
-
-    let templates = getWaTemplates();
-    if(isDefault) {
-        templates = templates.map(t => ({ ...t, isDefault: false }));
-    }
-
-    const idx = templates.findIndex(t => t.id === id);
-    const next = { id, name, category, content, purposes, isDefault: isDefault || templates.length === 0 };
-    if(idx > -1) templates[idx] = next;
-    else templates.push(next);
-
-    if(!templates.some(t => t.isDefault) && templates.length > 0) {
-        templates[0].isDefault = true;
-    }
-
-    saveWaTemplates(templates);
-    loadWaTemplatesSettings();
-    newWaTemplate();
-    alert('Template WhatsApp berhasil disimpan.');
-};
-
-window.deleteWaTemplate = function(id) {
-    let templates = getWaTemplates();
-    if(templates.length <= 1) {
-        alert('Minimal harus ada satu template WhatsApp.');
-        return;
-    }
-    if(!confirm('Hapus template WhatsApp ini?')) return;
-    const deleted = templates.find(t => t.id === id);
-    templates = templates.filter(t => t.id !== id);
-    if(deleted && deleted.isDefault && templates.length > 0) {
-        templates[0].isDefault = true;
-    }
-    saveWaTemplates(templates);
-    loadWaTemplatesSettings();
-    newWaTemplate();
-};
-
-function getWaGatewaySettings() {
-    try {
-        const value = JSON.parse(localStorage.getItem('mc_wa_gateway') || '{}');
-        return value && typeof value === 'object' ? value : {};
-    } catch (error) {
-        return {};
-    }
-}
-
-window.loadWaGatewaySettings = function() {
-    const settings = getWaGatewaySettings();
-    const fields = {
-        waGatewayProvider: settings.provider || '',
-        waGatewayEndpoint: settings.endpoint || '',
-        waGatewayToken: settings.token || '',
-        waGatewaySender: settings.sender || '',
-        waGatewayHeaders: settings.headers || '',
-        waGatewayPayload: settings.payload || ''
-    };
-
-    Object.entries(fields).forEach(([id, value]) => {
-        const input = document.getElementById(id);
-        if (input) input.value = value;
-    });
-    const enabled = document.getElementById('waGatewayEnabled');
-    if (enabled) enabled.checked = Boolean(settings.enabled);
-    const method = document.getElementById('waGatewayMethod');
-    if (method) method.value = settings.method || 'POST';
-    const bodyFormat = document.getElementById('waGatewayBodyFormat');
-    if (bodyFormat) bodyFormat.value = settings.bodyFormat || 'form';
-    window.updateWaGatewayStatus();
-};
-
-window.updateWaGatewayStatus = function() {
-    const status = document.getElementById('waGatewayStatus');
-    const enabled = document.getElementById('waGatewayEnabled');
-    if (!status) return;
-    const isEnabled = Boolean(enabled && enabled.checked);
-    status.textContent = isEnabled ? 'Aktif' : 'Nonaktif';
-    status.style.background = isEnabled ? '#16a34a' : '#64748b';
-};
-
-// Status aktif harus langsung tersimpan, walau pengguna belum menekan tombol Simpan.
-window.persistWaGatewayEnabled = function() {
-    const enabled = Boolean(document.getElementById('waGatewayEnabled')?.checked);
-    const existing = getWaGatewaySettings();
-    const settings = {
-        ...existing,
-        enabled,
-        updatedAt: new Date().toISOString()
-    };
-    localStorage.setItem('mc_wa_gateway', JSON.stringify(settings));
-    if (typeof pushToUniversalDatastore === 'function') {
-        pushToUniversalDatastore('mc_wa_gateway', settings);
-    }
-};
-
-window.toggleWaGatewayTokenVisibility = function() {
-    const token = document.getElementById('waGatewayToken');
-    if (!token) return;
-    token.type = token.type === 'password' ? 'text' : 'password';
-};
-
-window.applyWaGatewayPreset = function(provider) {
-    if (provider !== 'fonnte') return;
-    const set = (id, value) => {
-        const input = document.getElementById(id);
-        if (input) input.value = value;
-    };
-    set('waGatewayProvider', 'Fonnte');
-    set('waGatewayEndpoint', 'https://api.fonnte.com/send');
-    set('waGatewayMethod', 'POST');
-    set('waGatewayBodyFormat', 'form');
-    set('waGatewayHeaders', '{"Authorization":"{TOKEN}"}');
-    set('waGatewayPayload', '{"target":"{TARGET}","message":"{MESSAGE}","countryCode":"0"}');
-    alert('Format API Fonnte sudah diisi. Masukkan Token Fonnte Anda, aktifkan Gateway, lalu Simpan.');
-};
-
-window.saveWaGatewaySettings = function() {
-    const provider = document.getElementById('waGatewayProvider')?.value.trim() || '';
-    const endpoint = document.getElementById('waGatewayEndpoint')?.value.trim() || '';
-    const token = document.getElementById('waGatewayToken')?.value.trim() || '';
-    const sender = document.getElementById('waGatewaySender')?.value.trim() || '';
-    const method = document.getElementById('waGatewayMethod')?.value || 'POST';
-    const bodyFormat = document.getElementById('waGatewayBodyFormat')?.value || 'form';
-    const headers = document.getElementById('waGatewayHeaders')?.value.trim() || '';
-    const payload = document.getElementById('waGatewayPayload')?.value.trim() || '';
-    const enabled = Boolean(document.getElementById('waGatewayEnabled')?.checked);
-
-    if (enabled && (!endpoint || !token)) {
-        alert('URL Endpoint API dan Token / API Key wajib diisi saat WA Gateway diaktifkan.');
-        return false;
-    }
-    for (const [label, value] of [['Header API', headers], ['Payload API', payload]]) {
-        if (!value) continue;
-        try {
-            const parsed = JSON.parse(value);
-            if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error();
-        } catch (error) {
-            alert(`${label} harus berupa objek JSON yang valid.`);
-            return false;
-        }
-    }
-
-    const settings = { provider, endpoint, token, sender, method, bodyFormat, headers, payload, enabled, updatedAt: new Date().toISOString() };
-    localStorage.setItem('mc_wa_gateway', JSON.stringify(settings));
-    if (typeof pushToUniversalDatastore === 'function') {
-        pushToUniversalDatastore('mc_wa_gateway', settings);
-    }
-    window.updateWaGatewayStatus();
-    alert('Pengaturan WA Gateway berhasil disimpan.');
-    return true;
-};
-
-window.testWaGatewayConnection = async function() {
-    // Simpan dulu seluruh kolom yang sedang terlihat agar tes memakai konfigurasi terbaru.
-    if (!window.saveWaGatewaySettings()) return;
-    const settings = getWaGatewaySettings();
-    const phone = document.getElementById('waGatewayTestPhone')?.value.trim() || '';
-    if (!settings.enabled || !settings.endpoint || !settings.token) {
-        alert('Aktifkan dan lengkapi WA Gateway sebelum melakukan tes.');
-        return;
-    }
-    if (!phone) {
-        alert('Masukkan nomor WhatsApp tujuan untuk pesan tes.');
-        return;
-    }
-    try {
-        await window.sendWhatsAppGateway(phone, 'Tes koneksi WA Gateway dari MC-ALMARA. Jika pesan ini diterima, pengaturan sudah benar.', { reference: 'WA-GATEWAY-TEST' });
-        alert('Permintaan tes diterima oleh WA Gateway. Periksa perangkat/provider untuk status benar-benar terkirim ke WhatsApp.');
-    } catch (error) {
-        alert(`Tes WA Gateway gagal: ${error.message || error}`);
-    }
 };
 
 window.addInitValasRow = function(code = '', stock = '', rate = '') {
@@ -1463,30 +602,38 @@ function recalcInitTotal() {
 }
 
 window.submitProfile = function() {
-    const profileData = {
-        name: document.getElementById('profName').value || 'MC-ALMARA',
-        address: document.getElementById('profAddress').value || '',
-        biLicense: document.getElementById('profBiLicense') ? document.getElementById('profBiLicense').value : '',
-        idpjk: document.getElementById('profIdpjk') ? document.getElementById('profIdpjk').value : '',
-        reporterCode: document.getElementById('profReporterCode') ? document.getElementById('profReporterCode').value.trim() : '',
-        phone: document.getElementById('profPhone').value || '',
-        phoneWA: document.getElementById('profWaNumber') ? document.getElementById('profWaNumber').value : '',
-        footer: document.getElementById('profFooter').value || '',
-        waTemplate: document.getElementById('profWaTemplate').value || DEFAULT_WA_TEMPLATE,
-        visionKey: document.getElementById('profVisionKey') ? document.getElementById('profVisionKey').value : ''
+    const val = (id) => (document.getElementById(id)?.value || '').trim();
+    const say = (type, text) => {
+        if (typeof Swal !== 'undefined' && Swal.fire) {
+            return Swal.fire({ icon: type, title: type === 'success' ? 'Tersimpan' : 'Belum bisa disimpan', text, timer: type === 'success' ? 1800 : undefined, showConfirmButton: type !== 'success' });
+        }
+        alert(text);
     };
-    if(profileData.visionKey) localStorage.setItem('mc_vision_api_key', profileData.visionKey.trim());
-    saveProfile(profileData);
-    
-    // Paksa sinkronisasi ke MySQL detik ini juga agar tidak ditimpa data lama oleh auto-sync
-    if (typeof pushToUniversalDatastore === 'function') {
-        pushToUniversalDatastore('mc_profile', profileData);
+    const name = val('profName');
+    if (!name) {
+        say('error', 'Nama perusahaan wajib diisi karena dicetak pada struk dan dokumen.');
+        document.getElementById('profName')?.focus();
+        return false;
     }
-    
-    alert('Pengaturan Profil Perusahaan berhasil disimpan. Data ini akan tercetak pada Struk.');
+    const profileData = Object.assign({}, getProfile(), {
+        name,
+        address: val('profAddress'),
+        biLicense: val('profBiLicense'),
+        idpjk: val('profIdpjk'),
+        reporterCode: val('profReporterCode'),
+        goamlOrgId: val('profGoamlOrgId'),
+        phone: val('profPhone'),
+        phoneWA: val('profWaNumber'),
+        footer: val('profFooter')
+    });
+    delete profileData.waTemplate; // template pesan WA kini dikelola di Pengaturan > Template WA
+    delete profileData.visionKey;
+    saveProfile(profileData); // menyimpan lokal + sinkron ke server
+    say('success', 'Profil perusahaan tersimpan. Data ini tercetak pada struk dan dokumen.');
+    return true;
 }
 
-window.saveInitialBalances = function() {
+window.saveInitialBalances = async function() {
     const cashVal = parseFloat(document.getElementById('initCash').value) || 0;
     const bankBcaVal = parseFloat(document.getElementById('initBankBCA').value) || 0;
     const bankMandiriVal = parseFloat(document.getElementById('initBankMandiri').value) || 0;
@@ -1509,6 +656,7 @@ window.saveInitialBalances = function() {
     // Save Custom Initial Valas
     let masterCurrencies = getCurrencies();
     const rows = document.querySelectorAll('.init-valas-row');
+    const openingStocks = [];
     
     rows.forEach(tr => {
         const code = tr.querySelector('.init-v-code').value.trim();
@@ -1516,6 +664,7 @@ window.saveInitialBalances = function() {
         const rate = parseFloat(tr.querySelector('.init-v-rate').value) || 0;
         
         if(!code) return;
+        openingStocks.push({ code: code.toUpperCase(), quantity: stock });
         
         let c = masterCurrencies.find(x => x.code.toUpperCase() === code.toUpperCase());
         if(c) {
@@ -1538,8 +687,42 @@ window.saveInitialBalances = function() {
     });
     
     saveCurrencies(masterCurrencies);
+
+    // Dashboard membaca saldo kas, bank, dan stok valuta dari ledger ERP di server.
+    // Tanpa langkah ini, saldo awal hanya ada di browser lalu ditimpa angka 0 oleh sinkronisasi.
+    let serverError = '';
+    try {
+        const request = window.authFetch || window.fetch;
+        const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        if (csrf) headers['X-CSRF-TOKEN'] = csrf;
+        const response = await request('api/erp/opening-balances', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers,
+            body: JSON.stringify({
+                cash: cashVal,
+                bank_bca: bankBcaVal,
+                bank_mandiri: bankMandiriVal,
+                currencies: openingStocks
+            })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.status === 'error') {
+            serverError = result.message || ('HTTP ' + response.status);
+        } else if (typeof syncUniversalDatastore === 'function') {
+            await syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
+        }
+    } catch (error) {
+        serverError = (error && error.message) || String(error);
+    }
+
+    if (serverError) {
+        alert('Saldo awal tersimpan di browser, tetapi GAGAL disimpan ke server:\n' + serverError + '\n\nDashboard bisa menampilkan angka 0 sampai penyimpanan ke server berhasil. Coba klik tombol ini sekali lagi.');
+        return;
+    }
     
-    alert('Keseluruhan aset awal berhasil diterapkan.\n\nSaldo kas dan bank diset langsung tanpa membuat mutasi penyesuaian sistem. Kurs pada tabel Pengaturan disimpan sebagai kurs modal awal terkunci dan tidak akan ikut berubah saat Manajemen Kurs disinkronkan ke Smartdeal.');
+    alert('Keseluruhan aset awal berhasil diterapkan.\n\nSaldo kas dan bank diset langsung tanpa membuat mutasi penyesuaian sistem. Kurs pada tabel Pengaturan disimpan sebagai kurs modal awal terkunci.');
     
     if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
 }
@@ -1787,32 +970,6 @@ window.loadIso4217Table = function() {
     renderIso4217Rows('iso4217TableBody', filter, 'page');
 }
 
-window.loadIso4217ModalTable = function() {
-    const filter = document.getElementById('iso4217FilterModal')?.value || '';
-    renderIso4217Rows('iso4217ModalTableBody', filter, 'modal');
-}
-
-window.openIso4217Modal = function(target = null) {
-    if (target) {
-        window.iso4217Target = target;
-    }
-
-    const modal = document.getElementById('iso4217Modal');
-    if (!modal) return;
-    modal.style.display = 'block';
-    window.loadIso4217ModalTable();
-
-    const input = document.getElementById('iso4217FilterModal');
-    if (input) {
-        setTimeout(() => input.focus(), 50);
-    }
-}
-
-window.closeIso4217Modal = function() {
-    const modal = document.getElementById('iso4217Modal');
-    if (modal) modal.style.display = 'none';
-}
-
 window.applyIso4217ToMaster = function(code, country, currencyName, symbol, countryCode) {
     const flagBuilder = (window.AlmaraApp && window.AlmaraApp.utils && window.AlmaraApp.utils.buildFlagEmoji) || window.buildFlagEmoji;
     document.getElementById('newMcCode').value = code || '';
@@ -1854,44 +1011,6 @@ window.addIso4217ToMaster = function(code, country, currencyName, symbol, countr
     if (document.getElementById('newMcCountryCode')) document.getElementById('newMcCountryCode').value = '';
 
     alert(`Kode ${code} berhasil ditambahkan ke Master Data.`);
-}
-
-window.applyIso4217ToCurrencyForm = function(code) {
-    openCurrencyModal();
-    document.getElementById('modalCurCode').value = code || '';
-    window.iso4217Target = 'currency';
-    window.closeIso4217Modal();
-}
-
-window.applyIso4217ToOldMoneyForm = function(code, country, currencyName) {
-    openOldMoneyItemModal();
-    document.getElementById('modalOldItemCode').value = code || '';
-    const descInput = document.getElementById('modalOldItemDesc');
-    if (descInput && !descInput.value.trim()) {
-        descInput.value = currencyName || country || code || '';
-    }
-    window.iso4217Target = 'old-money';
-    window.closeIso4217Modal();
-}
-
-window.applyIso4217ToOldMoneySupplierForm = function(code) {
-    const input = document.getElementById('modalOldSupplierCurrency');
-    if (input) input.value = code || '';
-    window.iso4217Target = 'old-money-supplier';
-    window.closeIso4217Modal();
-}
-
-window.applyIso4217ToValasGalleryForm = function(code, country, currencyName) {
-    const codeInput = document.getElementById('modalValasCode');
-    if (codeInput) {
-        codeInput.value = code || '';
-    }
-    const descInput = document.getElementById('modalValasDesc');
-    if (descInput && !descInput.value.trim()) {
-        descInput.value = currencyName || country || code || '';
-    }
-    window.iso4217Target = 'valas-gallery';
-    window.closeIso4217Modal();
 }
 
 window.applyIso4217ToActiveForm = function(code, country, currencyName, symbol, countryCode) {
@@ -2039,66 +1158,6 @@ window.handleCustomerPhoto = function(e) {
 window.triggerKtpOcr = async function() {
     console.log("AI Auto-Fill Triggered");
 
-    const readSavedVisionKey = () => {
-        let key = localStorage.getItem('mc_vision_api_key');
-        if (key === 'null' || key === 'undefined' || key === '') {
-            key = null;
-        }
-        if (!key) {
-            const p = getProfile();
-            if (p && p.visionKey && p.visionKey !== 'null' && p.visionKey !== 'undefined' && p.visionKey !== '') {
-                key = p.visionKey;
-            }
-        }
-        return key ? key.trim() : null;
-    };
-
-    const saveVisionKey = (key) => {
-        const cleanKey = (key || '').trim();
-        if (!cleanKey) return;
-        localStorage.setItem('mc_vision_api_key', cleanKey);
-        const p = getProfile();
-        if (p) {
-            p.visionKey = cleanKey;
-            saveProfile(p);
-        }
-    };
-
-    const clearVisionKey = () => {
-        localStorage.removeItem('mc_vision_api_key');
-        const p = getProfile();
-        if (p) {
-            p.visionKey = '';
-            saveProfile(p);
-        }
-    };
-
-    const askVisionKey = async (message) => {
-        const promptResult = await Swal.fire({
-            icon: 'warning',
-            title: 'API Key Google Vision Dibutuhkan',
-            text: message,
-            input: 'password',
-            inputLabel: 'Masukkan API Key Google Cloud Vision',
-            inputPlaceholder: 'Tempel API key Vision di sini',
-            inputAttributes: {
-                autocapitalize: 'off',
-                autocorrect: 'off'
-            },
-            showCancelButton: true,
-            confirmButtonText: 'Simpan & Coba Lagi',
-            cancelButtonText: 'Batal',
-            inputValidator: (value) => {
-                if (!value || !value.trim()) return 'API key belum diisi.';
-                return null;
-            }
-        });
-
-        if (!promptResult.isConfirmed) return null;
-        saveVisionKey(promptResult.value);
-        return promptResult.value.trim();
-    };
-
     const readSavedGeminiKey = () => {
         const key = (localStorage.getItem('mc_gemini_api_key') || '').trim();
         return key && key !== 'null' && key !== 'undefined' ? key : null;
@@ -2164,8 +1223,6 @@ window.triggerKtpOcr = async function() {
     const btn = document.getElementById('btnOcrKtp');
     const originalText = btn.innerHTML;
     
-    let apiKey = readSavedVisionKey();
-
     try {
         // Ambil data Base64 murni tanpa prefix "data:image/jpeg;base64,"
         const base64Data = currentCustPhotoBase64.split(",")[1];
@@ -2224,21 +1281,19 @@ window.triggerKtpOcr = async function() {
                 .trim();
         };
 
-        const sendOcrRequest = (key) => fetch('/api/ocr/vision', {
+        const sendOcrRequest = () => fetch('/api/ocr/vision', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
             },
             body: JSON.stringify({
-                image_base64: base64Data,
-                api_key: key || null
+                image_base64: base64Data
             })
         });
 
         let response = null;
         let result = null;
-        let hasPromptedForKey = false;
 
         while (true) {
             Swal.fire({
@@ -2250,7 +1305,7 @@ window.triggerKtpOcr = async function() {
                 }
             });
 
-            response = await sendOcrRequest(apiKey);
+            response = await sendOcrRequest();
             result = await response.json();
 
             console.log("========== OCR DEBUG ==========");
@@ -2268,9 +1323,7 @@ window.triggerKtpOcr = async function() {
             const googleCode = Number(result.google_code || response.status || 0);
             const errorType = result.error_type || '';
             const isBillingProblem = errorType === 'billing_not_enabled' || /billing|bill/i.test(message);
-            const isKeyProblem = ['invalid_key', 'permission_denied'].includes(errorType)
-                || [400, 401, 422].includes(googleCode)
-                || /API key|GOOGLE_VISION_API_KEY|key/i.test(message);
+            const isKeyProblem = ['key_missing', 'invalid_key', 'permission_denied'].includes(errorType);
 
             if (isBillingProblem) {
                 const fallbackText = await runGeminiOcrFallback();
@@ -2294,13 +1347,18 @@ window.triggerKtpOcr = async function() {
                 return;
             }
 
-            if (isKeyProblem && !hasPromptedForKey) {
-                clearVisionKey();
-                hasPromptedForKey = true;
-                apiKey = await askVisionKey('Key server/browser kosong, salah, belum memiliki izin Vision API, terkena pembatasan, atau kuota habis.');
-                if (apiKey) {
-                    continue;
-                }
+            if (isKeyProblem || errorType === 'quota_exceeded') {
+                const safeMsg = String(message).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+                await Swal.fire({
+                    icon: 'warning',
+                    title: errorType === 'quota_exceeded' ? 'Kuota Vision Habis' : 'Auto-Fill KTP Belum Siap',
+                    html: '<div style="text-align:left;line-height:1.55;">' + (errorType === 'quota_exceeded'
+                        ? 'Kuota Google Cloud Vision untuk key ini sudah habis. Coba lagi nanti atau periksa kuota di Google Cloud Console.'
+                        : 'API key Google Cloud Vision belum diatur atau ditolak Google. Minta owner/admin membuka <b>Pengaturan &rarr; Profil &rarr; Auto-Fill KTP</b>, mengisi key, lalu menekan <b>Tes Koneksi</b>.')
+                        + '<br><small style="opacity:.75;">Detail: ' + safeMsg + '</small></div>',
+                    confirmButtonText: 'Mengerti'
+                });
+                return;
             }
 
             alert("Error OCR: " + message);
@@ -3017,57 +2075,7 @@ window.triggerKtpOcr = async function() {
 // ==============================
 // CUSTOMER EXPORT / PRINT
 // ==============================
-window.exportCustomersXlsx = async function() {
-    const customers = getCustomers();
-    if(customers.length === 0) return alert('Tidak ada data nasabah untuk diekspor.');
-    
-    let cleanedData = customers.map(c => ({
-        "ID_Nasabah": c.id_nasabah,
-        "IDPJK": c.idpjk || '-',
-        "Tipe": String(c.kn) === '2' ? 2 : 1,
-        "Nama": c.nama,
-        "Tempat_Lahir": c.tempat_lahir,
-        "Tanggal_Lahir": c.tanggal_lahir,
-        "Alamat": c.alamat,
-        "Warga_Negara": c.warga_negara,
-        "Jenis_Kelamin": c.jenis_kelamin,
-        "Pekerjaan": c.pekerjaan,
-        "No_HP": c.no_hp,
-        "No_Rekening": c.no_rekening,
-        "No_KTP": c.no_ktp,
-        "Selain_KTP": c.selain_ktp,
-        "No_CIF": c.no_cif,
-        "NPWP": c.npwp,
-        "Local_ID": c.local_id,
-        "Tgl_Daftar": c.tgl_daftar || ''
-    }));
 
-    const ws = XLSX.utils.json_to_sheet(cleanedData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Nasabah");
-    
-    if(typeof safeExportXLSX === 'function') {
-        safeExportXLSX(wb, `Data_Nasabah_${new Date().toISOString().slice(0,10)}.xlsx`);
-    } else {
-        XLSX.writeFile(wb, `Data_Nasabah_${new Date().toISOString().slice(0,10)}.xlsx`);
-    }
-};
-
-function printCustomersPdf() {
-    const printArea = document.getElementById('customers-view').innerHTML;
-    const originalBody = document.body.innerHTML;
-    
-    document.body.innerHTML = `
-        <div style="padding: 20px; font-family: sans-serif; color: black !important; background: white !important;">
-            <h2 style="text-align:center;">Laporan Data Nasabah (KYC) Lengkap</h2>
-            <hr>
-            ${printArea}
-        </div>
-    `;
-    window.print();
-    // Restore SPA
-    window.location.reload();
-}
 
 // Export Bank Mutation functions globally
 window.openMutationModal = openMutationModal;
@@ -3075,3 +2083,205 @@ window.closeMutationModal = closeMutationModal;
 window.saveMutation = saveMutation;
 window.loadMutationsTable = loadMutationsTable;
 
+// ==============================
+// KARTU SALDO & RINCIAN MUTASI PER BANK (ledger ERP / MySQL)
+// ==============================
+window.__bankMutationState = { accounts: [], total: 0, selected: null, loadedAt: 0, loading: false };
+
+function bankMutEsc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function bankMutIdr(value) {
+    return typeof formatIdr === 'function' ? formatIdr(value) : 'Rp ' + Number(value || 0).toLocaleString('id-ID');
+}
+
+function bankMutDate(value) {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '-';
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+window.loadBankMutationCards = async function(force) {
+    const state = window.__bankMutationState;
+    const host = document.getElementById('bankMutationCards');
+    if (!host || state.loading) return;
+    if (!force && Date.now() - state.loadedAt < 10000) return;
+
+    state.loading = true;
+    try {
+        try { await window.__postBankMutSync([]); } catch (syncError) { console.warn('Sinkron mutasi manual ditunda:', syncError.message); }
+        const doFetch = window.authFetch || window.fetch;
+        const response = await doFetch('/api/erp/bank-mutations', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+        const json = await response.json();
+        if (!response.ok || json.status !== 'success') throw new Error(json.message || 'Gagal memuat data bank');
+        state.accounts = json.data.accounts || [];
+        state.total = json.data.total_balance || 0;
+        state.loadedAt = Date.now();
+        renderBankMutationCards();
+        if (state.selected) renderBankMutationDetail(state.selected);
+    } catch (error) {
+        host.innerHTML = `<div class="panel text-red">Rekening bank belum bisa dimuat: ${bankMutEsc(error.message)}</div>`;
+    } finally {
+        state.loading = false;
+    }
+};
+
+function renderBankMutationCards() {
+    const state = window.__bankMutationState;
+    const host = document.getElementById('bankMutationCards');
+    if (!host) return;
+
+    const cards = state.accounts.map(acc => {
+        const active = state.selected === acc.code;
+        return `
+        <div class="panel bank-mut-card" role="button" tabindex="0"
+             style="cursor:pointer; border:2px solid ${active ? '#10b981' : 'rgba(148,163,184,.35)'}; border-radius:14px; padding:16px;"
+             onclick="openBankMutationDetail('${bankMutEsc(acc.code)}')"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openBankMutationDetail('${bankMutEsc(acc.code)}');}">
+            <div style="font-size:.8rem; font-weight:700; letter-spacing:.5px; opacity:.75;"><i class="fa-solid fa-building-columns"></i> ${bankMutEsc(acc.bank_name)}</div>
+            <div style="font-size:1.5rem; font-weight:800; margin:8px 0;">${bankMutIdr(acc.balance)}</div>
+            <div style="font-size:.8rem; opacity:.8; display:flex; justify-content:space-between; gap:8px;">
+                <span>Masuk: ${bankMutIdr(acc.total_in)}</span><span>Keluar: ${bankMutIdr(acc.total_out)}</span>
+            </div>
+            <div style="font-size:.75rem; margin-top:8px; opacity:.65;">${acc.movements.length} mutasi · klik untuk rincian</div>
+        </div>`;
+    });
+
+    cards.push(`
+        <div class="panel" style="border:2px solid rgba(16,185,129,.55); border-radius:14px; padding:16px;">
+            <div style="font-size:.8rem; font-weight:700; letter-spacing:.5px; opacity:.75;"><i class="fa-solid fa-sigma"></i> TOTAL BANK</div>
+            <div style="font-size:1.5rem; font-weight:800; margin:8px 0;">${bankMutIdr(state.total)}</div>
+            <div style="font-size:.75rem; opacity:.65;">${state.accounts.length} rekening aktif</div>
+        </div>`);
+
+    host.innerHTML = state.accounts.length ? cards.join('') : '<div class="panel text-muted">Belum ada rekening bank. Isi saldo awal bank terlebih dahulu.</div>';
+}
+
+window.openBankMutationDetail = function(code) {
+    const state = window.__bankMutationState;
+    state.selected = state.selected === code ? null : code;
+    renderBankMutationCards();
+    const box = document.getElementById('bankMutationDetail');
+    if (!state.selected) { if (box) box.style.display = 'none'; return; }
+    renderBankMutationDetail(state.selected);
+    if (box) box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+
+function renderBankMutationDetail(code) {
+    const state = window.__bankMutationState;
+    const box = document.getElementById('bankMutationDetail');
+    const acc = state.accounts.find(a => a.code === code);
+    if (!box || !acc) { if (box) box.style.display = 'none'; return; }
+
+    const rows = acc.movements.length ? acc.movements.map(m => `
+        <tr>
+            <td>${bankMutDate(m.posted_at)}</td>
+            <td><strong>${bankMutEsc(m.movement_no)}</strong></td>
+            <td class="font-weight-bold ${m.direction === 'IN' ? 'text-green' : 'text-red'}">${m.direction === 'IN' ? 'MASUK' : 'KELUAR'}</td>
+            <td>${bankMutEsc(m.description || m.bank_reference || '-')}</td>
+            <td class="text-end ${m.direction === 'IN' ? 'text-green' : 'text-red'}">${m.direction === 'IN' ? '+' : '-'}${bankMutIdr(m.amount)}</td>
+            <td class="text-end">${bankMutIdr(m.balance_after)}</td>
+        </tr>`).join('') : '<tr><td colspan="6" class="text-center text-muted">Belum ada mutasi di rekening ini.</td></tr>';
+
+    box.style.display = '';
+    box.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+            <div>
+                <h3 style="margin:0;">Rincian Mutasi ${bankMutEsc(acc.bank_name)}</h3>
+                <div style="font-size:.85rem; opacity:.75; margin-top:4px;">Saldo awal ${bankMutIdr(acc.opening_balance)} · Saldo sekarang <strong>${bankMutIdr(acc.balance)}</strong></div>
+            </div>
+            <button class="btn btn-secondary" onclick="openBankMutationDetail('${bankMutEsc(acc.code)}')"><i class="fa-solid fa-xmark"></i> Tutup</button>
+        </div>
+        <div class="table-responsive">
+            <table class="table">
+                <thead><tr><th>Waktu</th><th>No. Mutasi</th><th>Tipe</th><th>Keterangan</th><th class="text-end">Nominal</th><th class="text-end">Saldo</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
+}
+
+window.__bankMutSyncSig = '';
+window.__postBankMutSync = async function(deletedIds) {
+    const rows = (typeof getRealBankMutations === 'function' ? getRealBankMutations() : []).map(m => ({
+        id_mutasi: String(m.id_mutasi),
+        bank: m.bank || 'BCA',
+        tipe: m.tipe,
+        nominal: Number(m.nominal),
+        keterangan: m.keterangan || '',
+        timestamp: m.timestamp || null
+    })).filter(m => m.id_mutasi && m.nominal > 0 && (m.tipe === 'MASUK' || m.tipe === 'KELUAR'));
+    const deleted = (deletedIds || []).map(String);
+    const sig = JSON.stringify(rows);
+    if (!deleted.length && sig === window.__bankMutSyncSig) return;
+
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const doFetch = window.authFetch || window.fetch;
+    const response = await doFetch('/api/erp/bank-mutations/sync', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+        body: JSON.stringify({ mutations: rows, deleted })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.status !== 'success') throw new Error(json.message || 'Server menolak mutasi');
+    window.__bankMutSyncSig = sig;
+};
+
+window.syncBankMutationsToLedger = async function(deletedIds, alertOnError) {
+    try {
+        await window.__postBankMutSync(deletedIds);
+        await window.loadBankMutationCards(true);
+        if (typeof window.syncUniversalDatastore === 'function') window.syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
+        return true;
+    } catch (error) {
+        console.warn('Sinkron mutasi bank ke server gagal:', error);
+        if (alertOnError) alert('Mutasi tersimpan di browser, tetapi GAGAL dicatat ke server: ' + error.message);
+        return false;
+    }
+};
+
+window.__expenseSyncSig = '';
+window.__postExpenseSync = async function(deletedIds) {
+    const rows = (typeof getExpenses === 'function' ? getExpenses() : []).map(e => ({
+        id_pengeluaran: String(e.id_pengeluaran),
+        tipe: e.tipe === 'PENDAPATAN' ? 'PENDAPATAN' : 'PENGELUARAN',
+        sumber: String(e.sumber || 'CASH'),
+        nominal: Number(e.nominal),
+        kategori: e.kategori || '',
+        deskripsi: e.deskripsi || '',
+        timestamp: e.timestamp || null,
+        inputBy: e.inputBy || '',
+        editBy: e.editBy || ''
+    })).filter(e => e.id_pengeluaran && e.nominal > 0);
+    const deleted = (deletedIds || []).map(String);
+    const sig = JSON.stringify(rows);
+    if (!deleted.length && sig === window.__expenseSyncSig) return;
+
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const doFetch = window.authFetch || window.fetch;
+    const response = await doFetch('/api/erp/expenses/sync', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+        body: JSON.stringify({ expenses: rows, deleted })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || json.status !== 'success') throw new Error(json.message || 'Server menolak jurnal');
+    window.__expenseSyncSig = sig;
+};
+
+window.syncExpensesToLedger = async function(deletedIds, alertOnError) {
+    try {
+        await window.__postExpenseSync(deletedIds);
+        if (typeof window.loadBankMutationCards === 'function') window.loadBankMutationCards(true);
+        if (typeof window.syncUniversalDatastore === 'function') window.syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
+        return true;
+    } catch (error) {
+        console.warn('Sinkron pengeluaran ke server gagal:', error);
+        if (alertOnError) alert('Jurnal tersimpan di browser, tetapi GAGAL dicatat ke server: ' + error.message);
+        return false;
+    }
+};

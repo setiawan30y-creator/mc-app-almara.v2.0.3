@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Support\PrivateUploads;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
@@ -29,6 +30,7 @@ class UploadController extends Controller
             'transactions/underlying' => 'transactions/underlying',
             'pickups/proofs' => 'pickups/proofs',
             'company/documents' => 'company/documents',
+            'pt/documents' => 'pt/documents',
         ];
 
         $category = $validated['category'];
@@ -94,12 +96,8 @@ class UploadController extends Controller
         }
 
         try {
-            $directory = public_path('uploads/' . $folders[$category]);
-            if (!File::exists($directory)) {
-                if (!File::makeDirectory($directory, 0755, true)) {
-                    throw new \Exception("Gagal membuat direktori: " . $directory);
-                }
-            }
+            // Disimpan di storage/app/private/uploads (bukan folder publik).
+            $directory = PrivateUploads::ensureDirectory($folders[$category]);
 
             $originalName = pathinfo($validated['filename'] ?? 'upload', PATHINFO_FILENAME);
             $safeName = Str::slug($originalName) ?: 'upload';
@@ -112,11 +110,9 @@ class UploadController extends Controller
             if ($replaceUrl) {
                 $replacePath = parse_url($replaceUrl, PHP_URL_PATH) ?: '';
                 $expectedPrefix = '/uploads/' . $folders[$category] . '/';
+                // Hanya boleh mengganti berkas di kategori yang sama.
                 if (Str::startsWith($replacePath, $expectedPrefix)) {
-                    $oldFile = public_path(ltrim($replacePath, '/'));
-                    if (File::exists($oldFile)) {
-                        File::delete($oldFile);
-                    }
+                    PrivateUploads::deleteByUrl($replaceUrl);
                 }
             }
 
@@ -137,7 +133,7 @@ class UploadController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Gagal mengunggah file ke server. Silakan periksa hak akses tulis (write permission) pada folder public/uploads di server Anda. Detail: ' . $e->getMessage(),
+                'message' => 'Gagal mengunggah file ke server. Silakan periksa hak akses tulis (write permission) pada folder storage/app/private/uploads di server Anda. Detail: ' . $e->getMessage(),
             ], 500);
         }
     }

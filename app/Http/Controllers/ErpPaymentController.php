@@ -107,10 +107,16 @@ class ErpPaymentController extends Controller
         }
         unset($payment);
 
+        // Kolom created_by di ledger ERP bertipe angka, sedangkan id pengguna aplikasi
+        // ini berupa teks (contoh: "u1"). Id non-angka dicatat sebagai null agar
+        // pencatatan pembayaran tidak gagal karena ketidakcocokan tipe.
+        $actorId = optional($request->user())->id;
+        $actorId = is_numeric($actorId) ? (int) $actorId : null;
+
         $result = $service->post(
             $transactionId,
             $validated['payments'],
-            optional($request->user())->id
+            $actorId
         );
 
         return response()->json([

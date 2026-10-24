@@ -1,9 +1,11 @@
 <?php
+// @2026-Alifiandra
 
 namespace App\Services;
 
 use App\Models\GoamlAlert;
 use App\Models\GoamlAlertTransaction;
+use App\Models\Currency;
 use App\Models\GoamlRule;
 use App\Models\Transaction;
 use Illuminate\Support\Carbon;
@@ -61,8 +63,17 @@ class GoamlComplianceService
              * sampai
              * 08/10/2026 09:00
              */
-            $days = max(1, (int) ($rule->period_days ?: 1));
-            $start = $end->copy()->subDays($days);
+            $periodUnit = strtoupper((string) ($rule->period_unit ?: 'DAY'));
+            $span = max(1, (int) ($rule->period_days ?: 1));
+
+            /*
+             * DAY   : jendela berjalan N hari sebelum transaksi pemicu.
+             * MONTH : N bulan kalender, dihitung dari tanggal 1 (00:00) bulan
+             *         pertama sampai transaksi pemicu. N = 1 berarti bulan berjalan.
+             */
+            $start = $periodUnit === 'MONTH'
+                ? $end->copy()->startOfMonth()->subMonths($span - 1)
+                : $end->copy()->subDays($span);
 
             $query = Transaction::query()
                 ->where('id_cif', $customerId)
@@ -95,6 +106,10 @@ class GoamlComplianceService
                 fn ($trx) => (float) $trx->total
             );
 
+            $useUsd = strtoupper((string) $rule->amount_unit) === 'USD';
+            $usdRate = $useUsd ? $this->usdRate() : null;
+            $totalUsd = $useUsd ? $this->usdEquivalentTotal($matched, $usdRate) : null;
+
             if (!$this->passesCount(
                 $count,
                 $rule->min_transactions
@@ -102,13 +117,23 @@ class GoamlComplianceService
                 continue;
             }
 
-            if (!$this->passesAmount(
-                $totalIdr,
-                $rule->total_amount_idr !== null
-                    ? (float) $rule->total_amount_idr
-                    : null,
-                $rule->amount_operator
-            )) {
+            if ($useUsd) {
+                $thresholdOk = $this->passesAmount(
+                    (float) $totalUsd,
+                    $rule->amount_usd !== null ? (float) $rule->amount_usd : null,
+                    $rule->amount_operator
+                );
+            } else {
+                $thresholdOk = $this->passesAmount(
+                    $totalIdr,
+                    $rule->total_amount_idr !== null
+                        ? (float) $rule->total_amount_idr
+                        : null,
+                    $rule->amount_operator
+                );
+            }
+
+            if (!$thresholdOk) {
                 continue;
             }
 
@@ -134,13 +159,22 @@ class GoamlComplianceService
              * Kita tidak mencari berdasarkan tanggal kalender.
              * Kita tetap menggunakan rolling-window timestamp.
              */
-            $existing = GoamlAlert::query()
+            $existingQuery = GoamlAlert::query()
                 ->where('rule_id', $rule->id)
                 ->where('customer_id', $customerId)
                 ->where('period_start', $start)
-                ->where('period_end', $periodEnd)
-                ->whereIn('status', ['OPEN', 'IN_REVIEW'])
-                ->first();
+                ->whereIn('status', ['OPEN', 'IN_REVIEW']);
+
+            /*
+             * Periode bulanan: satu temuan per nasabah per aturan per periode.
+             * Transaksi berikutnya pada bulan yang sama memperbarui temuan
+             * yang sama (total dan jendela diperbarui), bukan membuat baru.
+             */
+            if ($periodUnit !== 'MONTH') {
+                $existingQuery->where('period_end', $periodEnd);
+            }
+
+            $existing = $existingQuery->first();
 
             if ($existing) {
                 $this->syncAlertTransactions($existing, $matched);
@@ -151,20 +185,25 @@ class GoamlComplianceService
                     'classification' => $rule->classification,
                     'severity' => $rule->severity,
                     'total_amount_idr' => $totalIdr,
+                    'total_amount_usd' => $totalUsd,
                     'transaction_count' => $count,
                     'invoice_summary' => $this->invoiceSummary($matched),
+                    'period_end' => $periodEnd,
                     'reason' => $this->reason(
                         $rule,
                         $count,
                         $totalIdr,
                         $start,
-                        $periodEnd
+                        $periodEnd,
+                        $totalUsd
                     ),
                     'snapshot' => $this->snapshot(
                         $rule,
                         $matched,
                         $start,
-                        $periodEnd
+                        $periodEnd,
+                        $totalUsd,
+                        $usdRate
                     ),
                 ]);
 
@@ -180,6 +219,8 @@ class GoamlComplianceService
                 $matched,
                 $count,
                 $totalIdr,
+                $totalUsd,
+                $usdRate,
                 $start,
                 $periodEnd
             ) {
@@ -204,6 +245,7 @@ class GoamlComplianceService
                     'customer_id' => $customerId,
                     'customer_name' => $customerName,
                     'total_amount_idr' => $totalIdr,
+                    'total_amount_usd' => $totalUsd,
                     'transaction_count' => $count,
                     'invoice_summary' => $this->invoiceSummary($matched),
                     'period_start' => $start,
@@ -213,13 +255,16 @@ class GoamlComplianceService
                         $count,
                         $totalIdr,
                         $start,
-                        $periodEnd
+                        $periodEnd,
+                        $totalUsd
                     ),
                     'snapshot' => $this->snapshot(
                         $rule,
                         $matched,
                         $start,
-                        $periodEnd
+                        $periodEnd,
+                        $totalUsd,
+                        $usdRate
                     ),
                 ]);
 
@@ -235,6 +280,44 @@ class GoamlComplianceService
         }
 
         return $alerts;
+    }
+
+    /**
+     * Kurs acuan USD (tengah antara beli dan jual) dari master valuta.
+     * Dipakai mengonversi transaksi non-USD menjadi ekuivalen USD.
+     */
+    protected ?float $usdRateCache = null;
+
+    protected function usdRate(): ?float
+    {
+        if ($this->usdRateCache !== null) {
+            return $this->usdRateCache ?: null;
+        }
+
+        $currency = Currency::query()->where('code', 'USD')->first();
+        $buy = (float) ($currency->buy ?? 0);
+        $sell = (float) ($currency->sell ?? 0);
+        $rate = ($buy > 0 && $sell > 0) ? ($buy + $sell) / 2 : max($buy, $sell);
+
+        $this->usdRateCache = $rate > 0 ? $rate : 0.0;
+
+        return $this->usdRateCache ?: null;
+    }
+
+    /**
+     * Ekuivalen USD: transaksi USD memakai nominalnya langsung; valuta lain
+     * dikonversi dari nilai Rupiah dengan kurs acuan USD. Tanpa kurs acuan,
+     * transaksi non-USD tidak dapat dikonversi dan dihitung 0.
+     */
+    protected function usdEquivalentTotal(Collection $transactions, ?float $usdRate): float
+    {
+        return round((float) $transactions->sum(function ($trx) use ($usdRate) {
+            if (strtoupper((string) $trx->valuta) === 'USD') {
+                return (float) $trx->nominal;
+            }
+
+            return $usdRate ? ((float) $trx->total) / $usdRate : 0.0;
+        }), 2);
     }
 
     protected function passesCount(
@@ -306,7 +389,8 @@ class GoamlComplianceService
         int $count,
         float $totalIdr,
         Carbon $start,
-        Carbon $end
+        Carbon $end,
+        ?float $totalUsd = null
     ): string {
         $amount = number_format(
             $totalIdr,
@@ -324,6 +408,9 @@ class GoamlComplianceService
             . $count
             . ' transaksi dengan total Rp'
             . $amount
+            . ($totalUsd !== null && strtoupper((string) $rule->amount_unit) === 'USD'
+                ? ' (ekuivalen USD ' . number_format($totalUsd, 2, ',', '.') . ')'
+                : '')
             . ' pada periode '
             . $start->format('d/m/Y H:i')
             . ' s.d. '
@@ -336,7 +423,9 @@ class GoamlComplianceService
         GoamlRule $rule,
         Collection $transactions,
         Carbon $start,
-        Carbon $end
+        Carbon $end,
+        ?float $totalUsd = null,
+        ?float $usdRate = null
     ): array {
         return [
             'rule_id' => $rule->id,
@@ -348,6 +437,14 @@ class GoamlComplianceService
             'regulation_article' => $rule->regulation_article,
             'result_type' => $rule->result_type,
             'classification' => $rule->classification,
+            'period_unit' => strtoupper((string) ($rule->period_unit ?: 'DAY')),
+            'period_span' => (int) ($rule->period_days ?: 1),
+            'amount_unit' => strtoupper((string) ($rule->amount_unit ?: 'IDR')),
+            'amount_usd_threshold' => $rule->amount_usd !== null ? (float) $rule->amount_usd : null,
+            'amount_idr_threshold' => $rule->total_amount_idr !== null ? (float) $rule->total_amount_idr : null,
+            'amount_operator' => $rule->amount_operator,
+            'total_usd' => $totalUsd,
+            'usd_rate' => $usdRate,
             'period_start' => $start->toDateTimeString(),
             'period_end' => $end->toDateTimeString(),
             'transaction_count' => $transactions->count(),

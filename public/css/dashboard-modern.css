@@ -1,0 +1,309 @@
+/* @2026-Alifiandra
+ * =====================================================================
+ * dashboard-modern.css  —  Tampilan halaman Dashboard (modern, bersih)
+ *
+ * Hanya berlaku di #dashboard-view. Warna memakai variabel tema (--mc-*) sehingga
+ * ikut tema terang/gelap. Dimuat setelah business-ui.css dan sebelum mobile-app.css.
+ * Markup: resources/views/dashboard.blade.php  |  Perilaku: 02-dashboard.js,
+ * 30-dashboard-analytics.js, 65-dashboard-ui.js
+ * ===================================================================== */
+
+#dashboard-view {
+    --d-primary: var(--mc-primary, #1D6C5D);
+    --d-primary-2: var(--mc-primary-hover, #123D35);
+    --d-surface: var(--mc-card-bg, #fff);
+    --d-bg: var(--mc-page-bg, #F0F4F8);
+    --d-text: var(--mc-text, #18221F);
+    --d-muted: var(--mc-text-muted, #64748B);
+    --d-line: var(--mc-border, #E2E8F0);
+    --d-radius: 18px;
+    --d-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px rgba(15, 23, 42, .06);
+    container-type: inline-size;
+    container-name: dsh;
+}
+#dashboard-view *, #dashboard-view *::before, #dashboard-view *::after { box-sizing: border-box; }
+
+/* ---------- Banner / hero ---------- */
+#dashboard-view .dsh-hero {
+    position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap;
+    padding: 22px 26px; margin-bottom: 22px;
+    border-radius: 22px; color: #fff;
+    background:
+        radial-gradient(520px 220px at 100% 0%, rgba(255, 255, 255, .18), transparent 60%),
+        radial-gradient(380px 200px at 0% 120%, rgba(231, 198, 110, .22), transparent 60%),
+        linear-gradient(135deg, var(--d-primary) 0%, var(--d-primary-2) 100%);
+    box-shadow: 0 12px 32px color-mix(in srgb, var(--d-primary) 30%, transparent);
+}
+#dashboard-view .dsh-hero-text { min-width: 0; flex: 1 1 280px; }
+#dashboard-view .dsh-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(255, 255, 255, .16); backdrop-filter: blur(6px);
+    font-size: .78rem; font-weight: 600; letter-spacing: .01em;
+}
+body #dashboard-view.view-section .dsh-hero h2 {
+    margin: 12px 0 4px; font-size: clamp(1.25rem, 2.2vw, 1.7rem); font-weight: 700; line-height: 1.2; color: #fff !important;
+}
+body #dashboard-view.view-section .dsh-hero p { margin: 0; font-size: .9rem; color: rgba(255, 255, 255, .85) !important; }
+body #dashboard-view.view-section .dsh-eyebrow, body #dashboard-view.view-section .dsh-eyebrow * { color: #fff !important; }
+
+#dashboard-view .dsh-filter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#dashboard-view .dsh-filter-field {
+    display: flex; align-items: center; gap: 8px; margin: 0;
+    height: 42px; padding: 0 12px; border-radius: 12px;
+    background: rgba(255, 255, 255, .95); color: #334155;
+}
+#dashboard-view .dsh-filter-field input.form-control {
+    height: 38px !important; min-height: 0 !important; width: 140px; padding: 0 !important; margin: 0 !important;
+    border: 0 !important; background: transparent !important; box-shadow: none !important; color: #1e293b !important;
+    font-size: .88rem !important; font-weight: 600;
+}
+#dashboard-view .dsh-btn {
+    display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; margin: 0;
+    border-radius: 12px; border: 1px solid transparent; cursor: pointer;
+    font: inherit; font-size: .86rem; font-weight: 600; white-space: nowrap;
+    transition: transform .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+#dashboard-view .dsh-btn:active { transform: scale(.97); }
+#dashboard-view .dsh-btn-solid { background: #fff; color: var(--d-primary); }
+#dashboard-view .dsh-btn-solid:hover { box-shadow: 0 6px 16px rgba(0, 0, 0, .18); }
+#dashboard-view .dsh-btn-ghost { background: rgba(255, 255, 255, .14); color: #fff; border-color: rgba(255, 255, 255, .28); }
+#dashboard-view .dsh-btn-ghost:hover { background: rgba(255, 255, 255, .24); }
+
+/* ---------- Judul bagian ---------- */
+#dashboard-view .dsh-section-title {
+    display: flex; align-items: center; gap: 10px; margin: 26px 2px 12px;
+    font-size: .74rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--d-muted);
+}
+#dashboard-view .dsh-section-title::after { content: ""; flex: 1; height: 1px; background: var(--d-line); }
+#dashboard-view .dsh-hero + .dsh-section-title { margin-top: 0; }
+
+/* ---------- Kartu KPI ---------- */
+#dashboard-view .dsh-kpi-grid { display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#dashboard-view .dsh-kpi {
+    --tone: var(--d-primary);
+    position: relative; overflow: hidden; min-width: 0;
+    display: flex; align-items: flex-start; gap: 14px;
+    padding: 18px; border-radius: var(--d-radius);
+    background: var(--d-surface); border: 1px solid var(--d-line); box-shadow: var(--d-shadow);
+    transition: transform .2s ease, box-shadow .2s ease;
+}
+#dashboard-view .dsh-kpi:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(15, 23, 42, .05), 0 14px 30px rgba(15, 23, 42, .1); }
+#dashboard-view .dsh-kpi::after {
+    content: ""; position: absolute; inset: auto -30px -40px auto; width: 120px; height: 120px; border-radius: 50%;
+    background: color-mix(in srgb, var(--tone) 9%, transparent); pointer-events: none;
+}
+#dashboard-view .dsh-kpi-icon {
+    flex: 0 0 auto; width: 46px; height: 46px; border-radius: 14px;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 1.1rem;
+    color: var(--tone); background: color-mix(in srgb, var(--tone) 14%, transparent);
+}
+#dashboard-view .dsh-kpi .stat-details { min-width: 0; flex: 1; position: relative; z-index: 1; }
+#dashboard-view .dsh-kpi .stat-details h3 {
+    margin: 2px 0 6px; font-size: .78rem; font-weight: 600; color: var(--d-muted); letter-spacing: .01em; text-transform: none;
+}
+#dashboard-view .dsh-kpi .stat-value {
+    margin: 0; font-size: clamp(1.1rem, 1.7cqw, 1.45rem); font-weight: 700; line-height: 1.2; color: var(--d-text);
+    font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+#dashboard-view .dsh-hint { display: block; margin-top: 6px; font-size: .74rem; color: var(--d-muted); line-height: 1.35; }
+#dashboard-view .dsh-tone-teal   { --tone: #1D6C5D; }
+#dashboard-view .dsh-tone-blue   { --tone: #2563EB; }
+#dashboard-view .dsh-tone-violet { --tone: #7C3AED; }
+#dashboard-view .dsh-tone-green  { --tone: #16A34A; }
+#dashboard-view .dsh-tone-red    { --tone: #DC2626; }
+#dashboard-view .dsh-tone-amber  { --tone: #D97706; }
+
+/* Kartu profit: disorot */
+#dashboard-view .dsh-kpi-hero {
+    border: 0; color: #fff;
+    background: linear-gradient(135deg, #16A34A 0%, #0F766E 100%);
+    box-shadow: 0 10px 26px rgba(22, 163, 74, .28);
+}
+#dashboard-view .dsh-kpi-hero::after { background: rgba(255, 255, 255, .12); }
+#dashboard-view .dsh-kpi-hero .dsh-kpi-icon { color: #fff; background: rgba(255, 255, 255, .2); }
+body #dashboard-view.view-section .dsh-kpi-hero .stat-details h3 { color: rgba(255, 255, 255, .88) !important; }
+body #dashboard-view.view-section .dsh-kpi-hero .stat-value { color: #fff !important; }
+
+/* Chip bank */
+#dashboard-view .dsh-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+#dashboard-view .dsh-chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
+    font-size: .72rem; font-weight: 500; border: 1px solid transparent; white-space: nowrap;
+}
+#dashboard-view .dsh-chip strong { font-weight: 700; font-variant-numeric: tabular-nums; }
+#dashboard-view .dsh-chip-blue  { color: #1D4ED8; background: rgba(37, 99, 235, .1);  border-color: rgba(37, 99, 235, .22); }
+#dashboard-view .dsh-chip-amber { color: #B45309; background: rgba(217, 119, 6, .1);  border-color: rgba(217, 119, 6, .24); }
+
+/* ---------- Kartu umum + judul kartu ---------- */
+body #dashboard-view.view-section .dsh-card {
+    min-width: 0; margin: 0; padding: 20px;
+    background: var(--d-surface) !important; border: 1px solid var(--d-line) !important; border-radius: var(--d-radius) !important; box-shadow: var(--d-shadow) !important;
+}
+#dashboard-view .dsh-card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap;
+    flex: 0 0 auto; min-height: 40px; margin: 0 0 14px; padding: 0; border: 0;
+}
+#dashboard-view .dsh-card-head h3 {
+    display: flex; align-items: center; gap: 10px; margin: 0;
+    font-size: 1rem; font-weight: 700; color: var(--d-text);
+}
+#dashboard-view .dsh-card-head h3 > i {
+    width: 32px; height: 32px; border-radius: 10px; flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center; font-size: .85rem;
+    color: var(--d-primary); background: color-mix(in srgb, var(--d-primary) 12%, transparent);
+}
+
+/* ---------- Grafik + stok ---------- */
+#dashboard-view .dsh-market { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; margin-top: 18px; align-items: stretch; }
+#dashboard-view .dsh-market > .dsh-card { height: 470px; display: flex; flex-direction: column; overflow: hidden; }
+#dashboard-view .dsh-chart-box { position: relative; flex: 1 1 auto; min-height: 0; }
+#dashboard-view .dsh-chart-box canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
+body #dashboard-view.view-section .chart-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+body #dashboard-view.view-section .chart-range-tabs {
+    display: inline-flex; gap: 2px; padding: 3px; border-radius: 12px;
+    background: color-mix(in srgb, var(--d-muted) 10%, transparent); border: 0 !important;
+}
+body #dashboard-view.view-section .chart-range-btn {
+    min-width: 36px; height: 30px; padding: 0 10px; border: 0 !important; border-radius: 9px;
+    background: transparent !important; color: var(--d-muted) !important; font-size: .78rem; font-weight: 700; cursor: pointer;
+    transition: background-color .15s ease, color .15s ease;
+}
+body #dashboard-view.view-section .chart-range-btn:hover { color: var(--d-text) !important; }
+body #dashboard-view.view-section .chart-range-btn.active {
+    background: var(--d-surface) !important; color: var(--d-primary) !important; box-shadow: 0 1px 4px rgba(15, 23, 42, .14);
+}
+body #dashboard-view.view-section .chart-currency-select {
+    width: 150px; min-width: 130px; height: 38px !important; min-height: 0 !important; padding: 0 34px 0 12px !important; line-height: 38px;
+    border-radius: 11px !important; font-size: .84rem !important; font-weight: 600 !important;
+    background-color: var(--mc-input-bg, #fff) !important; color: var(--d-text) !important; border: 1px solid var(--d-line) !important;
+}
+
+body #dashboard-view.view-section .stock-search { position: relative; width: min(180px, 100%); }
+body #dashboard-view.view-section .stock-search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--d-muted); font-size: .8rem; pointer-events: none; }
+body #dashboard-view.view-section .stock-search .form-control {
+    height: 38px !important; min-height: 0 !important; padding: 0 12px 0 34px !important; border-radius: 11px !important;
+    font-size: .86rem !important; font-weight: 600; background: var(--mc-input-bg, #fff) !important; border: 1px solid var(--d-line) !important; color: var(--d-text) !important;
+}
+body #dashboard-view.view-section .stock-list {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; margin-right: -4px;
+    display: flex !important; flex-direction: column; gap: 8px; scrollbar-width: thin;
+}
+body #dashboard-view.view-section .stock-item {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "identity metrics"; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--d-muted) 6%, var(--d-surface)) !important;
+    border: 1px solid var(--d-line) !important; transition: border-color .15s ease, transform .15s ease;
+}
+body #dashboard-view.view-section .stock-item:hover { border-color: color-mix(in srgb, var(--d-primary) 45%, var(--d-line)) !important; transform: translateX(2px); }
+#dashboard-view .stock-identity { grid-area: identity; display: flex; align-items: center; gap: 10px; min-width: 0; }
+#dashboard-view .stock-metrics { grid-area: metrics; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
+body #dashboard-view.view-section .stock-flag {
+    width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; overflow: hidden; position: relative;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--d-muted) 14%, var(--d-surface)); color: var(--d-text);
+    border: 2px solid var(--d-surface); box-shadow: 0 0 0 1px var(--d-line), 0 3px 8px rgba(15, 23, 42, .12);
+    font-size: .7rem; font-weight: 800;
+}
+body #dashboard-view.view-section .stock-flag::after { display: none; }
+body #dashboard-view.view-section .stock-flag img { transform: none; }
+body #dashboard-view.view-section .stock-code { font-size: 1.02rem; font-weight: 800; color: var(--d-text) !important; }
+#dashboard-view .status-indicator { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+#dashboard-view .status-aman { background: #16A34A; box-shadow: 0 0 0 3px rgba(22, 163, 74, .18); }
+#dashboard-view .status-bahaya { background: #DC2626; box-shadow: 0 0 0 3px rgba(220, 38, 38, .18); animation: dsh-pulse 1.6s ease-in-out infinite; }
+@keyframes dsh-pulse { 50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); } }
+body #dashboard-view.view-section .stock-amount { font-family: inherit !important; font-size: 1rem; font-weight: 800; color: var(--d-text) !important; font-variant-numeric: tabular-nums; }
+#dashboard-view .stock-rate-pair { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+body #dashboard-view.view-section .stock-rate-chip {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 8px; font-size: .7rem;
+    background: transparent !important; border: 1px solid var(--d-line) !important; color: var(--d-muted) !important;
+}
+#dashboard-view .stock-rate-chip strong { font-weight: 700; color: var(--d-text); font-variant-numeric: tabular-nums; }
+#dashboard-view .stock-rate-buy  { border-color: rgba(22, 163, 74, .3) !important; }
+#dashboard-view .stock-rate-buy strong  { color: #15803D; }
+#dashboard-view .stock-rate-sell { border-color: rgba(220, 38, 38, .3) !important; }
+#dashboard-view .stock-rate-sell strong { color: #B91C1C; }
+#dashboard-view .stock-empty { padding: 28px 12px; text-align: center; color: var(--d-muted); font-size: .9rem; }
+
+/* ---------- Aktivitas terbaru ---------- */
+body #dashboard-view.view-section .dsh-recent { margin-top: 16px; }
+#dashboard-view .dsh-recent .table-responsive { border: 0 !important; background: transparent !important; border-radius: 0 !important; box-shadow: none !important; }
+#dashboard-view .dsh-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .86rem; }
+#dashboard-view .dsh-table thead th {
+    padding: 10px 14px; text-align: left; white-space: nowrap; border: 0;
+    font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--d-muted); background: color-mix(in srgb, var(--d-muted) 7%, var(--d-surface));
+}
+#dashboard-view .dsh-table thead th:first-child { border-radius: 10px 0 0 10px; }
+#dashboard-view .dsh-table thead th:last-child  { border-radius: 0 10px 10px 0; }
+#dashboard-view .dsh-table tbody td { padding: 13px 14px; border: 0; border-bottom: 1px solid var(--d-line); color: var(--d-text); vertical-align: middle; font-variant-numeric: tabular-nums; }
+#dashboard-view .dsh-table tbody tr:last-child td { border-bottom: 0; }
+#dashboard-view .dsh-table tbody tr:hover td { background: color-mix(in srgb, var(--d-primary) 4%, transparent); }
+#dashboard-view .dsh-table .font-weight-bold {
+    display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .72rem; font-weight: 700; letter-spacing: .03em;
+}
+#dashboard-view .dsh-table .text-green { background: rgba(22, 163, 74, .12); color: #15803D !important; }
+#dashboard-view .dsh-table .text-red   { background: rgba(220, 38, 38, .1);  color: #B91C1C !important; }
+
+/* ---------- Analitik ---------- */
+#dashboard-view .mc-dashboard-analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+#dashboard-view .mc-analytics-card { display: flex; flex-direction: column; height: 100%; }
+#dashboard-view .mc-chart-wrap { position: relative; height: 260px; flex: 0 0 auto; }
+#dashboard-view .mc-analytics-badge {
+    padding: 4px 10px; border-radius: 999px; white-space: nowrap; font-size: .72rem; font-weight: 600;
+    color: var(--d-primary); background: color-mix(in srgb, var(--d-primary) 11%, transparent); border: 1px solid color-mix(in srgb, var(--d-primary) 24%, transparent);
+}
+#dashboard-view .mc-compliance-mini { display: grid; gap: 8px; margin: 4px 0 14px; flex: 1; align-content: start; }
+#dashboard-view .mc-compliance-mini div {
+    display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 12px;
+    background: color-mix(in srgb, var(--d-muted) 7%, var(--d-surface)); border: 1px solid var(--d-line);
+}
+#dashboard-view .mc-compliance-mini span { font-size: .84rem; color: var(--d-muted); }
+#dashboard-view .mc-compliance-mini strong { font-size: 1.05rem; font-weight: 700; color: var(--d-text); }
+
+/* ---------- Animasi masuk ---------- */
+@media (prefers-reduced-motion: no-preference) {
+    #dashboard-view.active .dsh-hero,
+    #dashboard-view.active .dsh-kpi,
+    #dashboard-view.active .dsh-card { animation: dsh-in .45s cubic-bezier(.2, .8, .2, 1) both; }
+    #dashboard-view.active .dsh-kpi:nth-child(2) { animation-delay: .05s; }
+    #dashboard-view.active .dsh-kpi:nth-child(3) { animation-delay: .1s; }
+    #dashboard-view.active .dsh-kpi:nth-child(4) { animation-delay: .15s; }
+}
+@keyframes dsh-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Responsif (mengikuti lebar halaman, bukan layar) ---------- */
+@container dsh (max-width: 900px) {
+    .dsh-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+@container dsh (max-width: 960px) {
+    .dsh-market { grid-template-columns: minmax(0, 1fr) !important; }
+    .dsh-market > .dsh-card { height: 430px !important; }
+}
+@container dsh (max-width: 820px) {
+    .mc-dashboard-analytics-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+@container dsh (max-width: 560px) {
+    .dsh-hero { padding: 18px 16px !important; border-radius: 18px !important; }
+    .dsh-filter { width: 100%; }
+    .dsh-filter-field { flex: 1 1 100%; }
+    .dsh-filter-field input.form-control { width: 100% !important; }
+    .dsh-btn { flex: 1 1 0; justify-content: center; }
+    .dsh-kpi-grid { gap: 10px !important; }
+    .dsh-kpi { flex-direction: column; gap: 10px !important; padding: 14px !important; }
+    .dsh-kpi-icon { width: 38px !important; height: 38px !important; border-radius: 12px !important; font-size: .95rem !important; }
+    .dsh-kpi .stat-value { font-size: 1.02rem !important; }
+    .dsh-card { padding: 14px !important; border-radius: 16px !important; }
+    .dsh-market > .dsh-card { height: 400px !important; }
+    .dsh-card-head { align-items: flex-start !important; }
+    .chart-controls { width: 100%; justify-content: space-between !important; }
+    .chart-range-tabs { overflow-x: auto; max-width: 100%; }
+    .stock-search { width: 100% !important; }
+    .mc-chart-wrap { height: 230px !important; }
+    body #dashboard-view.view-section .stock-item { grid-template-columns: minmax(0, 1fr) !important; grid-template-areas: "identity" "metrics" !important; gap: 8px !important; }
+    #dashboard-view .stock-metrics { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    #dashboard-view .stock-rate-pair { justify-content: flex-start; }
+}
+@container dsh (max-width: 340px) {
+    .dsh-kpi-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}

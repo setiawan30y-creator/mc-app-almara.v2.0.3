@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\TenantDomain;
+use App\Support\LoginPageStore;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,11 +15,28 @@ class AuthController extends Controller
 {
     public function showLogin(Request $request)
     {
-        if (Auth::check()) {
+        // Admin yang sudah login boleh melihat pratinjau halaman login (/login?preview=1).
+        $role = strtolower((string) (Auth::user()?->role ?? ''));
+        $preview = $request->boolean('preview') && in_array($role, ['owner', 'superadmin', 'admin'], true);
+
+        if (Auth::check() && !$preview) {
             return redirect('/');
         }
 
-        return view('auth.login');
+        return view('auth.login', ['login' => LoginPageStore::view(), 'preview' => $preview]);
+    }
+
+    public function uploadFavicon(Request $request)
+    {
+        $request->validate(['favicon' => ['required', 'file', 'max:1024']]);
+        $file = $request->file('favicon');
+        $info = @getimagesize($file->getRealPath());
+        if (!$info || ($info[2] ?? null) !== IMAGETYPE_PNG) {
+            return response()->json(['status' => 'error', 'message' => 'Gunakan file PNG untuk favicon.'], 422);
+        }
+        $file->move(public_path(), 'favicon.png');
+
+        return response()->json(['status' => 'success', 'url' => asset('favicon.png') . '?v=' . time()]);
     }
 
     public function login(Request $request)

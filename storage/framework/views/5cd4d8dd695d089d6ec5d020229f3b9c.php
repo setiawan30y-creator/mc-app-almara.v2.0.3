@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="author" content="&#64;2026-Alifiandra">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="<?php echo e(csrf_token()); ?>">
     <meta name="theme-color" content="#047857">
@@ -74,7 +75,6 @@
             return fetch(url, Object.assign({ credentials: 'same-origin' }, options, { headers: headers }));
         };
 
-        window.isPerformingSilentLogin = false;
         window.isHandlingSingleSessionConflict = false;
 
         function clearLocalAuthState() {
@@ -82,7 +82,7 @@
             try { sessionStorage.removeItem('mc_currentUser_password'); } catch (e) {}
         }
 
-        async function handleSingleSessionConflict(message) {
+        async function handleSingleSessionConflict(message, title) {
             if (window.isHandlingSingleSessionConflict) return;
             window.isHandlingSingleSessionConflict = true;
             clearLocalAuthState();
@@ -92,7 +92,7 @@
                 if (typeof Swal !== 'undefined' && typeof Swal.fire === 'function') {
                     await Swal.fire({
                         icon: 'warning',
-                        title: 'Sesi Dipindah',
+                        title: title || 'Sesi Dipindah',
                         text: text,
                         timer: 1800,
                         showConfirmButton: false,
@@ -105,46 +105,6 @@
             } catch (e) {}
 
             window.mcSafeReload('single-session-conflict');
-        }
-
-        async function silentReLogin() {
-            if (window.isPerformingSilentLogin) return false;
-            window.isPerformingSilentLogin = true;
-            try {
-                var currentUser = JSON.parse(localStorage.getItem('mc_currentUser'));
-                var password = sessionStorage.getItem('mc_currentUser_password');
-                if (!currentUser || !currentUser.username || !password) {
-                    window.isPerformingSilentLogin = false;
-                    return false;
-                }
-                var response = await nativeFetch('/login', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CSRF-TOKEN': window.getCsrfToken()
-                    },
-                    body: JSON.stringify({ username: currentUser.username, password: password })
-                });
-                var result = await response.json().catch(function() { return {}; });
-                if (response.ok && result.user) {
-                    if (result.csrfToken) window.setCsrfToken(result.csrfToken);
-                    localStorage.setItem('mc_currentUser', JSON.stringify(result.user));
-                    window.isPerformingSilentLogin = false;
-                    
-                    // Hide offline indicator if active
-                    var ind = document.getElementById('connectionStatusIndicator');
-                    if (ind) ind.style.display = 'none';
-                    window.sessionExpiredAcknowledged = false;
-                    
-                    return true;
-                }
-            } catch (e) {
-                console.error("Silent re-login error:", e);
-            }
-            window.isPerformingSilentLogin = false;
-            return false;
         }
 
         // Global manual re-auth / logout confirm
@@ -220,25 +180,25 @@
                     if (isSameOriginApi && response.status === 401) {
                         var hasLocalUser = localStorage.getItem('mc_currentUser');
                         if (hasLocalUser) {
-                            // Coba re-login otomatis di latar belakang
-                            var loggedIn = await silentReLogin();
-                            if (loggedIn) {
-                                // Update token CSRF and retry
-                                if (options.headers) {
-                                    options.headers['X-CSRF-TOKEN'] = window.getCsrfToken();
-                                }
-                                return await nativeFetch(resource, options);
-                            }
-                            
-                            // Password tidak lagi disimpan di browser, jadi re-login otomatis tidak mungkin.
-                            // Sesi server tidak valid: bersihkan status login lokal dan kembali ke layar login.
+                            // Tidak ada login ulang otomatis (password tidak disimpan di browser).
                             // Mode dev bypass menyuntik login admin di setiap muat ulang; jangan redirect (bisa loop).
                             if (!window.__MC_DEV_BYPASS) {
-                                handleSingleSessionConflict('Sesi login berakhir. Silakan login kembali.');
+                                var authCode = '';
+                                try {
+                                    var authBody = await response.clone().json().catch(function() { return {}; });
+                                    authCode = (authBody && authBody.code) || '';
+                                } catch (e) {}
+                                if (authCode === 'session_idle_timeout') {
+                                    handleSingleSessionConflict('Sesi berakhir karena tidak ada aktivitas. Silakan login kembali.', 'Sesi Berakhir');
+                                } else if (authCode === 'single_session_conflict') {
+                                    handleSingleSessionConflict('Akun ini sedang dipakai di perangkat lain. Silakan login kembali.', 'Sesi Dipindah');
+                                } else {
+                                    handleSingleSessionConflict('Sesi login berakhir. Silakan login kembali.', 'Sesi Berakhir');
+                                }
                                 return response;
                             }
 
-                            // Jika re-login otomatis gagal, dan belum diakui (acknowledged) oleh user
+                            // Mode dev bypass: tampilkan pemberitahuan sekali, tanpa redirect
                             if (!window.isHandlingSessionExpiry && !window.sessionExpiredAcknowledged) {
                                 window.isHandlingSessionExpiry = true;
                                 
@@ -337,137 +297,14 @@
     <link rel="stylesheet" href="<?php echo e(asset('css/styles.css?v=' . time())); ?>">
     <link rel="stylesheet" href="<?php echo e(asset('css/apv-theme.css?v=' . time())); ?>" id="apvThemeCSS">
     <!-- Global MC-Almara Theme Engine -->
-    <script src="<?php echo e(asset('js/mc-theme-engine.js?v=20261006-1')); ?>"></script>
+    <script src="<?php echo e(asset('js/mc-theme-engine.js?v=20261014-1')); ?>"></script>
     <link rel="stylesheet" href="<?php echo e(asset('css/business-ui.css?v=' . time())); ?>">
-    <style id="almara-sidebar-color-icons">
-    /* ALMARA ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Sidebar icon colors */
-    .sidebar .nav-item > i:first-child{
-        width:34px;height:34px;min-width:34px;border-radius:10px;
-        display:inline-flex;align-items:center;justify-content:center;
-        margin-right:10px;font-size:15px;
-        background:linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.04));
-        border:1px solid rgba(255,255,255,.10);
-        box-shadow:0 3px 10px rgba(0,0,0,.16);
-        transition:transform .18s ease,filter .18s ease,box-shadow .18s ease;
-    }
-    .sidebar .nav-item:hover > i:first-child{transform:translateY(-1px) scale(1.05);filter:brightness(1.12);box-shadow:0 5px 14px rgba(0,0,0,.22)}
-    .sidebar .nav-item[data-sidebar-group="transaksi"] > i:first-child{color:#22c55e!important;background:rgba(34,197,94,.13);border-color:rgba(34,197,94,.28)}
-    .sidebar .nav-item[data-sidebar-group="nasabah"] > i:first-child{color:#38bdf8!important;background:rgba(56,189,248,.13);border-color:rgba(56,189,248,.28)}
-    .sidebar .nav-item[data-sidebar-group="master"] > i:first-child{color:#a78bfa!important;background:rgba(167,139,250,.13);border-color:rgba(167,139,250,.28)}
-    .sidebar .nav-item[data-sidebar-group="keuangan"] > i:first-child{color:#fbbf24!important;background:rgba(251,191,36,.13);border-color:rgba(251,191,36,.28)}
-    .sidebar .nav-item[data-sidebar-group="laporan"] > i:first-child{color:#60a5fa!important;background:rgba(96,165,250,.13);border-color:rgba(96,165,250,.28)}
-    .sidebar .nav-item[data-sidebar-group="bi"] > i:first-child{color:#f472b6!important;background:rgba(244,114,182,.13);border-color:rgba(244,114,182,.28)}
-    .sidebar .nav-item[data-sidebar-group="tools"] > i:first-child{color:#c084fc!important;background:rgba(192,132,252,.13);border-color:rgba(192,132,252,.28)}
-    .sidebar .nav-item[data-sidebar-group="administrasi"] > i:first-child{color:#fb7185!important;background:rgba(251,113,133,.13);border-color:rgba(251,113,133,.28)}
-    .sidebar .nav-item[data-sidebar-group="pengaturan"] > i:first-child{color:#f97316!important;background:rgba(249,115,22,.13);border-color:rgba(249,115,22,.28)}
-    .sidebar .nav-item[data-sidebar-group="master"][data-target="currency-view"] > i:first-child{color:#06b6d4!important}
-    .sidebar .nav-item[data-sidebar-group="bi"][data-target="laporan-goaml-view"] > i:first-child{color:#ef4444!important;background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.30)}
-    .sidebar .nav-item[data-sidebar-group="bi"][data-target="laporan-lku-view"] > i:first-child{color:#10b981!important;background:rgba(16,185,129,.14);border-color:rgba(16,185,129,.30)}
-    /* ALMARA ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Sidebar brand/header: clean, balanced and non-overlapping */
-    .almara-sidebar-header{
-        min-height:92px;
-        height:auto;
-        padding:10px 14px;
-        gap:8px;
-        box-sizing:border-box;
-        background:linear-gradient(180deg,rgba(4,120,87,.16),rgba(4,120,87,.04));
-    }
-    .almara-sidebar-brand{
-        flex:1 1 auto;
-        min-width:0;
-        max-width:calc(100% - 42px);
-        gap:9px!important;
-        align-items:center!important;
-    }
-    .almara-sidebar-logo-wrap{
-        width:38px;
-        min-width:38px;
-        height:52px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        flex-shrink:0;
-    }
-    .almara-sidebar-logo-wrap img{
-        width:38px!important;
-        height:46px!important;
-        object-fit:contain;
-        display:block;
-    }
-    .almara-sidebar-brand-text{
-        min-width:0;
-        overflow:hidden;
-        line-height:1;
-    }
-    .almara-sidebar-brand-text h2{
-        margin:0!important;
-        font-size:.86rem!important;
-        line-height:1.08!important;
-        letter-spacing:.25px!important;
-        font-weight:800!important;
-        color:#f8fafc;
-        white-space:normal;
-    }
-    .almara-sidebar-subtitle{
-        display:block;
-        margin-top:5px!important;
-        font-size:.57rem!important;
-        line-height:1.15!important;
-        letter-spacing:.65px!important;
-        color:#a7f3d0!important;
-        font-weight:700;
-        white-space:nowrap;
-    }
-    .almara-sidebar-version{
-        display:inline-block;
-        margin-top:4px!important;
-        padding:2px 6px;
-        border-radius:999px;
-        font-size:.52rem!important;
-        line-height:1.05!important;
-        letter-spacing:.35px;
-        color:#d1fae5!important;
-        background:rgba(16,185,129,.16);
-        border:1px solid rgba(167,243,208,.20);
-    }
-    .almara-sidebar-header .collapse-sidebar{
-        flex:0 0 34px;
-        margin-left:auto;
-    }
-    .sidebar-collapsed .almara-sidebar-header{
-        min-height:64px;
-        height:64px;
-        padding:10px 12px;
-    }
-    .sidebar-collapsed .almara-sidebar-logo-wrap{
-        width:38px;
-        min-width:38px;
-        height:40px;
-    }
-    .sidebar-collapsed .almara-sidebar-logo-wrap img{
-        width:34px!important;
-        height:38px!important;
-    }
-    @media (max-width:900px){
-        .almara-sidebar-header{min-height:86px;padding:9px 12px}
-        .almara-sidebar-brand-text h2{font-size:.82rem!important}
-        .almara-sidebar-subtitle{font-size:.54rem!important}
-    }
-</style>
-<style id="mc-dashboard-analytics-style">
-.mc-dashboard-analytics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-.mc-analytics-card{min-width:0}
-.mc-analytics-card .panel-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.mc-analytics-badge{font-size:.72rem;padding:4px 8px;border-radius:999px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);color:#6ee7b7;white-space:nowrap}
-.mc-chart-wrap{height:250px;position:relative}
-.mc-chart-wrap-short{height:220px}
-.mc-analytics-wide{grid-column:1/-1}
-.mc-compliance-mini{display:grid;grid-template-columns:1fr;gap:9px;margin:12px 0 16px}
-.mc-compliance-mini div{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:8px;background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.10)}
-.mc-compliance-mini span{font-size:.82rem;color:#94a3b8}.mc-compliance-mini strong{font-size:1rem;color:#e2e8f0}
-@media(max-width:900px){.mc-dashboard-analytics-grid{grid-template-columns:1fr}.mc-analytics-wide{grid-column:auto}}
-</style>
-</head>
+    <link rel="stylesheet" href="<?php echo e(asset('css/dashboard-modern.css?v=' . time())); ?>">
+    <link rel="stylesheet" href="<?php echo e(asset('css/sidebar-modern.css?v=' . time())); ?>">
+    <link rel="stylesheet" href="<?php echo e(asset('css/sipesat-modern.css?v=' . time())); ?>">
+    <link rel="stylesheet" href="<?php echo e(asset('css/pt-reps.css?v=' . time())); ?>">
+    <link rel="stylesheet" href="<?php echo e(asset('css/mobile-app.css?v=' . time())); ?>">
+    </head>
 
 <body>
     <script>
@@ -493,7 +330,10 @@
         <div id="visual-error-list">Tidak ada error terdeteksi.</div>
     </div>
     <script>
+        // Pencatat error tampilan. Peringatan jinak peramban (ResizeObserver) diabaikan.
         window.onerror = function(msg, url, lineNo, columnNo, error) {
+            var text = String(msg || '');
+            if (/ResizeObserver loop/i.test(text)) { return true; }
             var logger = document.getElementById('visual-error-logger');
             var list = document.getElementById('visual-error-list');
             if (logger && list) {
@@ -502,7 +342,13 @@
                     list.innerHTML = '';
                 }
                 var fileName = url ? url.split('/').pop() : 'inline';
-                list.innerHTML += '<div>ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ <strong>' + msg + '</strong> (' + fileName + ':' + lineNo + ')</div>';
+                var div = document.createElement('div');
+                var strong = document.createElement('strong');
+                strong.textContent = text;
+                div.appendChild(document.createTextNode('\u2022 '));
+                div.appendChild(strong);
+                div.appendChild(document.createTextNode(' (' + fileName + ':' + lineNo + ')'));
+                list.appendChild(div);
             }
             return false;
         };
@@ -562,9 +408,9 @@
                         <img src="<?php echo e(asset('img/logo-almara.png')); ?>" alt="Logo Almara Putra Valasindo">
                     </div>
                     <div class="sidebar-brand-text almara-sidebar-brand-text">
-                        <h2>ALMARA PUTRA<br>VALASINDO</h2>
+                        <h2 id="sidebarBrandName">ALMARA PUTRA VALASINDO</h2>
                         <span class="almara-sidebar-subtitle">Authorized Money Changer</span>
-                        <span class="almara-sidebar-version">Versi 2.0.0</span>
+                        <span class="almara-sidebar-version">Versi 2.0.3</span>
                     </div>
                 </div>
                 <button class="collapse-sidebar" id="collapseSidebar" title="Ciutkan sidebar"><i class="fa-solid fa-angles-left"></i></button>
@@ -607,6 +453,7 @@
                     </button>
                     <div class="sidebar-group-items" data-sidebar-group-items="nasabah">
                     <a href="#" class="nav-item" data-target="customers-view" data-sidebar-group="nasabah"><i class="fa-solid fa-users"></i> Data Nasabah</a>
+                    <a href="#" class="nav-item" data-target="pt-rep-view" data-sidebar-group="nasabah"><i class="fa-solid fa-building-user"></i> Perwakilan PT</a>
                     <a href="#" class="nav-item" data-target="dtott-view" data-sidebar-group="nasabah"><i class="fa-solid fa-user-shield"></i> DTTOT</a>
                     </div>
                 </section>
@@ -619,7 +466,7 @@
                     <div class="sidebar-group-items" data-sidebar-group-items="master">
                     <a href="#" class="nav-item" data-target="currency-view" data-sidebar-group="master"><i class="fa-solid fa-money-bill-transfer"></i> Manajemen Kurs</a>
                     <a href="#" class="nav-item" data-target="masterdata-view" data-sidebar-group="master"><i class="fa-solid fa-database"></i> Master Data</a>
-                    <a href="/papan-kurs" target="_blank" class="nav-item" data-sidebar-group="master" style="color:#10B981;"><i class="fa-solid fa-desktop" style="color:#10B981;"></i> Monitor Papan Kurs <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.75rem;margin-left:5px;opacity:.7;"></i></a>
+                    <a href="/papan-kurs" target="_blank" rel="noopener" class="nav-item nav-item--external" data-sidebar-group="master"><i class="fa-solid fa-desktop"></i> Monitor Papan Kurs <i class="fa-solid fa-arrow-up-right-from-square ext"></i></a>
                     </div>
                 </section>
 
@@ -644,7 +491,6 @@
                     <a href="#" class="nav-item" data-target="harian-view" data-sidebar-group="laporan"><i class="fa-solid fa-calendar-day"></i> Laporan Harian</a>
                     <a href="#" class="nav-item" data-target="laporan-posisi-valuta-view" data-sidebar-group="laporan"><i class="fa-solid fa-table-list"></i> Rekap Valuta</a>
                     <a href="#" class="nav-item" data-target="reports-view" data-sidebar-group="laporan"><i class="fa-solid fa-clock-rotate-left"></i> Riwayat Transaksi</a>
-                    <a href="#" class="nav-item" data-target="audit-view" data-sidebar-group="laporan"><i class="fa-solid fa-shield-halved"></i> RWT / Audit Trail</a>
                     <a href="#" class="nav-item" data-target="laporan-aset-view" data-sidebar-group="laporan"><i class="fa-solid fa-building"></i> Aset & Penyusutan</a>
                     <a href="#" class="nav-item" data-target="laporan-bukubesar-view" data-sidebar-group="laporan"><i class="fa-solid fa-book"></i> Buku Besar</a>
                     <a href="#" class="nav-item" data-target="laporan-coretax-view" data-sidebar-group="laporan"><i class="fa-solid fa-file-invoice-dollar"></i> CoreTax</a>
@@ -657,14 +503,13 @@
                         <i class="fa-solid fa-chevron-down sidebar-group-chevron"></i>
                     </button>
                     <div class="sidebar-group-items" data-sidebar-group-items="bi">
-                    <a href="#" class="nav-item" data-target="laporan-ekuitas-view" data-sidebar-group="bi"><i class="fa-solid fa-money-bill-trend-up"></i> Ekuitas</a>
                     <a href="#" class="nav-item" data-target="laporan-lku-view" data-sidebar-group="bi"><i class="fa-solid fa-file-invoice"></i> LKBU</a>
                     <a href="#" class="nav-item" data-target="laporan-granular-view" data-sidebar-group="bi"><i class="fa-solid fa-file-invoice"></i> Granular</a>
                     <a href="#" class="nav-item" data-target="laporan-sipesat-view" data-sidebar-group="bi"><i class="fa-solid fa-file-invoice"></i> Sipesat</a>
                     <a href="#" class="nav-item" data-target="laporan-goaml-view" data-sidebar-group="bi"><i class="fa-solid fa-file-invoice"></i> GoAML</a>
-                    <a href="#" class="nav-item" data-target="almara-regulatory-ai-view" data-sidebar-group="bi"><i class="fa-solid fa-scale-balanced"></i> <span data-regulatory-ai-menu-label>Almara Regulatory AI</span></a>
-                    <a href="#" class="nav-item" data-target="almara-regulatory-chat-view" data-sidebar-group="bi"><i class="fa-solid fa-comments"></i> Chat Regulatory AI</a>
                     <a href="#" class="nav-item" data-target="laporan-sipendar-view" data-sidebar-group="bi"><i class="fa-solid fa-file-invoice"></i> Sipendar</a>
+                    <a href="#" class="nav-item" data-target="almara-regulatory-chat-view" data-sidebar-group="bi"><i class="fa-solid fa-wand-magic-sparkles"></i> Chat Regulatory AI</a>
+                    <a href="#" class="nav-item" data-target="almara-regulatory-ai-view" data-sidebar-group="bi"><i class="fa-solid fa-book-bookmark"></i> Sumber Regulasi</a>
                     </div>
                 </section>
 
@@ -689,7 +534,6 @@
                     <a href="#" class="nav-item" data-target="hris-view" data-sidebar-group="administrasi"><i class="fa-solid fa-users-gear"></i> HRIS / Karyawan</a>
                     <a href="#" class="nav-item" data-target="documents-view" data-sidebar-group="administrasi"><i class="fa-solid fa-folder-open"></i> Penyimpanan Berkas</a>
                     <a href="#" class="nav-item" data-target="letter-number-view" data-sidebar-group="administrasi"><i class="fa-solid fa-file-signature"></i> Nomor Surat</a>
-                    <a href="#" class="nav-item" data-target="backup-view" data-sidebar-group="administrasi"><i class="fa-solid fa-database"></i> Backup & Restore</a>
                     </div>
                 </section>
 
@@ -699,19 +543,19 @@
                         <i class="fa-solid fa-chevron-down sidebar-group-chevron"></i>
                     </button>
                     <div class="sidebar-group-items" data-sidebar-group-items="pengaturan">
-                    <a href="#" class="nav-item" data-sidebar-group="pengaturan" data-sidebar-action="theme"><i class="fa-solid fa-palette"></i> Tema & Tampilan</a>
                     <a href="#" class="nav-item" data-target="settings-view" data-sidebar-group="pengaturan"><i class="fa-solid fa-gear"></i> Pengaturan</a>
                     </div>
                 </section>
             </nav>
-            <div class="sidebar-footer" style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
+            <div class="sidebar-footer">
                 <div class="user-info">
                     <i class="fa-solid fa-user-circle"></i>
                     <span>Admin Kasir<br><small>Shift 1</small></span>
                 </div>
-                <button class="btn btn-sm btn-outline w-100" onclick="manualSyncAll()" style="font-size: 0.8rem; border-color: #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, 0.05); padding: 6px; display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer;" title="Kirim data lokal ke server MySQL secara manual">
-                    <i class="fa-solid fa-cloud-arrow-up"></i> Sinkronkan Data
+                <button type="button" class="sb-sync" onclick="manualSyncAll()" title="Kirim data lokal ke server MySQL secara manual">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> <span>Sinkronkan Data</span>
                 </button>
+                <div class="dev-credit">&#64;2026-Alifiandra</div>
             </div>
         </aside>
 
@@ -772,7 +616,7 @@
                                 <span>Warna Teks Grup Sidebar</span>
                             </div>
                             <div id="mcSidebarGroupColors" class="mc-sidebar-group-colors">
-                                <label><span>Ringkasan</span><input type="color" data-sidebar-color="dashboard" value="#94A3B8"></label>
+                                <label><span>Ringkasan</span><input type="color" data-sidebar-color="dashboard" value="#0653c1"></label>
                                 <label><span>Transaksi & Operasional</span><input type="color" data-sidebar-color="transaksi" value="#94A3B8"></label>
                                 <label><span>Nasabah</span><input type="color" data-sidebar-color="nasabah" value="#94A3B8"></label>
                                 <label><span>Master Data & Valuta</span><input type="color" data-sidebar-color="master" value="#94A3B8"></label>
@@ -802,92 +646,97 @@
             <div class="view-container">
                 <!-- Dashboard View -->
                 <section id="dashboard-view" class="view-section active">
-                    <div class="mb-4" style="background: rgba(30, 41, 59, 0.6); border-left: 3px solid #3b82f6; border-radius: 6px; padding: 6px 15px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-top: 1px solid rgba(59, 130, 246, 0.15); border-right: 1px solid rgba(59, 130, 246, 0.15); border-bottom: 1px solid rgba(59, 130, 246, 0.15); box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                        <div style="font-size: 0.9rem; font-weight: 600; color: #f8fafc; display: flex; align-items: center; gap: 8px; white-space: nowrap;">
-                            <i class="fa-solid fa-calendar-day" style="color: #60a5fa;"></i> Tinjauan Hari Ini
+                    <!-- @2026-Alifiandra : Dashboard (desain modern). Semua ID dipakai oleh 02-dashboard.js & 30-dashboard-analytics.js -->
+                    <div class="dsh-hero">
+                        <div class="dsh-hero-text">
+                            <span class="dsh-eyebrow"><i class="fa-solid fa-calendar-day"></i> <span id="dshHeroDate">Tinjauan Hari Ini</span></span>
+                            <h2 id="dshGreeting">Ringkasan Operasional</h2>
+                            <p>Posisi kas, bank, stok valuta, dan transaksi dalam satu layar.</p>
                         </div>
-                        <div style="display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex: 1; flex-wrap: nowrap;">
-                            <input type="date" id="dashDateFilter" class="form-control" style="font-size: 0.8rem; padding: 2px 10px; height: 28px; line-height: 1.2; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(148, 163, 184, 0.3); color: #f8fafc; border-radius: 4px; width: 140px; margin: 0;" placeholder="Pilih Tanggal">
-                            <button class="btn btn-primary" style="padding: 0 10px; font-size: 0.8rem; height: 28px; line-height: 1.2; border-radius: 4px; display: flex; align-items: center; gap: 5px; white-space: nowrap; margin: 0;" onclick="loadDashboard()"><i class="fa-solid fa-filter"></i> Terapkan</button>
-                            <button class="btn btn-outline" style="padding: 0 10px; font-size: 0.8rem; height: 28px; line-height: 1.2; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.4); color: #cbd5e1; display: flex; align-items: center; gap: 5px; background: transparent; white-space: nowrap; margin: 0;" onclick="document.getElementById('dashDateFilter').value = ''; loadDashboard();"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+                        <div class="dsh-filter" role="group" aria-label="Filter tanggal">
+                            <label class="dsh-filter-field">
+                                <i class="fa-regular fa-calendar"></i>
+                                <input type="date" id="dashDateFilter" class="form-control" aria-label="Pilih tanggal">
+                            </label>
+                            <button type="button" class="dsh-btn dsh-btn-solid" onclick="loadDashboard()"><i class="fa-solid fa-filter"></i> <span>Terapkan</span></button>
+                            <button type="button" class="dsh-btn dsh-btn-ghost" onclick="document.getElementById('dashDateFilter').value = ''; loadDashboard();" title="Kembali ke hari ini"><i class="fa-solid fa-rotate-left"></i> <span>Reset</span></button>
                         </div>
                     </div>
-                
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-icon"><i class="fa-solid fa-wallet"></i></div>
+
+                    <div class="dsh-section-title">Posisi Saat Ini</div>
+                    <div class="dsh-kpi-grid dsh-kpi-grid--4">
+                        <div class="dsh-kpi dsh-tone-teal">
+                            <div class="dsh-kpi-icon"><i class="fa-solid fa-wallet"></i></div>
                             <div class="stat-details">
                                 <h3>Brankas Tunai (Cash)</h3>
                                 <p class="stat-value" id="dashTotalKas">Rp 0</p>
                             </div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color: #60A5FA;"><i class="fa-solid fa-building-columns"></i>
-                            </div>
+                        <div class="dsh-kpi dsh-tone-blue">
+                            <div class="dsh-kpi-icon"><i class="fa-solid fa-building-columns"></i></div>
                             <div class="stat-details">
                                 <h3>Saldo Bank (Transfer)</h3>
                                 <p class="stat-value" id="dashTotalBank">Rp 0</p>
-                                <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
-                                    <span style="background: rgba(59, 130, 246, 0.15); color: #93C5FD; padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; border: 1px solid rgba(59, 130, 246, 0.3);">
-                                        BCA: <strong id="dashBCA" style="color: #EFF6FF;">Rp 0</strong>
-                                    </span>
-                                    <span style="background: rgba(234, 179, 8, 0.15); color: #FDE047; padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; border: 1px solid rgba(234, 179, 8, 0.3);">
-                                        Mandiri: <strong id="dashMandiri" style="color: #FEF08A;">Rp 0</strong>
-                                    </span>
+                                <div class="dsh-chips">
+                                    <span class="dsh-chip dsh-chip-blue">BCA <strong id="dashBCA">Rp 0</strong></span>
+                                    <span class="dsh-chip dsh-chip-amber">Mandiri <strong id="dashMandiri">Rp 0</strong></span>
                                 </div>
                             </div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-icon"><i class="fa-solid fa-sack-dollar"></i></div>
+                        <div class="dsh-kpi dsh-tone-violet">
+                            <div class="dsh-kpi-icon"><i class="fa-solid fa-sack-dollar"></i></div>
                             <div class="stat-details">
                                 <h3>Total Valuta (Estimasi)</h3>
                                 <p class="stat-value" id="dashTotalValuta">Rp 0</p>
-                                <small id="dashTotalValutaHint" class="text-muted" style="display:block; margin-top: 2px;">Berdasarkan saldo awal valas</small>
+                                <small id="dashTotalValutaHint" class="dsh-hint">Berdasarkan saldo awal valas</small>
                             </div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-icon text-green"><i class="fa-solid fa-arrow-trend-up"></i></div>
+                        <div class="dsh-kpi dsh-kpi-hero">
+                            <div class="dsh-kpi-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
                             <div class="stat-details">
                                 <h3>Profit Hari Ini</h3>
-                                <p class="stat-value text-green" id="dashProfit">Rp 0</p>
+                                <p class="stat-value" id="dashProfit">Rp 0</p>
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="stats-grid mt-4" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-                        <div class="stat-card">
-                            <div class="stat-icon text-green"><i class="fa-solid fa-arrow-down"></i></div>
+
+                    <div class="dsh-section-title">Aktivitas Transaksi</div>
+                    <div class="dsh-kpi-grid dsh-kpi-grid--4">
+                        <div class="dsh-kpi dsh-tone-green">
+                            <div class="dsh-kpi-icon"><i class="fa-solid fa-arrow-down"></i></div>
                             <div class="stat-details">
                                 <h3>Total Pembelian</h3>
-                                <p class="stat-value text-green" id="dashTotalPurchases">Rp 0</p>
+                                <p class="stat-value" id="dashTotalPurchases">Rp 0</p>
                             </div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-icon text-red"><i class="fa-solid fa-arrow-up"></i></div>
+                        <div class="dsh-kpi dsh-tone-red">
+                            <div class="dsh-kpi-icon"><i class="fa-solid fa-arrow-up"></i></div>
                             <div class="stat-details">
                                 <h3>Total Penjualan</h3>
-                                <p class="stat-value text-red" id="dashTotalSales">Rp 0</p>
+                                <p class="stat-value" id="dashTotalSales">Rp 0</p>
                             </div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color: #FBBF24;"><i class="fa-solid fa-receipt"></i></div>
+                        <div class="dsh-kpi dsh-tone-amber">
+                            <div class="dsh-kpi-icon"><i class="fa-solid fa-receipt"></i></div>
                             <div class="stat-details">
                                 <h3>Pengeluaran</h3>
-                                <p class="stat-value" style="color: #FBBF24;" id="dashTotalExpenses">Rp 0</p>
+                                <p class="stat-value" id="dashTotalExpenses">Rp 0</p>
                             </div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-icon" style="color: #8B5CF6;"><i class="fa-solid fa-scale-unbalanced"></i></div>
+                        <div class="dsh-kpi dsh-tone-violet">
+                            <div class="dsh-kpi-icon"><i class="fa-solid fa-scale-unbalanced"></i></div>
                             <div class="stat-details">
                                 <h3>Selisih Rekons.</h3>
-                                <p class="stat-value" style="color: #8B5CF6;" id="dashTotalSelisih">Rp 0</p>
-                                <small id="dashTotalSelisihHint" class="text-muted" style="display:block; margin-top: 2px;">Belum ada closing</small>
+                                <p class="stat-value" id="dashTotalSelisih">Rp 0</p>
+                                <small id="dashTotalSelisihHint" class="dsh-hint">Belum ada closing</small>
                             </div>
                         </div>
-                    </div><div class="dashboard-content dashboard-market-layout mt-4">
-                        <!-- Chart -->
-                        <div class="panel chart-panel">
-                            <div class="panel-header chart-panel-header">
+                    </div>
+
+                    <div class="dsh-market dashboard-content dashboard-market-layout">
+                        <!-- Grafik -->
+                        <div class="dsh-card chart-panel">
+                            <div class="dsh-card-head chart-panel-header">
                                 <h3><i class="fa-solid fa-chart-line"></i> <span id="dashChartTitle">Grafik Qty & Kurs (7 Hari)</span></h3>
                                 <div class="chart-controls">
                                     <div class="chart-range-tabs" role="group" aria-label="Periode grafik transaksi">
@@ -898,36 +747,36 @@
                                         <button type="button" class="chart-range-btn" data-range="3M" onclick="setDashboardChartRange('3M')">3M</button>
                                         <button type="button" class="chart-range-btn" data-range="1Y" onclick="setDashboardChartRange('1Y')">1Y</button>
                                     </div>
-                                    <select id="dashboardChartCurrency" class="form-control chart-currency-select" onchange="loadDashboard()">
+                                    <select id="dashboardChartCurrency" class="form-control chart-currency-select" onchange="loadDashboard()" aria-label="Pilih valuta grafik">
                                         <option value="ALL">Semua Valuta</option>
                                     </select>
                                 </div>
                             </div>
-                            <canvas id="transactionChart"></canvas>
+                            <div class="dsh-chart-box"><canvas id="transactionChart"></canvas></div>
                         </div>
 
-                        <!-- Stock Live Monitoring -->
-                        <div class="panel stock-panel">
-                            <div class="panel-header">
+                        <!-- Live stok valuta -->
+                        <div class="dsh-card stock-panel">
+                            <div class="dsh-card-head">
                                 <h3><i class="fa-solid fa-boxes-stacked"></i> Live Stok Valuta</h3>
                                 <div class="stock-search">
                                     <i class="fa-solid fa-magnifying-glass"></i>
-                                    <input type="text" id="dashboardStockSearch" class="form-control" placeholder="Cari kode..." autocomplete="off" oninput="loadStockMonitor()">
+                                    <input type="text" id="dashboardStockSearch" class="form-control" placeholder="Cari kode..." autocomplete="off" oninput="loadStockMonitor()" aria-label="Cari valuta">
                                 </div>
                             </div>
                             <div class="stock-list" id="dashboardStockList">
-                                <!-- Stock items injected by JS -->
+                                <!-- Diisi oleh JS -->
                             </div>
                         </div>
                     </div>
 
-                    <!-- Recent Activity -->
-                    <div class="panel mt-4">
-                        <div class="flex-between mb-2" style="gap:10px; flex-wrap:wrap;">
-                            <h3 style="margin:0;"><i class="fa-solid fa-list-check"></i> Aktivitas Terbaru</h3>
+                    <!-- Aktivitas terbaru -->
+                    <div class="dsh-card dsh-recent">
+                        <div class="dsh-card-head">
+                            <h3><i class="fa-solid fa-list-check"></i> Aktivitas Terbaru</h3>
                         </div>
                         <div class="table-responsive">
-                            <table class="table">
+                            <table class="table dsh-table">
                                 <thead>
                                     <tr>
                                         <th>Waktu</th>
@@ -939,42 +788,42 @@
                                     </tr>
                                 </thead>
                                 <tbody id="recentActivities">
-                                    <!-- Injected by JS -->
+                                    <!-- Diisi oleh JS -->
                                 </tbody>
                             </table>
                         </div>
                     </div>
 
-                    <!-- Dashboard Analytics -->
-                    <div class="mc-dashboard-analytics-grid mt-4" id="mcDashboardAnalytics">
-                        <div class="panel mc-analytics-card">
-                            <div class="panel-header"><h3><i class="fa-solid fa-map-location-dot"></i> Wilayah Nasabah</h3><span class="mc-analytics-badge" id="dashRegionTotal">0 nasabah</span></div>
+                    <div class="dsh-section-title">Analitik</div>
+                    <div class="mc-dashboard-analytics-grid" id="mcDashboardAnalytics">
+                        <div class="dsh-card mc-analytics-card">
+                            <div class="dsh-card-head"><h3><i class="fa-solid fa-map-location-dot"></i> Wilayah Nasabah</h3><span class="mc-analytics-badge" id="dashRegionTotal">0 nasabah</span></div>
                             <div class="mc-chart-wrap"><canvas id="dashRegionChart"></canvas></div>
                         </div>
-                        <div class="panel mc-analytics-card">
-                            <div class="panel-header"><h3><i class="fa-solid fa-money-bill-transfer"></i> Transaksi Mata Uang</h3><span class="mc-analytics-badge" id="dashCurrencyTotal">Rp 0</span></div>
+                        <div class="dsh-card mc-analytics-card">
+                            <div class="dsh-card-head"><h3><i class="fa-solid fa-money-bill-transfer"></i> Transaksi Mata Uang</h3><span class="mc-analytics-badge" id="dashCurrencyTotal">Rp 0</span></div>
                             <div class="mc-chart-wrap"><canvas id="dashCurrencyChart"></canvas></div>
                         </div>
-                        <div class="panel mc-analytics-card">
-                            <div class="panel-header"><h3><i class="fa-solid fa-right-left"></i> Beli vs Jual</h3><span class="mc-analytics-badge" id="dashBuySellTotal">0 transaksi</span></div>
-                            <div class="mc-chart-wrap mc-chart-wrap-short"><canvas id="dashBuySellChart"></canvas></div>
+                        <div class="dsh-card mc-analytics-card">
+                            <div class="dsh-card-head"><h3><i class="fa-solid fa-right-left"></i> Beli vs Jual</h3><span class="mc-analytics-badge" id="dashBuySellTotal">0 transaksi</span></div>
+                            <div class="mc-chart-wrap"><canvas id="dashBuySellChart"></canvas></div>
                         </div>
-                        <div class="panel mc-analytics-card mc-analytics-wide">
-                            <div class="panel-header"><h3><i class="fa-solid fa-chart-area"></i> Trend Nilai Transaksi</h3><span class="mc-analytics-badge" id="dashTrendTotal">Rp 0</span></div>
+                        <div class="dsh-card mc-analytics-card">
+                            <div class="dsh-card-head"><h3><i class="fa-solid fa-chart-area"></i> Trend Nilai Transaksi</h3><span class="mc-analytics-badge" id="dashTrendTotal">Rp 0</span></div>
                             <div class="mc-chart-wrap"><canvas id="dashTrendChart"></canvas></div>
                         </div>
-                        <div class="panel mc-analytics-card">
-                            <div class="panel-header"><h3><i class="fa-solid fa-users"></i> Nasabah Aktif</h3><span class="mc-analytics-badge" id="dashCustomerTotal">0 aktif</span></div>
-                            <div class="mc-chart-wrap mc-chart-wrap-short"><canvas id="dashCustomerChart"></canvas></div>
+                        <div class="dsh-card mc-analytics-card">
+                            <div class="dsh-card-head"><h3><i class="fa-solid fa-users"></i> Nasabah Aktif</h3><span class="mc-analytics-badge" id="dashCustomerTotal">0 aktif</span></div>
+                            <div class="mc-chart-wrap"><canvas id="dashCustomerChart"></canvas></div>
                         </div>
-                        <div class="panel mc-analytics-card">
-                            <div class="panel-header"><h3><i class="fa-solid fa-shield-halved"></i> Ringkasan Compliance</h3><span class="mc-analytics-badge">GoAML</span></div>
+                        <div class="dsh-card mc-analytics-card">
+                            <div class="dsh-card-head"><h3><i class="fa-solid fa-shield-halved"></i> Ringkasan Compliance</h3><span class="mc-analytics-badge">GoAML</span></div>
                             <div class="mc-compliance-mini">
                                 <div><span>Transaksi diperiksa</span><strong id="dashComplianceTrx">0</strong></div>
                                 <div><span>Nasabah aktif</span><strong id="dashComplianceCustomer">0</strong></div>
                                 <div><span>Wilayah terdata</span><strong id="dashComplianceRegion">0</strong></div>
                             </div>
-                            <small class="text-muted">Ringkasan analitik dashboard. Detail alert tetap di menu BI & Regulasi ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ GoAML.</small>
+                            <small class="dsh-hint">Ringkasan analitik dashboard. Detail alert tetap di menu BI &amp; Regulasi &rsaquo; GoAML.</small>
                         </div>
                     </div>
                 </section>
@@ -1250,7 +1099,7 @@
 
                                 <div class="pos-customer-history-panel">
                                     <div id="customerPosHistoryContainer" class="pos-customer-history-box" style="display:none;">
-                                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;"><i class="fa-solid fa-history"></i> Riwayat Transaksi Nasabah (5 Terakhir)</div>
+                                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;"><i class="fa-solid fa-history"></i> Riwayat Transaksi Nasabah (30 hari, per 5 hari)</div>
                                         <div id="customerPosHistoryList" style="display: flex; flex-direction: column; gap: 6px;"></div>
                                     </div>
                                 </div>
@@ -1434,45 +1283,9 @@
                     </div>
                 </div>
 
-                <!-- Daftar Booking View -->
+                <!-- Daftar Booking View (dirender oleh public/js/modules/42-booking.js) -->
                 <section id="booking-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="border-left: 4px solid #FBBF24;">
-                        <div>
-                            <h2 style="color: #FBBF24;"><i class="fa-solid fa-book-bookmark"></i> Daftar Booking Aktif</h2>
-                            <p class="text-muted mt-2">Daftar nasabah yang sudah membayar DP namun valas belum diambil / pelunasan selesai.</p>
-                        </div>
-                        <div>
-                            <button class="btn btn-warning" onclick="openBookingEntryForm()" style="background:#F59E0B; color:white; border:none;"><i class="fa-solid fa-plus"></i> Tambah Booking</button>
-                            <button class="btn btn-primary" onclick="loadBookingsTable()"><i class="fa-solid fa-rotate-right"></i> Perbarui</button>
-                        </div>
-                    </div>
-
-                    <div class="panel mt-4">
-                        <div id="bookingTotalsSummary" class="mb-3" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px;"></div>
-                        <div class="mb-3" style="display: flex; gap: 10px; align-items: center;">
-                            <i class="fa-solid fa-search" style="color: #94A3B8;"></i>
-                            <input type="text" id="searchBookingInput" class="form-control" placeholder="Cari No. Booking, Nama, atau No. Telp..." oninput="loadBookingsTable()" style="max-width: 400px; border-radius: 20px;">
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Waktu Transaksi</th>
-                                        <th>Jam Kedatangan</th>
-                                        <th>No. Booking</th>
-                                        <th>Nasabah</th>
-                                        <th>Total Valas</th>
-                                        <th style="text-align: right;">Total IDR</th>
-                                        <th style="text-align: right;">DP Masuk</th>
-                                        <th style="text-align: right; color: #F87171;">Sisa Tagihan</th>
-                                        <th style="text-align: center;">Aksi Pelunasan</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="bookingsTableBody">
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <div id="bookingRoot"></div>
                 </section>
 
                 <!-- Antrean Permintaan Valas (Waiting List) View -->
@@ -1526,213 +1339,9 @@
                     </div>
                 </section>
 
-                <!-- Penerjemah Bahasa View -->
+                <!-- Penerjemah Bahasa View (&#64;2026-Alifiandra): dirender oleh public/js/modules/62-translator.js -->
                 <section id="translator-view" class="view-section hidden">
-                    <style>
-                        .translator-tab {
-                            padding: 8px 16px;
-                            font-size: 0.85rem;
-                            font-weight: 600;
-                            border-radius: 6px;
-                            cursor: pointer;
-                            transition: all 0.2s ease;
-                            border: none;
-                        }
-                        .translator-tab.active {
-                            background: #38bdf8;
-                            color: #0f172a;
-                        }
-                        .translator-tab:not(.active) {
-                            background: rgba(255, 255, 255, 0.03);
-                            color: #94a3b8;
-                        }
-                        .translator-tab:not(.active):hover {
-                            background: rgba(255, 255, 255, 0.06);
-                            color: #f8fafc;
-                        }
-                        #translator-view .translator-mode[hidden] { display: none !important; }
-                        #translator-view .translator-mode { display: block; }
-                        #translator-view #contentTransSpeak { display: flex; flex-direction: column; overflow: hidden; }
-                        #translator-view .translator-text-grid { display: grid; grid-template-columns: 1fr 40px 1fr; gap: 15px; align-items: stretch; position: relative; }
-                        #translator-view .translator-speak-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 5px 0; flex: 0 0 auto; }
-                        @media (max-width: 768px) {
-                            /* 56px app header + 64px bottom nav + container spacing: panel bicara selalu berada di area layar yang tersisa. */
-                            #translator-view.active.translator-speak-active { display:flex !important; flex-direction:column; height:calc(100dvh - 150px - env(safe-area-inset-bottom)); min-height:0; overflow:hidden; }
-                            #translator-view.active.translator-speak-active > .header-panel { flex:0 0 auto; margin-bottom:8px; padding:10px 12px !important; }
-                            #translator-view.active.translator-speak-active > .header-panel h2 { font-size:1rem !important; margin:0; }
-                            #translator-view.active.translator-speak-active > .header-panel p { display:none; }
-                            #translator-view.active.translator-speak-active #contentTransSpeak { flex:1 1 auto; min-height:0 !important; height:auto !important; margin-top:0 !important; }
-                            #translator-view .header-panel { align-items: stretch; }
-                            #translator-view .header-panel > div:last-child { width: 100%; }
-                            #translator-view .translator-tab { flex: 1; min-height: 46px; padding: 8px 10px; font-size: .78rem; }
-                            #translator-view .translator-text-grid { grid-template-columns: 1fr; gap: 10px; }
-                            #translator-view .translator-swap { height: 40px; }
-                            #translator-view .translator-swap button { transform: rotate(90deg); }
-                            #translator-view #contentTransSpeak { height: calc(100dvh - 190px) !important; min-height: 0 !important; max-height: none !important; padding: 10px !important; }
-                            #translator-view .translator-speak-header { align-items: stretch !important; gap: 10px !important; }
-                            #translator-view .translator-speak-header > div { width: 100%; justify-content: space-between; }
-                            #translator-view .translator-speak-header select { width: min(58vw, 190px) !important; }
-                            #translator-view .translator-speak-actions { position:sticky; bottom:0; z-index:2; grid-template-columns:1fr 1fr; gap:8px; margin:0 -2px -2px; padding:10px 2px calc(4px + env(safe-area-inset-bottom)); background:rgba(15, 23, 42, .98); box-shadow:0 -10px 18px rgba(15, 23, 42, .85); }
-                            #translator-view .translator-speak-actions .btn { min-width: 0; height: 64px !important; padding: 8px !important; gap: 6px !important; font-size: .78rem !important; }
-                            #translator-view .translator-speak-actions .btn > div { min-width: 0; }
-                            #translator-view .translator-speak-actions .btn span:last-child { font-size: .78rem !important; white-space: nowrap; }
-                            #translator-view #transSpeakChatLog { margin-bottom: 0 !important; padding-bottom: 12px !important; }
-                        }
-                        @keyframes pulse-red {
-                            0% {
-                                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
-                                transform: scale(1);
-                            }
-                            70% {
-                                box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
-                                transform: scale(1.04);
-                            }
-                            100% {
-                                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
-                                transform: scale(1);
-                            }
-                        }
-                    </style>
-
-                    <script>
-                        window.switchTranslatorMode = function(mode) {
-                            const tabText = document.getElementById('tabTransText');
-                            const tabSpeak = document.getElementById('tabTransSpeak');
-                            const contentText = document.getElementById('contentTransText');
-                            const contentSpeak = document.getElementById('contentTransSpeak');
-
-                            if (!tabText || !tabSpeak || !contentText || !contentSpeak) return;
-
-                            if (mode === 'text') {
-                                tabText.classList.add('active');
-                                tabSpeak.classList.remove('active');
-                                contentText.hidden = false;
-                                contentSpeak.hidden = true;
-                                document.getElementById('translator-view')?.classList.remove('translator-speak-active');
-                            } else {
-                                tabText.classList.remove('active');
-                                tabSpeak.classList.add('active');
-                                contentText.hidden = true;
-                                contentSpeak.hidden = false;
-                                document.getElementById('translator-view')?.classList.add('translator-speak-active');
-                                // Scroll to bottom of chat
-                                setTimeout(() => {
-                                    const chatLogEl = document.getElementById('transSpeakChatLog');
-                                    if (chatLogEl) chatLogEl.scrollTop = chatLogEl.scrollHeight;
-                                }, 50);
-                            }
-                        };
-                    </script>
-
-                    <div class="panel header-panel flex-between" style="border-left: 4px solid #38bdf8;">
-                        <div>
-                            <h2 style="color: #38bdf8;"><i class="fa-solid fa-language"></i> Penerjemah Bahasa Asing</h2>
-                            <p class="text-muted mt-2">Penerjemah real-time untuk membantu teller / kasir berkomunikasi dengan nasabah mancanegara.</p>
-                        </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button id="tabTransText" class="translator-tab active" onclick="switchTranslatorMode('text')"><i class="fa-solid fa-keyboard"></i> Mode Teks</button>
-                            <button id="tabTransSpeak" class="translator-tab" onclick="switchTranslatorMode('speak')"><i class="fa-solid fa-comments"></i> Mode Bicara (Percakapan)</button>
-                        </div>
-                    </div>
-
-                    <!-- MODE TEKS CONTENT -->
-                    <div id="contentTransText" class="panel mt-4 translator-mode">
-                        <div class="translator-text-grid">
-                            
-                            <!-- Left Column: Source -->
-                            <div style="display: flex; flex-direction: column; gap: 10px; background: rgba(30, 41, 59, 0.2); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03);">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <label style="font-weight: 700; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase;">Bahasa Asal</label>
-                                    <select id="transLangSource" onchange="saveTranslatorLanguages()" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.1); color: #38bdf8; border-radius: 6px; padding: 4px 8px; font-size: 0.8rem; font-weight: 600; width: 140px;"></select>
-                                </div>
-                                <textarea id="transTextSource" oninput="debounceTranslate()" placeholder="Ketik kalimat di sini, atau klik tombol mikrofon di bawah untuk berbicara..." style="flex: 1; min-height: 150px; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; color: #f8fafc; font-size: 0.95rem; resize: none; line-height: 1.5;"></textarea>
-                                
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                                    <div style="display: flex; gap: 8px;">
-                                        <button id="btnTransTextMic" onclick="toggleSpeechListen('btnTransTextMic', document.getElementById('transLangSource').value)" class="btn btn-sm btn-outline" style="border-radius: 50%; width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border-color: rgba(255,255,255,0.15); color: #f8fafc;" title="Bicara ke Mikrofon"><i class="fa-solid fa-microphone"></i></button>
-                                        <button onclick="speakSourceText()" class="btn btn-sm btn-outline" style="border-radius: 50%; width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border-color: rgba(255,255,255,0.15); color: #38bdf8;" title="Dengarkan Suara Asal"><i class="fa-solid fa-volume-high"></i></button>
-                                    </div>
-                                    <button onclick="document.getElementById('transTextSource').value=''; translateTextMode();" class="btn btn-xs btn-outline" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.2); background: transparent;">Hapus Teks</button>
-                                </div>
-                            </div>
-
-                            <!-- Swap Button Column -->
-                            <div class="translator-swap" style="display: flex; align-items: center; justify-content: center;">
-                                <button onclick="swapTextLanguages()" class="btn" style="border-radius: 50%; width: 38px; height: 38px; padding: 0; display: flex; align-items: center; justify-content: center; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); color: #38bdf8; cursor: pointer; transition: all 0.2s;" title="Tukar Bahasa"><i class="fa-solid fa-right-left"></i></button>
-                            </div>
-
-                            <!-- Right Column: Target -->
-                            <div style="display: flex; flex-direction: column; gap: 10px; background: rgba(30, 41, 59, 0.2); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03);">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <label style="font-weight: 700; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase;">Bahasa Terjemahan</label>
-                                    <select id="transLangTarget" onchange="saveTranslatorLanguages()" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.1); color: #38bdf8; border-radius: 6px; padding: 4px 8px; font-size: 0.8rem; font-weight: 600; width: 140px;"></select>
-                                </div>
-                                <textarea id="transTextTarget" readonly placeholder="Hasil terjemahan akan muncul di sini..." style="flex: 1; min-height: 150px; background: rgba(15, 23, 42, 0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; color: #f8fafc; font-size: 0.95rem; resize: none; line-height: 1.5; font-weight: 600;"></textarea>
-                                
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                                    <div style="display: flex; gap: 8px;">
-                                        <button onclick="speakTargetText()" class="btn btn-sm btn-outline" style="border-radius: 50%; width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border-color: rgba(255,255,255,0.15); color: #38bdf8;" title="Dengarkan Suara Terjemahan"><i class="fa-solid fa-volume-high"></i></button>
-                                        <button onclick="navigator.clipboard.writeText(document.getElementById('transTextTarget').value); alert('Terjemahan berhasil disalin!');" class="btn btn-sm btn-outline" style="border-radius: 50%; width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border-color: rgba(255,255,255,0.15); color: #94a3b8;" title="Salin ke Clipboard"><i class="fa-solid fa-copy"></i></button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Extra Options -->
-                        <div class="mt-4 flex-between" style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;">
-                            <label style="display: flex; align-items: center; gap: 8px; color: #94a3b8; font-size: 0.85rem; cursor: pointer;">
-                                <input type="checkbox" id="transTextAutoPlay" checked style="width:16px; height:16px; cursor:pointer;">
-                                Suarakan hasil terjemahan secara otomatis
-                            </label>
-                            <button onclick="translateTextMode()" class="btn btn-primary" style="background:#38bdf8; border:none; color:#0f172a; font-weight:bold; padding: 8px 24px;"><i class="fa-solid fa-language"></i> Terjemahkan Sekarang</button>
-                        </div>
-                    </div>
-
-                    <!-- MODE BICARA/PERCAKAPAN CONTENT -->
-                    <div id="contentTransSpeak" class="panel mt-4 translator-mode" hidden style="height: calc(100vh - 280px); min-height: 480px; max-height: 620px;">
-                        <!-- Configuration Header -->
-                        <div class="translator-speak-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px; margin-bottom: 12px; gap: 15px; flex-wrap: wrap;">
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                <span style="font-size: 0.85rem; color: #94a3b8; font-weight: 600;">Bahasa Asing Nasabah:</span>
-                                <select id="transSpeakLangTarget" onchange="saveTranslatorLanguages()" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.1); color: #EC4899; border-radius: 6px; padding: 4px 8px; font-size: 0.8rem; font-weight: 600; width: 180px;"></select>
-                            </div>
-                            <div style="display: flex; gap: 15px; align-items: center;">
-                                <label style="display: flex; align-items: center; gap: 8px; color: #94a3b8; font-size: 0.82rem; cursor: pointer; margin: 0;">
-                                    <input type="checkbox" id="transSpeakAutoPlay" checked style="width:15px; height:15px; cursor:pointer;">
-                                    Auto-Suara Terjemahan
-                                </label>
-                                <button onclick="clearTransChatLog()" class="btn btn-xs btn-outline" style="border-color: rgba(239, 68, 68, 0.25); color: #ef4444;"><i class="fa-solid fa-trash-can"></i> Hapus Obrolan</button>
-                            </div>
-                        </div>
-
-                        <!-- Chat Bubbles Log Area -->
-                        <div id="transSpeakChatLog" style="flex: 1; overflow-y: auto; padding: 10px; background: rgba(15, 23, 42, 0.3); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; margin-bottom: 15px; display: flex; flex-direction: column;">
-                            <!-- Bubbles filled via JS -->
-                        </div>
-
-                        <!-- Large Mic Action Buttons -->
-                        <div class="translator-speak-actions">
-                            
-                            <!-- Left: Kasir Mic -->
-                            <button id="btnTransSpeakMicKasir" onclick="toggleSpeechListen('btnTransSpeakMicKasir', 'id-ID')" class="btn" style="height: 60px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); color: #38bdf8; font-weight: bold; border-radius: 12px; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s;">
-                                <i class="fa-solid fa-microphone" style="font-size: 1.25rem;"></i>
-                                <div style="text-align: left; line-height: 1.2;">
-                                    <span style="display: block; font-size: 0.85rem; font-weight: normal; color: #94a3b8;">Kasir Berbicara</span>
-                                    <span>Bahasa INDONESIA</span>
-                                </div>
-                            </button>
-
-                            <!-- Right: Nasabah Mic -->
-                            <button id="btnTransSpeakMicNasabah" onclick="toggleSpeechListen('btnTransSpeakMicNasabah', document.getElementById('transSpeakLangTarget').value)" class="btn" style="height: 60px; background: rgba(236, 72, 153, 0.1); border: 1px solid rgba(236, 72, 153, 0.25); color: #EC4899; font-weight: bold; border-radius: 12px; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s;">
-                                <i class="fa-solid fa-microphone" style="font-size: 1.25rem;"></i>
-                                <div style="text-align: left; line-height: 1.2;">
-                                    <span style="display: block; font-size: 0.85rem; font-weight: normal; color: #94a3b8;">Nasabah Berbicara</span>
-                                    <span>Bahasa ASING</span>
-                                </div>
-                            </button>
-
-                        </div>
-                    </div>
+                    <div id="translatorRoot"></div>
                 </section>
 
                 <!-- Obrolan Kasir View -->
@@ -1802,552 +1411,38 @@
                     </div>
                 </section>
 
-                <!-- Penyimpanan Berkas View -->
+                <!-- Penyimpanan Berkas View (&#64;2026-Alifiandra): dirender oleh public/js/modules/60-documents.js -->
                 <section id="documents-view" class="view-section hidden">
-                    <style>
-                        .folder-item {
-                            display: flex;
-                            justify-content: space-between;
-                            align-items: center;
-                            padding: 10px 12px;
-                            border-radius: 6px;
-                            color: #cbd5e1;
-                            cursor: pointer;
-                            transition: all 0.2s ease;
-                            background: rgba(30, 41, 59, 0.2);
-                            border: 1px solid rgba(255, 255, 255, 0.03);
-                        }
-                        .folder-item:hover {
-                            background: rgba(255, 255, 255, 0.05);
-                            color: #f8fafc;
-                        }
-                        .folder-item.active {
-                            background: rgba(245, 158, 11, 0.15);
-                            border-color: rgba(245, 158, 11, 0.4);
-                            color: #FBBF24;
-                            font-weight: 600;
-                        }
-                        .folder-name-container {
-                            display: flex;
-                            align-items: center;
-                            gap: 8px;
-                            overflow: hidden;
-                            text-overflow: ellipsis;
-                            white-space: nowrap;
-                            flex: 1;
-                        }
-                        .folder-actions {
-                            display: flex;
-                            gap: 6px;
-                            opacity: 0;
-                            transition: opacity 0.2s ease;
-                        }
-                        .folder-item:hover .folder-actions {
-                            opacity: 1;
-                        }
-                        .folder-action-btn {
-                            background: none;
-                            border: none;
-                            color: #94a3b8;
-                            cursor: pointer;
-                            padding: 2px;
-                            font-size: 0.85rem;
-                            transition: color 0.1s ease;
-                        }
-                        .folder-action-btn:hover {
-                            color: #f8fafc;
-                        }
-                        .folder-action-btn.delete:hover {
-                            color: #ef4444;
-                        }
-                        .folder-action-btn.rename:hover {
-                            color: #38bdf8;
-                        }
-                        .folder-action-btn.add:hover {
-                            color: #10b981;
-                        }
-                    </style>
-
-                    <div class="panel header-panel flex-between" style="border-left: 4px solid #FBBF24;">
-                        <div>
-                            <h2 style="color: #FBBF24;"><i class="fa-solid fa-folder-open"></i> Penyimpanan Berkas</h2>
-                            <p class="text-muted mt-2">Penyimpanan berkas digital penting perusahaan (Perizinan, Sewa Gedung, Dokumen PT, PKS, dll).</p>
-                        </div>
-                        <div>
-                            <button class="btn btn-warning" onclick="window.openDocumentFolderModal()" style="background:#F59E0B; color:white; border:none;"><i class="fa-solid fa-folder-plus"></i> Tambah Folder Baru</button>
-                            <button class="btn btn-primary" onclick="window.openDocumentUploadModal()"><i class="fa-solid fa-upload"></i> Unggah Berkas Baru</button>
-                        </div>
-                    </div>
-
-                    <div style="display: flex; gap: 20px; margin-top: 20px; align-items: flex-start; flex-wrap: wrap;">
-                        <!-- Kolom Kiri: Daftar Folder -->
-                        <div class="panel" style="flex: 1; min-width: 250px; max-width: 320px; padding: 15px;">
-                            <h3 style="color: #f8fafc; font-size: 1rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                                <i class="fa-solid fa-folder" style="color: #FBBF24;"></i> Daftar Folder
-                            </h3>
-                            <hr class="divider mb-3" style="border-color: rgba(255,255,255,0.06);">
-                            
-                            <div id="documentsFolderList" style="display: flex; flex-direction: column; gap: 6px;">
-                                <!-- Daftar folder diisi via JS -->
-                            </div>
-                        </div>
-
-                        <!-- Kolom Kanan: Daftar Berkas -->
-                        <div class="panel" style="flex: 3; min-width: 500px; padding: 20px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;">
-                                <div style="display: flex; align-items: center; gap: 15px;">
-                                    <h3 id="currentFolderNameHeader" style="color: #FBBF24; font-size: 1.2rem; margin: 0; display: flex; align-items: center; gap: 10px;">
-                                        <i class="fa-solid fa-folder-open"></i> Memuat...
-                                    </h3>
-                                    <div id="currentFolderActionsArea">
-                                        <!-- Tombol Aksi Folder Kustom diisi via JS -->
-                                    </div>
-                                </div>
-                                
-                                <!-- Pencarian -->
-                                <div style="display: flex; gap: 10px; align-items: center; width: 100%; max-width: 350px;">
-                                    <i class="fa-solid fa-search" style="color: #94A3B8;"></i>
-                                    <input type="text" id="searchDocumentInput" class="form-control" placeholder="Cari nama berkas atau catatan..." oninput="window.renderDocumentsTable()" style="border-radius: 20px; padding: 6px 15px; font-size: 0.9rem;">
-                                </div>
-                            </div>
-
-                            <div class="table-responsive">
-                                <table class="table table-hover" id="documentsTable">
-                                    <thead>
-                                        <tr>
-                                            <th style="width: 70px; text-align: center;">Format</th>
-                                            <th>Nama Berkas</th>
-                                            <th>Catatan / Keterangan</th>
-                                            <th style="width: 100px;">Ukuran</th>
-                                            <th style="width: 160px;">Tanggal Unggah</th>
-                                            <th style="width: 180px; text-align: center;">Aksi</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="documentsTableBody">
-                                        <tr>
-                                            <td colspan="6" class="text-center text-muted">Memuat daftar berkas...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
+                    <div id="docsRoot"></div>
                 </section>
 
-                <!-- Chat AI View -->
+                <!-- Chat AI View (&#64;2026-Alifiandra): dirender oleh public/js/modules/61-ai-assistant.js -->
                 <section id="ai-chat-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="border-left: 4px solid #EC4899; background: rgba(30, 41, 59, 0.45); border-bottom: 1px solid rgba(255,255,255,0.06); padding: 15px 20px; border-radius: 8px;">
-                        <div>
-                            <h2 style="color: #EC4899; display: flex; align-items: center; gap: 10px; margin: 0;"><i class="fa-solid fa-robot"></i> Tanya AI / Deteksi Gambar Valas</h2>
-                            <span style="color: #64748b; font-size: 0.88rem; margin-top: 4px; display: block;">Asisten cerdas pendeteksi uang kertas, koin, dan tanya jawab finansial via Google Gemini API</span>
-                        </div>
-                    </div>
-
-                    <div class="row mt-4" style="display: flex; gap: 20px; height: calc(100vh - 220px); min-height: 500px;">
-                        <!-- Left Panel: Chat Sessions / History -->
-                        <div class="col-md-3" style="width: 25%; display: flex; flex-direction: column; background: rgba(15, 23, 42, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; overflow: hidden; height: 100%;">
-                            <div style="padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
-                                <h3 style="margin: 0; font-size: 0.9rem; font-weight: 700; color: #f8fafc;">Riwayat Chat</h3>
-                                <button class="btn btn-sm btn-primary" onclick="startNewChatSession()" style="padding: 4px 10px; font-size: 0.75rem; display: flex; align-items: center; gap: 4px;"><i class="fa-solid fa-plus"></i> Baru</button>
-                            </div>
-                            <div id="ai-chat-sessions-list" style="flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
-                                <!-- Chat sessions list dynamically populated here -->
-                            </div>
-                        </div>
-
-                        <!-- Right Panel: Conversation Room -->
-                        <div class="col-md-9" style="width: 75%; display: flex; flex-direction: column; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; overflow: hidden; height: 100%; position: relative;">
-                            <!-- Active Session Chat Box -->
-                            <div id="ai-chat-messages-container" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: rgba(15, 23, 42, 0.15);">
-                                <!-- Welcome screen / messages populated here -->
-                            </div>
-
-                            <!-- Image Preview Area (if uploading image) -->
-                            <div id="ai-chat-image-preview-container" class="hidden" style="padding: 10px 20px; background: rgba(30, 41, 59, 0.8); border-top: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: space-between;">
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <div id="ai-chat-image-thumbnail" style="width: 50px; height: 50px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(255,255,255,0.2);"></div>
-                                    <span style="font-size: 0.8rem; color: #cbd5e1;" id="ai-chat-image-name">gambar_valas.jpg</span>
-                                </div>
-                                <button onclick="removeChatUploadedImage()" style="background: transparent; border: none; color: #ef4444; cursor: pointer; font-size: 1.1rem;"><i class="fa-solid fa-circle-xmark"></i></button>
-                            </div>
-
-                            <!-- Quick Suggestion Chips -->
-                            <div id="ai-chat-quick-suggestions" style="padding: 10px 20px 0; display: flex; gap: 8px; flex-wrap: wrap; background: rgba(15, 23, 42, 0.15);">
-                                <button onclick="sendSuggestedPrompt('Bagaimana kondisi indeks saham (IHSG, Dow Jones, dll.) saat ini?')" class="btn btn-sm btn-outline" style="border-radius: 20px; font-size: 0.75rem; padding: 4px 12px; border-color: rgba(255,255,255,0.1); color: #cbd5e1; background: rgba(30, 41, 59, 0.3); cursor: pointer;"><i class="fa-solid fa-chart-line" style="color: #38bdf8; margin-right: 4px;"></i> Indeks Saham</button>
-                                <button onclick="sendSuggestedPrompt('Berapa harga Bitcoin (BTC) terbaru dan bagaimana analisis pasarnya?')" class="btn btn-sm btn-outline" style="border-radius: 20px; font-size: 0.75rem; padding: 4px 12px; border-color: rgba(255,255,255,0.1); color: #cbd5e1; background: rgba(30, 41, 59, 0.3); cursor: pointer;"><i class="fa-brands fa-bitcoin" style="color: #f59e0b; margin-right: 4px;"></i> Bitcoin</button>
-                                <button onclick="sendSuggestedPrompt('Berapa harga emas Logam Mulia (Antam) per gram hari ini?')" class="btn btn-sm btn-outline" style="border-radius: 20px; font-size: 0.75rem; padding: 4px 12px; border-color: rgba(255,255,255,0.1); color: #cbd5e1; background: rgba(30, 41, 59, 0.3); cursor: pointer;"><i class="fa-solid fa-coins" style="color: #eab308; margin-right: 4px;"></i> Emas LM (Antam)</button>
-                                <button onclick="sendSuggestedPrompt('Berapa harga perak murni per gram hari ini dan prospeknya?')" class="btn btn-sm btn-outline" style="border-radius: 20px; font-size: 0.75rem; padding: 4px 12px; border-color: rgba(255,255,255,0.1); color: #cbd5e1; background: rgba(30, 41, 59, 0.3); cursor: pointer;"><i class="fa-solid fa-circle" style="color: #cbd5e1; margin-right: 4px;"></i> Perak</button>
-                                <button onclick="sendSuggestedPrompt('Bagaimana kondisi dan tren analisis prospek kurs valas hari ini?')" class="btn btn-sm btn-outline" style="border-radius: 20px; font-size: 0.75rem; padding: 4px 12px; border-color: rgba(255,255,255,0.1); color: #cbd5e1; background: rgba(30, 41, 59, 0.3); cursor: pointer;"><i class="fa-solid fa-comments-dollar" style="color: #10b981; margin-right: 4px;"></i> Analisis Kurs</button>
-                            </div>
-
-                            <!-- Input Form Area -->
-                            <div style="padding: 15px 20px; background: rgba(30, 41, 59, 0.5); border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; gap: 12px;">
-                                <!-- Upload Image Button -->
-                                <button onclick="triggerChatImageUpload()" class="btn btn-outline" style="padding: 10px 14px; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(15, 23, 42, 0.5); color: #EC4899; border-radius: 8px; cursor: pointer;" title="Unggah gambar mata uang untuk dideteksi"><i class="fa-solid fa-camera"></i></button>
-                                <input type="file" id="ai-chat-image-input" accept="image/*" style="display: none;" onchange="handleChatImageUpload(this)">
-
-                                <!-- Text Input -->
-                                <input type="text" id="ai-chat-text-input" class="form-control" style="flex: 1; margin: 0; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.3); color: #f8fafc; border-radius: 8px; padding: 10px 15px;" placeholder="Ketik pesan atau upload gambar uang di sini..." onkeypress="handleChatEnter(event)">
-
-                                <!-- Send Button -->
-                                <button onclick="sendChatMessage()" class="btn btn-primary" style="padding: 10px 20px; background: #EC4899; border-color: #EC4899; color: #fff; border-radius: 8px; display: flex; align-items: center; gap: 8px;"><i class="fa-solid fa-paper-plane"></i> Kirim</button>
-                            </div>
-                        </div>
-                    </div>
+                    <div id="aiChatRoot"></div>
                 </section>
 
-                <!-- Kurs Hari Ini (Internal Board & Calculator) -->
+                <!-- Kurs Hari Ini -->
                 <section id="kurs-hari-ini-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="flex-wrap: wrap; gap: 15px; background: rgba(30, 41, 59, 0.45); border-bottom: 1px solid rgba(255,255,255,0.06); padding: 15px 20px; border-radius: 8px;">
-                        <div>
-                            <h2 style="color: #38bdf8; display: flex; align-items: center; gap: 10px; margin: 0;"><i class="fa-solid fa-money-bill-trend-up"></i> Kurs Hari Ini (Internal Only)</h2>
-                            <span style="color: #64748b; font-size: 0.88rem; margin-top: 4px; display: block;">Lookup referensi kurs aktif untuk panduan teller/kasir</span>
-                        </div>
-                        <div style="display: flex; gap: 10px; align-items: center; min-width: 280px; flex: 1; justify-content: flex-end; flex-wrap: wrap;">
-                            <button class="btn btn-outline" id="btnSelectAllKurs" onclick="window.selectAllKurs(true)" style="padding: 6px 12px; font-size: 0.8rem; border-color: #38bdf8; color: #38bdf8; height: 32px; display: inline-flex; align-items: center; gap: 6px;">
-                                <i class="fa-solid fa-square-check"></i> Pilih Semua
-                            </button>
-                            <button class="btn btn-outline" id="btnDeselectAllKurs" onclick="window.selectAllKurs(false)" style="padding: 6px 12px; font-size: 0.8rem; border-color: #64748b; color: #94a3b8; height: 32px; display: none; align-items: center; gap: 6px;">
-                                <i class="fa-regular fa-square"></i> Batal Pilih
-                            </button>
-                            <button class="btn btn-success" id="btnSendWaKurs" onclick="window.sendSelectedKursViaWa()" style="background:#25D366; color:white; border:none; padding: 6px 12px; font-size: 0.8rem; height: 32px; display: inline-flex; align-items: center; gap: 6px;" disabled>
-                                <i class="fa-brands fa-whatsapp"></i> Kirim WA (<span id="selectedKursCount">0</span>)
-                            </button>
-                            <div style="position: relative; width: 100%; max-width: 240px;">
-                                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #64748b; pointer-events: none;"></i>
-                                <input type="text" id="searchKursHariIni" class="form-control" placeholder="Cari Kode ISO..." style="width: 100%; padding-left: 36px; background: #0f172a; color: #f8fafc; border: 1px solid #334155; border-radius: 8px; font-size: 0.85rem; height: 32px;" oninput="window.filterKursHariIni()">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="display: flex; gap: 20px; margin-top: 20px; flex-wrap: wrap;">
-                        <!-- Left Side: Rates Board Grid -->
-                        <div style="flex: 3; min-width: 500px; display: flex; flex-direction: column; gap: 20px;">
-                            <div class="panel" style="background: #1e293b; border-radius: 8px; padding: 15px; border: 1px solid rgba(255,255,255,0.04); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);">
-                                <div id="kursHariIniContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 10px;">
-                                    <!-- Injected dynamically by JS -->
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Right Side: Quick Calculator Tool -->
-                        <div style="flex: 1.2; min-width: 320px;">
-                            <div class="panel" style="background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 20px; position: -webkit-sticky; position: sticky; top: 20px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);">
-                                <h3 style="color: #38bdf8; display: flex; align-items: center; gap: 8px; margin-top: 0; margin-bottom: 15px;"><i class="fa-solid fa-calculator"></i> Kalkulator Kurs Cepat</h3>
-                                <hr class="divider mb-4" style="border-color: rgba(255,255,255,0.08);">
-                                
-                                <div class="form-group mb-3">
-                                    <label style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 6px; display: block;">Pilih Valas</label>
-                                    <select id="calcKursValuta" class="form-control" style="background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; width:100%;" onchange="window.calculateQuickRate()"></select>
-                                </div>
-                                
-                                <div class="form-group mb-3">
-                                    <label style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 6px; display: block;">Jenis Transaksi</label>
-                                    <select id="calcKursTipe" class="form-control" style="background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; width:100%;" onchange="window.calculateQuickRate()">
-                                        <option value="beli">Nasabah Jual ke Kita (Kita BELI)</option>
-                                        <option value="jual">Nasabah Beli dari Kita (Kita JUAL)</option>
-                                    </select>
-                                </div>
-                                
-                                <div class="form-group mb-3">
-                                    <label style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 6px; display: block;">Jumlah Valas</label>
-                                    <input type="number" id="calcKursAmount" class="form-control" value="1" min="0" step="any" style="background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px;" oninput="window.calculateQuickRate()">
-                                </div>
-                                
-                                <div class="form-group mb-3" style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 8px; border: 1px solid #334155;">
-                                    <span style="color: #64748b; font-size: 0.75rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Nilai Kurs Acuan</span>
-                                    <div id="calcKursRateLabel" style="font-size: 1.4rem; font-weight: bold; color: #f8fafc; margin-top: 4px;">Rp 0</div>
-                                </div>
-                                
-                                <div class="form-group mb-0" style="background: rgba(56, 189, 248, 0.08); padding: 15px; border-radius: 8px; border: 1px dashed rgba(56, 189, 248, 0.4);">
-                                    <span style="color: #38bdf8; font-size: 0.8rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Hasil Konversi (IDR)</span>
-                                    <div id="calcKursTotalLabel" style="font-size: 1.8rem; font-weight: bold; color: #10B981; margin-top: 6px;">Rp 0</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Seluruh isi dirender oleh public/js/modules/41-kurs-hari-ini.js -->
+                    <div id="kursRoot"></div>
                 </section>
 
 
                 <!-- Currency Rate View -->
                 <section id="currency-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="flex-wrap: wrap; gap: 10px;">
-                        <h2>Manajemen Kurs Valuta</h2>
-                        <div style="display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap;">
-                            <input type="file" id="batchRateInput" class="form-control" accept=".xlsx, .xls, .csv" style="max-width: 250px;">
-                            <button class="btn btn-success" onclick="uploadBatchRates()"><i class="fa-solid fa-upload"></i> Update via Excel</button>
-                            <button class="btn btn-outline" onclick="syncSmartdealRates(event)" style="border-color: #f59e0b; color: #fbbf24;"><i class="fa-solid fa-globe"></i> Sync Smartdeal</button>
-                            <button class="btn btn-primary" onclick="openCurrencyModal()"><i class="fa-solid fa-plus"></i> Tambah Valuta</button>
-                        </div>
-                    </div>
-
-                    <div class="panel mt-4">
-                        <div style="margin-bottom: 12px; padding: 10px 12px; border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.08); color: #f8fafc; font-size: 0.9rem;">
-                            <strong>Catatan Sync Smartdeal:</strong> saat tombol sync dijalankan, kolom <strong>margin/selisih point</strong> tetap dipertahankan. Sistem hanya memperbarui kurs dasar dari Smartdeal, lalu menghitung ulang <strong>Kurs Beli</strong> dan <strong>Kurs Jual</strong> final secara otomatis.
-                        </div>
-                        <div id="smartdealSyncStatus" style="margin-bottom: 12px; padding: 10px 12px; border-left: 3px solid #64748b; background: rgba(15, 23, 42, 0.45); color: #cbd5e1; font-size: 0.88rem;">
-                            <strong>Status Sync Smartdeal:</strong> Belum ada riwayat sync.
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Kode</th>
-                                        <th>Trend</th>
-                                        <th>Kurs Beli</th>
-                                        <th>Kurs Jual</th>
-                                        <th>Stok Saat Ini</th>
-                                        <th>Batas Aman (Alert)</th>
-                                        <th>Margin (Rp)</th>
-                                        <th>Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="currenciesTableBody">
-                                    <!-- Injected by JS -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Global API Integration -->
-                    <div class="panel mt-4" style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(59, 130, 246, 0.3);">
-                        <div class="flex-between mb-3">
-                            <h3 style="margin: 0; color: #60A5FA;"><i class="fa-solid fa-globe"></i> Referensi Kurs Global (Mid-Market)</h3>
-                            <button class="btn btn-sm btn-outline" onclick="fetchGlobalRates()"><i class="fa-solid fa-rotate-right"></i> Perbarui</button>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-sm table-bordered" style="color: #cbd5e1; font-size: 0.9rem;">
-                                <thead>
-                                    <tr style="background: rgba(15, 23, 42, 0.8);">
-                                        <th>Mata Uang</th>
-                                        <th class="text-end">Kurs Tengah (Rp)</th>
-                                        <th class="text-end">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="globalRatesTableBody">
-                                    <tr>
-                                        <td colspan="3" class="text-center text-muted">Klik 'Perbarui' untuk mengambil data konversi global secara live...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                            <small class="text-muted mt-2 d-block">*Data diambil secara live dari Open ExchangeRate-API (Mid-Market Rate). Gunakan ini hanya sebagai acuan tren nilai tukar dunia hari ini.</small>
-                        </div>
-                    </div>
+                    <!-- Seluruh isi dirender oleh public/js/modules/47-kurs-page.js -->
+                    <div id="kursMgrRoot"></div>
                 </section>
 
-<section id="backup-view" class="view-section hidden">
-    <div id="backup-module-root"></div>
-</section>
-
-<section id="letter-number-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="border-left:4px solid #FBBF24;">
-                        <div><h2><i class="fa-solid fa-file-signature"></i> Nomor Surat</h2><p class="text-muted mt-2">Pembuatan nomor surat, riwayat nomor, dan arsip dokumen.</p></div>
-                    </div>
+                <!-- Nomor Surat (&#64;2026-Alifiandra): dirender oleh public/js/modules/28-letter-number.js -->
+                <section id="letter-number-view" class="view-section hidden">
                     <div id="letter-number-module-root"></div>
                 </section>
 
                 <!-- Old Money View -->
                 <section id="old-money-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="border-left: 4px solid #F59E0B;">
-                        <div>
-                            <h2 style="color: #FBBF24;"><i class="fa-solid fa-coins"></i> Koin Asing & Uang Kertas Lama</h2>
-                            <p class="text-muted mt-2">Pencatatan 100% terisolasi dari kasir dan pembukuan utama.</p>
-                        </div>
-                        <div style="display:flex; gap:10px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
-                            <button class="btn btn-warning" data-role-special="oldMoneySupplierManagement" onclick="openOldMoneySupplierModal()" style="background: #D97706; color: white; border: none;"><i class="fa-solid fa-users"></i> Master Suplayer/Pengepul</button>
-                            <button class="btn btn-primary" onclick="openOldMoneyItemModal()"><i class="fa-solid fa-plus"></i> Tambah Item Koin / Uang</button>
-                        </div>
-                    </div>
-
-                    <div class="stats-grid mt-4" style="grid-template-columns: repeat(3, 1fr);">
-                        <div class="stat-card" style="border-left: 4px solid #F59E0B; background: rgba(245, 158, 11, 0.1);">
-                            <div class="stat-icon" style="color:#F59E0B;"><i class="fa-solid fa-wallet"></i></div>
-                            <div class="stat-details">
-                                <h3>Total Kas Rupiah (Khusus Koin)</h3>
-                                <p class="stat-value" id="oldMoneyCashTotal" style="color:#F59E0B;">Rp 0</p>
-                                <button class="btn btn-sm btn-outline mt-2" onclick="openOldMoneyTopupModal()"><i class="fa-solid fa-money-bill-transfer"></i> Topup / Tarik Modal</button>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="border-left: 4px solid #10B981; background: rgba(16, 185, 137, 0.1);">
-                            <div class="stat-icon text-green"><i class="fa-solid fa-sack-dollar"></i></div>
-                            <div class="stat-details">
-                                <h3>Total Valuasi Stok (Modal)</h3>
-                                <p class="stat-value text-green" id="oldMoneyStockValuation">Rp 0</p>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="border-left: 4px solid #3B82F6; background: rgba(59, 130, 246, 0.1);">
-                            <div class="stat-icon" style="color:#3B82F6;"><i class="fa-solid fa-chart-line"></i></div>
-                            <div class="stat-details">
-                                <h3>Laba Koin Terkumpul</h3>
-                                <p class="stat-value" id="oldMoneyTotalProfit" style="color:#3B82F6;">Rp 0</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="dashboard-content mt-4" style="grid-template-columns: 1fr 1fr;">
-                        <!-- Transaction Form -->
-                        <div class="panel">
-                            <h3><i class="fa-solid fa-cash-register"></i> Transaksi Koin / Uang Lama</h3>
-                            <hr class="divider">
-                            <div class="form-group row">
-                                <div class="col-md-6">
-                                    <label>Kategori Transaksi</label>
-                                    <select id="oldMoneyTrxCategory" class="form-control" onchange="window.handleOldMoneyCategoryChange()">
-                                        <option value="KOIN">Koin</option>
-                                        <option value="UANG_LAMA">Uang Lama</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-6">
-                                    <label>Tipe Transaksi</label>
-                                    <select id="oldMoneyTrxType" class="form-control" onchange="autoFillOldMoneyKurs()">
-                                        <option value="BELI">BELI (Uang Kas Keluar)</option>
-                                        <option value="JUAL">JUAL (Uang Kas Masuk)</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="form-group row">
-                                <div class="col">
-                                    <label>Nasabah (Pelanggan)</label>
-                                    <select id="oldMoneyCustomer" class="form-control">
-                                        <option value="-">-- Pengunjung Biasa --</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <small class="text-muted d-block" id="oldMoneyCategoryHint">Mode Koin aktif. Item dan hitungan akan mengikuti kategori ini.</small>
-                            </div>
-                            <div class="form-group row">
-                                <div class="col mb-3">
-                                    <label>Pilih Item</label>
-                                    <select id="oldMoneyItem" class="form-control" onchange="autoFillOldMoneyKurs()">
-                                        <option value="">-- Kosong --</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="form-group row">
-                                <input type="hidden" id="oldMoneyDenom" value="1">
-                                <div class="col">
-                                    <label id="oldMoneyQtyLabel">Keping/Lembar</label>
-                                    <input type="number" id="oldMoneyQty" class="form-control" placeholder="0" oninput="calculateOldMoneyForm()">
-                                </div>
-                                <div class="col">
-                                    <label id="oldMoneyValasLabel">Jumlah Valas</label>
-                                    <input type="text" id="oldMoneyValas" class="form-control" placeholder="0" inputmode="decimal" onfocus="window.handleOldMoneyMoneyFocus(this)" oninput="window.handleOldMoneyMoneyTyping(this)" onblur="window.handleOldMoneyMoneyBlur(this, 'valas')">
-                                </div>
-                            </div>
-                            <div class="form-group row mt-3">
-                                <div class="col">
-                                    <label>Kurs (Rp/Valas)</label>
-                                    <input type="text" id="oldMoneyKurs" class="form-control" placeholder="Manual/Auto" inputmode="decimal" onfocus="window.handleOldMoneyMoneyFocus(this)" oninput="window.handleOldMoneyMoneyTyping(this)" onblur="window.handleOldMoneyMoneyBlur(this, 'rate')">
-                                    <small class="text-muted" id="oldMoneyKursHint">Kurs Master: -</small>
-                                </div>
-                                <div class="col">
-                                    <label>Total Rupiah (Jumlah Rp)</label>
-                                    <input type="text" id="oldMoneyTotalRp" class="form-control" placeholder="0" inputmode="numeric" onfocus="window.handleOldMoneyMoneyFocus(this)" oninput="window.handleOldMoneyMoneyTyping(this)" onblur="window.handleOldMoneyMoneyBlur(this, 'idr')">
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <small class="text-muted" id="oldMoneyPriceHint">Saran Harga Beli Master (jika ada): -</small>
-                            </div>
-                            <button class="btn btn-outline btn-block mt-3" onclick="addToOldMoneyCart()"><i class="fa-solid fa-cart-plus"></i> Tambah ke Keranjang</button>
-
-                            <hr class="divider mt-4">
-
-                            <h3><i class="fa-solid fa-shopping-cart"></i> Keranjang Koin</h3>
-                            <div class="cart-box" id="oldMoneyCartContainer" style="background: rgba(15, 23, 42, 0.6); padding: 10px; border-radius: 8px; min-height: 50px;">
-                                <div style="text-align: center; color: #94A3B8; padding: 10px;">Keranjang Kosong</div>
-                            </div>
-
-                            <div class="summary-total mt-3 mb-3">
-                                <span>Grand Total Rupiah</span>
-                                <h3 id="oldMoneyGrandTotalIdr" class="text-green" style="margin: 0; font-size: 1.5rem;">Rp 0</h3>
-                            </div>
-
-                            <button class="btn btn-primary btn-block btn-lg" id="btnOldMoneyCheckout" onclick="processOldMoneyCheckout()" disabled><i class="fa-solid fa-check-double"></i> Checkout & Cetak Struk</button>
-                        </div>
-
-                        <!-- Stock Table -->
-                        <div class="panel">
-                            <h3><i class="fa-solid fa-boxes-stacked"></i> Stok Tersedia</h3>
-                            <hr class="divider">
-                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
-                                <div style="display:flex; gap:8px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.15); padding: 6px; border-radius: 999px;">
-                                    <button type="button" id="oldMoneyStockTabKoin" class="btn btn-sm" onclick="window.setOldMoneyStockCategory('KOIN')" style="background:#f59e0b; color:#0f172a; border:none; border-radius:999px; padding:6px 14px;">Stok Koin</button>
-                                    <button type="button" id="oldMoneyStockTabUangLama" class="btn btn-sm" onclick="window.setOldMoneyStockCategory('UANG_LAMA')" style="background:transparent; color:#cbd5e1; border:none; border-radius:999px; padding:6px 14px;">Stok Uang Lama</button>
-                                </div>
-                                <input type="text" id="oldMoneyStockSearch" class="form-control" placeholder="Cari kode / nama item..." oninput="window.loadOldMoneyStockTable()" style="max-width: 260px;">
-                            </div>
-                            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                                <table class="table table-sm old-money-stock-table">
-                                    <colgroup>
-                                        <col style="width: 29%;">
-                                        <col style="width: 11%;">
-                                        <col style="width: 15%;">
-                                        <col style="width: 15%;">
-                                        <col style="width: 20%;">
-                                        <col style="width: 10%;">
-                                    </colgroup>
-                                    <thead style="position: sticky; top: 0; background: #1e293b; z-index: 1;">
-                                        <tr>
-                                            <th>Valas</th>
-                                            <th style="text-align: right;">Stok Koin<br><small style="color:#94a3b8; font-weight: 400;">Jml keping</small></th>
-                                            <th style="text-align: right;">Stok Valas<br><small style="color:#94a3b8; font-weight: 400;">Nilai nominal</small></th>
-                                            <th style="text-align: right;">Kurs Rata-rata<br><small style="color:#94a3b8; font-weight: 400;">Rp per valas</small></th>
-                                            <th style="text-align: right;">Jumlah Rp<br><small style="color:#94a3b8; font-weight: 400;">Valas x kurs</small></th>
-                                            <th style="text-align: center;">Aksi</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="oldMoneyStockTableBody">
-                                        <!-- Injected -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Transaction History -->
-                    <div class="panel mt-4">
-                        <div class="flex-between mb-2">
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                <h3><i class="fa-solid fa-clock-rotate-left"></i> Riwayat Transaksi Modul Ini</h3>
-                                <div style="display: flex; align-items: center; gap: 5px; margin-left: 15px;">
-                                    <input type="text" id="oldMoneyFilterText" class="form-control" placeholder="Cari ID, Nama, Item, Tipe..." style="width: 200px; padding: 2px 8px; font-size: 0.85rem;">
-                                    <input type="date" id="oldMoneyFilterStart" class="form-control" style="width: 130px; padding: 2px 5px; font-size: 0.85rem;">
-                                    <span style="color: #64748b; font-size: 0.85rem;">s/d</span>
-                                    <input type="date" id="oldMoneyFilterEnd" class="form-control" style="width: 130px; padding: 2px 5px; font-size: 0.85rem;">
-                                    <button class="btn btn-sm btn-primary" onclick="loadOldMoneyTrxTable()" style="padding: 2px 10px;"><i class="fa-solid fa-search"></i> Cari</button>
-                                </div>
-                                <div id="oldMoneySelectedCount" style="margin-left: 12px; color: #94a3b8; font-size: 0.8rem;">0 dipilih</div>
-                            </div>
-                            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:flex-end;">
-                                <button class="btn btn-sm btn-outline" onclick="window.setOldMoneyTrxSelectionAll(true)"><i class="fa-solid fa-check-double"></i> Pilih Semua</button>
-                                <button class="btn btn-sm btn-outline" onclick="window.clearOldMoneyTrxSelection()"><i class="fa-solid fa-xmark"></i> Batal Pilih</button>
-                                <button class="btn btn-sm btn-danger" onclick="window.deleteSelectedOldMoneyTransactions()"><i class="fa-solid fa-trash"></i> Hapus Pilihan</button>
-                                <button class="btn btn-sm btn-danger" onclick="window.deleteAllOldMoneyTransactions()"><i class="fa-solid fa-trash-can"></i> Hapus Semua</button>
-                                <button class="btn btn-sm btn-secondary" onclick="exportTableToExcel('oldMoneyTrxTable', 'Riwayat_Koin_Uang_Lama')"><i class="fa-solid fa-file-excel"></i> Export CSV</button>
-                            </div>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-sm" id="oldMoneyTrxTable">
-                                <thead>
-                                    <tr>
-                                        <th style="text-align:center; width: 38px;"><i class="fa-solid fa-square-check"></i></th>
-                                        <th>Waktu</th>
-                                        <th>ID Trx</th>
-                                        <th>Tipe</th>
-                                        <th>Item</th>
-                                        <th style="text-align: right;">Qty</th>
-                                        <th style="text-align: right;">Total Rp</th>
-                                        <th>Pihak / Suplayer</th>
-                                        <th style="text-align: center;">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="oldMoneyTrxTableBody">
-                                    <!-- Injected -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <!-- Koin & Uang Lama (dirender oleh public/js/modules/43-koin-uang-lama.js) -->
+                    <div id="omRoot"></div>
                 </section>
 
                 <!-- Report View -->
@@ -2470,7 +1565,6 @@
                         <div style="display:flex; gap:10px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
                             <input type="file" id="historicalTrxInput" class="form-control" accept=".xlsx, .xls, .csv" style="max-width: 250px;" title="Gunakan file hasil Export Excel">
                             <button class="btn btn-success" onclick="uploadHistoricalTransactions()"><i class="fa-solid fa-upload"></i> Upload Histori</button>
-                            <button class="btn btn-warning" onclick="restoreTransactionsFromRwt()" title="Pulihkan transaksi yang hilang dari RWT/Audit"><i class="fa-solid fa-rotate-left"></i> Pulihkan dari RWT</button>
                             <button class="btn btn-primary" onclick="exportTableToExcel('reportTable', 'Laporan_Transaksi')"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
                             <button class="btn btn-info" onclick="printBulkReceipts()" style="background: #3b82f6; color: white; border: none;"><i class="fa-solid fa-print"></i> Cetak Masal</button>
                             <button class="btn btn-danger" onclick="deleteAllTransactions()"><i class="fa-solid fa-trash-can"></i> Hapus Semua</button>
@@ -2569,90 +1663,6 @@
                     </div>
                 </section>
 
-                <!-- RWT View -->
-                <section id="audit-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="border-left: 4px solid #ef4444;">
-                        <div>
-                            <h2 class="text-red"><i class="fa-solid fa-shield-halved"></i> RWT</h2>
-                            <p class="text-muted mt-2">Ringkasan riwayat transaksi untuk tindak lanjut operasional dan kontrol internal.</p>
-                        </div>
-                        <div style="display:flex; gap:10px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
-                            <button class="btn btn-primary" onclick="loadAuditTable()"><i class="fa-solid fa-rotate-right"></i> Refresh Data</button>
-                            <button class="btn btn-secondary" onclick="exportTableToExcel('auditTable', 'Data_RWT')"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
-                        </div>
-                    </div>
-
-                    <div class="panel mt-4">
-                        <div class="filter-controls">
-                            <!-- Row 1: 5 Kategori -->
-                            <div class="form-group row mb-2">
-                                <div class="col">
-                                    <label>Cari Invoice</label>
-                                    <input type="text" id="filterAuditInvoice" class="form-control" placeholder="No. Invoice" oninput="filterAuditTable()">
-                                </div>
-                                <div class="col">
-                                    <label>Ketik Nama</label>
-                                    <input type="text" id="filterAuditNama" class="form-control" placeholder="Nama Nasabah" oninput="filterAuditTable()">
-                                </div>
-                                <div class="col">
-                                    <label>Ketik No HP</label>
-                                    <input type="text" id="filterAuditHp" class="form-control" placeholder="No Tlp/HP" oninput="filterAuditTable()">
-                                </div>
-                                <div class="col">
-                                    <label>Mata Uang</label>
-                                    <select id="filterAuditValuta" class="form-control" onchange="filterAuditTable()">
-                                        <option value="">-- Semua --</option>
-                                    </select>
-                                </div>
-                                <div class="col">
-                                    <label>Tipe Transaksi</label>
-                                    <select id="filterAuditTipe" class="form-control" onchange="filterAuditTable()">
-                                        <option value="">-- Semua --</option>
-                                        <option value="JUAL">JUAL</option>
-                                        <option value="BELI">BELI</option>
-                                    </select>
-                                </div>
-                            </div>
-                            
-                            <!-- Row 2: Tanggal & Action -->
-                            <div class="form-group row">
-                                <div class="col-md-4">
-                                    <label>Dari Tanggal</label>
-                                    <input type="date" id="auditStartDate" class="form-control" onchange="filterAuditTable()">
-                                </div>
-                                <div class="col-md-4">
-                                    <label>Sampai Tanggal</label>
-                                    <input type="date" id="auditEndDate" class="form-control" onchange="filterAuditTable()">
-                                </div>
-                                <div class="col-md-4" style="display: flex; align-items: flex-end; gap: 10px;">
-                                    <button class="btn btn-secondary" style="flex: 2;" onclick="loadAuditTable()">Tampilkan RWT</button>
-                                    <button class="btn btn-outline" style="flex: 1; border: 1px solid #ef4444; color: #ef4444;" onclick="window.resetAuditFilter()">Reset</button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-sm" id="auditTable">
-                                <thead style="background: rgba(239, 68, 68, 0.1);">
-                                        <th>Tanggal/Waktu</th>
-                                        <th>No. Invoice</th>
-                                        <th>Tipe</th>
-                                        <th>Nasabah</th>
-                                        <th>Valuta</th>
-                                        <th>Catatan</th>
-                                        <th class="text-end">Nominal Valuta</th>
-                                        <th class="text-end">Kurs/Rate</th>
-                                        <th class="text-end">Total IDR</th>
-                                        <th style="text-align: center;">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="auditTableBody">
-                                    <tr><td colspan="10" class="text-center text-muted">Memuat data RWT...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-
                 <!-- Laporan Harian View -->
                 <section id="harian-view" class="view-section hidden">
                     <div class="panel header-panel flex-between">
@@ -2734,268 +1744,9 @@
                     </div>
                 </section>
 
-                <!-- HRIS View -->
+                <!-- HRIS View (&#64;2026-Alifiandra) : UI dirender oleh public/js/modules/59-hris.js -->
                 <section id="hris-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="border-left: 4px solid #6366f1;">
-                        <div>
-                            <h2 style="color: #6366f1;"><i class="fa-solid fa-users-gear"></i> HRIS (Karyawan & Gaji)</h2>
-                            <p class="text-muted mt-2">Kelola Data Karyawan, Absensi Harian, Kasbon, dan Slip Gaji.</p>
-                        </div>
-                        <div style="display:flex; gap:10px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
-                            <button class="btn btn-primary hris-manage-only" onclick="openHrisEmployeeModal()" style="background: #4f46e5; border-color: #4f46e5;"><i class="fa-solid fa-user-plus"></i> Tambah Karyawan</button>
-                        </div>
-                    </div>
-
-                    <div class="panel mt-4" style="padding: 0; background: transparent; border: none; box-shadow: none;">
-                        <div class="hris-tabs" style="display: flex; gap: 10px; border-bottom: 2px solid #334155; padding-bottom: 10px; overflow-x: auto;">
-                            <button class="btn btn-primary btn-sm hris-tab-btn active hris-manage-only" id="btn-tab-hris-emp" onclick="switchHrisTab('emp')"><i class="fa-solid fa-users"></i> Data Karyawan</button>
-                            <button class="btn btn-outline btn-sm hris-tab-btn hris-manage-only" id="btn-tab-hris-att" onclick="switchHrisTab('att')"><i class="fa-solid fa-clock"></i> Absensi (Clock In/Out)</button>
-                            <button class="btn btn-outline btn-sm hris-tab-btn" id="btn-tab-hris-leave" onclick="switchHrisTab('leave')"><i class="fa-solid fa-calendar-alt"></i> Shift & Cuti</button>
-                            <button class="btn btn-outline btn-sm hris-tab-btn hris-manage-only" id="btn-tab-hris-kasbon" onclick="switchHrisTab('kasbon')"><i class="fa-solid fa-hand-holding-dollar"></i> Kasbon & Hutang</button>
-                            <button class="btn btn-outline btn-sm hris-tab-btn hris-manage-only" id="btn-tab-hris-bpjs" onclick="switchHrisTab('bpjs')"><i class="fa-solid fa-heart-pulse"></i> BPJS (Kes & TK)</button>
-                            <button class="btn btn-outline btn-sm hris-tab-btn hris-manage-only" id="btn-tab-hris-payroll" onclick="switchHrisTab('payroll')"><i class="fa-solid fa-file-invoice-dollar"></i> Penggajian (Payroll)</button>
-                        </div>
-                    </div>
-
-                    <div class="hris-content-area mt-3">
-                        <!-- TAB: EMPLOYEE -->
-                        <div id="hris-tab-emp" class="hris-tab-content">
-                            <div class="panel">
-                                <div class="table-responsive">
-                                    <table class="table table-hover">
-                                        <thead>
-                                            <tr>
-                                                <th>ID/NIK</th>
-                                                <th>Nama Karyawan</th>
-                                                <th>Jabatan</th>
-                                                <th style="text-align: right;">Gaji Pkk & UM</th>
-                                                <th>Catatan</th>
-                                                <th style="text-align: center;">Status</th>
-                                                <th style="text-align: center;">Aksi</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="hrisEmpTableBody">
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- TAB: ATTENDANCE -->
-                        <div id="hris-tab-att" class="hris-tab-content hidden" style="display:none;">
-                            <div class="row" style="display: flex; flex-wrap: wrap; gap: 20px;">
-                                <!-- Form Absen Kiri -->
-                                <div class="col" style="flex: 1; min-width: 300px;">
-                                    <div class="panel text-center" style="background: rgba(30, 41, 59, 0.8);">
-                                        <h3 class="mb-3" style="color: #60A5FA;">Absensi Shift Hari Ini</h3>
-                                        <div class="live-clock mb-4" id="hrisLiveClock" style="font-size: 2.5rem; color: #f8fafc;">12:00:00</div>
-                                        
-                                        <select id="hrisAttEmpSelect" class="form-control mb-3">
-                                            <option value="">-- Pilih Nama Anda --</option>
-                                        </select>
-                                        <input type="password" id="hrisAttPin" class="form-control mb-3 text-center" placeholder="PIN Absen (4 digit)" maxlength="4" style="font-size: 1.5rem; letter-spacing: 5px;">
-                                        
-                                        <div style="display: flex; gap: 10px; justify-content: center;">
-                                            <button class="btn btn-primary btn-lg" style="background: #10B981; border: none; width: 140px;" onclick="processHrisAttendance('IN')"><i class="fa-solid fa-right-to-bracket"></i> CLOCK IN</button>
-                                            <button class="btn btn-danger btn-lg" style="width: 140px;" onclick="processHrisAttendance('OUT')"><i class="fa-solid fa-right-from-bracket"></i> CLOCK OUT</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <!-- Tabel Hari Ini Kanan -->
-                                <div class="col" style="flex: 2; min-width: 400px;">
-                                    <div class="panel">
-                                        <div class="flex-between mb-3">
-                                            <h3 style="margin:0;"><i class="fa-solid fa-calendar-day"></i> Log Absen Hari Ini</h3>
-                                            <input type="date" id="hrisAttDateFilter" class="form-control form-control-sm" style="max-width: 150px;" onchange="renderHrisAttendanceTable()">
-                                        </div>
-                                        <div class="table-responsive">
-                                            <table class="table table-sm text-center">
-                                                <thead>
-                                                    <tr>
-                                                        <th style="text-align:left;">Nama</th>
-                                                        <th>Clock IN</th>
-                                                        <th>Clock OUT</th>
-                                                        <th>Status</th>
-                                                        <th>Aksi</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="hrisAttTableBody">
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- TAB: LEAVE & SCHEDULE -->
-                        <div id="hris-tab-leave" class="hris-tab-content hidden" style="display:none;">
-                            <div class="panel">
-                                <div class="flex-between mb-3" style="gap:12px; flex-wrap:wrap;">
-                                    <div>
-                                        <h3 style="margin:0;"><i class="fa-solid fa-calendar-days"></i> Kalender Schedule Bulanan</h3>
-                                        <small class="text-muted">Tampilan ringkas untuk view dan print jadwal kerja, cuti, izin, sakit, dan libur shift.</small>
-                                    </div>
-                                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
-                                        <div>
-                                            <label style="font-size:0.78rem;">Bulan</label>
-                                            <input type="month" id="hrisScheduleMonth" class="form-control" onchange="renderHrisScheduleCalendar()" style="width:150px;">
-                                        </div>
-                                        <div>
-                                            <label style="font-size:0.78rem;">Karyawan</label>
-                                            <select id="hrisScheduleEmployee" class="form-control" onchange="renderHrisScheduleCalendar()" style="width:190px;">
-                                                <option value="ALL">Semua Karyawan</option>
-                                            </select>
-                                        </div>
-                                        <button class="btn btn-primary" onclick="openHrisScheduleCalendarView()"><i class="fa-solid fa-up-right-from-square"></i> View Jadwal</button>
-                                        <button class="btn btn-success" onclick="downloadHrisScheduleCalendarJpeg()"><i class="fa-solid fa-image"></i> Download JPEG</button>
-                                        <button class="btn btn-secondary" onclick="printHrisScheduleCalendar()"><i class="fa-solid fa-print"></i> Print Jadwal</button>
-                                    </div>
-                                </div>
-                                <div class="hris-schedule-legend mb-3">
-                                    <span><b class="sch sch-p">P</b> Shift/Jadwal</span>
-                                    <span><b class="sch sch-shift-s">S</b> Shift Siang</span>
-                                    <span><b class="sch sch-midle">M</b> Shift Midle</span>
-                                    <span><b class="sch sch-o">O</b> Off</span>
-                                    <span><b class="sch sch-c">C</b> Cuti</span>
-                                    <span><b class="sch sch-i">I</b> Izin</span>
-                                    <span><b class="sch sch-s">S</b> Sakit</span>
-                                </div>
-                                <div class="table-responsive hris-schedule-wrap">
-                                    <table class="table table-sm hris-schedule-table" id="hrisScheduleCalendarTable">
-                                        <thead id="hrisScheduleCalendarHead"></thead>
-                                        <tbody id="hrisScheduleCalendarBody"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div class="panel hris-manage-only" id="hrisScheduleManagePanel">
-                                <div class="flex-between mb-3">
-                                    <h3 style="margin:0;"><i class="fa-solid fa-calendar-alt"></i> Schedule, Shift & Cuti</h3>
-                                    <button class="btn btn-primary btn-sm" onclick="openHrisLeaveModal()"><i class="fa-solid fa-plus"></i> Tambah Schedule/Cuti</button>
-                                </div>
-                                <div class="table-responsive">
-                                    <table class="table table-sm">
-                                        <thead>
-                                            <tr>
-                                                <th>Nama Karyawan</th>
-                                                <th>Tanggal Mulai</th>
-                                                <th>Tanggal Selesai</th>
-                                                <th>Jam / Schedule</th>
-                                                <th style="text-align:center;">Jenis Tipe</th>
-                                                <th>Keterangan / Alasan</th>
-                                                <th style="text-align:center;">Aksi</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="hrisLeaveTableBody">
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- TAB: KASBON -->
-                        <div id="hris-tab-kasbon" class="hris-tab-content hidden" style="display:none;">
-                            <div class="panel">
-                                <div class="flex-between mb-3">
-                                    <h3 style="margin:0;"><i class="fa-solid fa-hand-holding-dollar"></i> Catatan Kasbon / Pinjaman</h3>
-                                    <button class="btn btn-primary btn-sm" onclick="openHrisKasbonModal()"><i class="fa-solid fa-plus"></i> Mutasi Kasbon</button>
-                                </div>
-                                <div class="table-responsive">
-                                    <table class="table table-sm">
-                                        <thead>
-                                            <tr>
-                                                <th>Tanggal</th>
-                                                <th>Nama Karyawan</th>
-                                                <th style="text-align:center;">Tipe (Pinjam/Cicil)</th>
-                                                <th>Keterangan</th>
-                                                <th style="text-align: right;">Nominal Mutasi (Rp)</th>
-                                                <th style="text-align: right;">Sisa Hutang Saat Ini</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="hrisKasbonTableBody">
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- TAB: BPJS -->
-                        <div id="hris-tab-bpjs" class="hris-tab-content hidden" style="display:none;">
-                            <div class="panel">
-                                <div class="flex-between mb-3">
-                                    <h3 style="margin:0;"><i class="fa-solid fa-heart-pulse"></i> Data Potongan BPJS</h3>
-                                    <button class="btn btn-primary btn-sm" onclick="openHrisBpjsModal()"><i class="fa-solid fa-pen"></i> Update Master BPJS</button>
-                                </div>
-                                <div class="table-responsive">
-                                    <table class="table table-sm">
-                                        <thead>
-                                            <tr>
-                                                <th>NIK</th>
-                                                <th>Nama Karyawan</th>
-                                                <th style="text-align: right;">Pot. Kesehatan (1%)</th>
-                                                <th style="text-align: right;">Pot. Ketenagakerjaan (2%)</th>
-                                                <th style="text-align: right;">Total Potongan BPJS</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="hrisBpjsTableBody">
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- TAB: PAYROLL -->
-                        <div id="hris-tab-payroll" class="hris-tab-content hidden" style="display:none;">
-                            <div class="panel">
-                                <div class="row align-items-end mb-4" style="display: flex; gap: 10px; flex-wrap: wrap;">
-                                    <div class="col" style="flex: 1; min-width: 200px;">
-                                        <label>Pilih Karyawan</label>
-                                        <select id="hrisPayrollEmp" class="form-control"></select>
-                                    </div>
-                                    <div class="col" style="flex: 1; min-width: 150px;">
-                                        <label>Bulan Cicilan/Gaji</label>
-                                        <input type="month" id="hrisPayrollMonth" class="form-control">
-                                    </div>
-                                    <div class="col" style="flex: 1; min-width: 200px;">
-                                        <button class="btn btn-primary btn-block" onclick="generateHrisPayroll()"><i class="fa-solid fa-calculator"></i> Kalkulasi Gaji</button>
-                                    </div>
-                                </div>
-
-                                <div id="hrisPayrollResult" class="hidden" style="display:none; border: 1px solid #334155; border-radius: 8px; padding: 20px; background: rgba(15, 23, 42, 0.4);">
-                                    <div class="flex-between mb-4 border-bottom pb-2">
-                                        <h3 style="color: #60A5FA; margin:0;">Ringkasan Slip Gaji <span id="lblPayTitle" style="color:#f8fafc; font-weight:normal;"></span></h3>
-                                        <button class="btn btn-sm btn-outline" onclick="window.print()"><i class="fa-solid fa-print"></i> Cetak Tampilan (PDF/Kertas)</button>
-                                    </div>
-                                    
-                                    <div class="row" style="display: flex; gap: 30px; flex-wrap: wrap;">
-                                        <div class="col" style="flex: 1; min-width: 300px;">
-                                            <table class="table table-sm table-borderless">
-                                                <tbody>
-                                                    <tr><td style="width: 180px;"><strong>Nama Karyawan</strong></td><td style="width:10px;">:</td><td id="lblPayName">-</td></tr>
-                                                    <tr><td><strong>Jabatan</strong></td><td>:</td><td id="lblPayRole">-</td></tr>
-                                                    <tr><td><strong>Total Hari / Kehadiran</strong></td><td>:</td><td><strong id="lblPayDays" style="color: #10B981;">0 Hari</strong></td></tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                        <div class="col" style="flex: 1; min-width: 300px;">
-                                            <table class="table table-sm table-bordered">
-                                                <tbody style="font-family: monospace; font-size: 1rem;">
-                                                    <tr><td>(+) Gaji Pokok</td><td style="text-align: right;" id="valPayBasic">Rp 0</td></tr>
-                                                    <tr><td>(+) Uang Makan (Total)</td><td style="text-align: right;" id="valPayFood">Rp 0</td></tr>
-                                                    <tr><td>(-) Potongan Kasbon Bln Ini</td><td style="text-align: right; color: #ef4444;" id="valPayKasbon">Rp 0</td></tr>
-                                                    <tr style="background: rgba(16,185,137,0.2); font-weight: bold;">
-                                                        <td>TOTAL TAKE HOME PAY</td>
-                                                        <td style="text-align: right; font-size: 1.2rem; color: #10B981;" id="valPayTotal">Rp 0</td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
+                    <div id="hrisRoot"></div>
                 </section>
 
                 <!-- Customer Preview Modal -->
@@ -3059,631 +1810,187 @@
                         </div>
                     </div>
 
-                    <div class="panel mt-3" data-role-special="customerImportTools" style="position: relative; z-index: 50; pointer-events: auto; overflow: visible;">
-                        <div style="display:flex; gap:14px; flex-wrap: wrap; align-items: end;">
-                            <div style="display:flex; flex-direction: column; gap: 6px; min-width: 260px; flex: 1;">
-                                <label for="customerExcelInput" class="text-muted" style="font-size: 0.82rem;">Pilih file Excel nasabah</label>
-                                <input type="file" id="customerExcelInput" accept=".xlsx, .xls, .csv" title="Upload Data Nasabah" onchange="handleCustomerExcelSelected()" class="form-control" style="cursor: pointer; position: relative; z-index: 51; pointer-events: auto;" />
-                                <small class="text-muted">Urutan kolom wajib: ID_Nasabah, IDPJK, Tipe (1=perorangan, 2=perusahaan), Nama, Tempat_Lahir, Tanggal_Lahir, Alamat, Warga_Negara, Jenis_Kelamin, Pekerjaan, No_HP, No_Rekening, No_KTP, Selain_KTP, No_CIF, NPWP, Local_ID, Tgl_Daftar.</small>
+                    <div class="panel mt-3 cx-import" data-role-special="customerImportTools">
+                        <div class="cx-import-head">
+                            <div>
+                                <div class="cx-title"><i class="fa-solid fa-file-import"></i> Impor Data Nasabah</div>
+                                <div class="cx-sub">Unggah file Excel/CSV. Nasabah dengan ID yang sama diperbarui; kolom yang dikosongkan tidak menimpa data lama.</div>
                             </div>
-                            <div id="customerExcelFileName" class="text-muted" style="min-width: 220px; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-bottom: 10px;">Belum ada file dipilih</div>
-                            <button type="button" class="btn btn-success" id="btnCustomerExcelUpload" onclick="uploadCustomersExcel(); return false;" onpointerdown="uploadCustomersExcel(); return false;" onmousedown="uploadCustomersExcel(); return false;" ontouchstart="uploadCustomersExcel(); return false;" style="white-space: nowrap; position: relative; z-index: 51; pointer-events: auto !important; cursor: pointer !important; user-select: none;"><i class="fa-solid fa-file-import"></i> Proses Import</button>
-                            <button type="button" class="btn btn-danger" onclick="resetAllCustomersData()" style="white-space: nowrap;"><i class="fa-solid fa-trash-can"></i> Reset Data</button>
+                            <div class="cx-import-tools">
+                                <button type="button" class="cx-btn ghost" onclick="downloadCustomerTemplate()"><i class="fa-solid fa-download"></i> Unduh Template</button>
+                                <button type="button" class="cx-btn danger" onclick="resetAllCustomersData()"><i class="fa-solid fa-trash-can"></i> Reset Data</button>
+                            </div>
                         </div>
+                        <div class="cx-drop" id="cxDrop">
+                            <input type="file" id="customerExcelInput" accept=".xlsx,.xls,.csv" style="display:none">
+                            <i class="fa-solid fa-cloud-arrow-up cx-drop-ico"></i>
+                            <div class="cx-drop-text">
+                                <b id="customerExcelFileName">Belum ada file dipilih</b>
+                                <small>Tarik file ke sini, atau klik Pilih File. Format .xlsx, .xls, atau .csv</small>
+                            </div>
+                            <button type="button" class="cx-btn ghost" id="cxPick"><i class="fa-regular fa-folder-open"></i> Pilih File</button>
+                            <button type="button" class="cx-btn primary" id="btnCustomerExcelUpload" disabled><i class="fa-solid fa-file-import"></i> Proses Import</button>
+                        </div>
+                        <details class="cx-format">
+                            <summary>Lihat format kolom</summary>
+                            <div>Wajib ada kolom <b>Nama</b>. Kolom lain opsional: ID_Nasabah, IDPJK, Tipe (1=perorangan, 2=perusahaan), Tempat_Lahir (Lokasi Terbit untuk perusahaan), Tanggal_Lahir (Tanggal Terbit), Alamat, Warga_Negara, Jenis_Kelamin, Pekerjaan, No_HP, No_Rekening, No_KTP, Selain_KTP, No_CIF, NPWP, Local_ID, Tgl_Daftar, Jenis_ID, Jenis_Badan_Usaha, Bidang_Usaha, NIB. Tanpa ID_Nasabah, sistem membuat ID baru (atau mencocokkan No_KTP yang sudah ada).</div>
+                        </details>
                     </div>
-                    <script>
-                        (function() {
-                            function getCustomersFallback() {
-                                try {
-                                    if (typeof window.getCustomers === 'function') return window.getCustomers();
-                                    const raw = localStorage.getItem('mc_customers');
-                                    const parsed = raw ? JSON.parse(raw) : [];
-                                    return Array.isArray(parsed) ? parsed : [];
-                                } catch (e) {
-                                    return [];
-                                }
-                            }
 
-                            function saveCustomersFallback(customers) {
-                                if (typeof window.saveCustomers === 'function') {
-                                    window.saveCustomers(customers);
-                                    return;
-                                }
-                                localStorage.setItem('mc_customers', JSON.stringify(customers));
-                            }
-
-                            function generateIdFallback() {
-                                if (typeof window.generateStandardId === 'function') return window.generateStandardId();
-                                return 'ALM-' + String(Date.now()).slice(-6);
-                            }
-
-                            function buildUniqueImportedCustomerId(existingCustomers, rowIndex) {
-                                const used = new Set((existingCustomers || []).map(c => String((c && c.id_nasabah) || '').trim()).filter(Boolean));
-                                let candidate = generateIdFallback();
-                                let sequence = 1;
-                                while (used.has(String(candidate).trim())) {
-                                    candidate = 'ALM-' + Date.now() + '-' + (rowIndex + 1) + '-' + sequence++;
-                                }
-                                return candidate;
-                            }
-
-                            function updateCustomerExcelLabel() {
-                                const input = document.getElementById('customerExcelInput');
-                                const label = document.getElementById('customerExcelFileName');
-                                const button = document.getElementById('btnCustomerExcelUpload');
-                                if (label) label.textContent = input && input.files && input.files[0] ? input.files[0].name : 'Belum ada file dipilih';
-                                if (button) {
-                                    button.disabled = false;
-                                    button.classList.remove('disabled');
-                                    button.style.pointerEvents = 'auto';
-                                    button.style.cursor = 'pointer';
-                                }
-                            }
-
-                            function importCustomersInline() {
-                                const fileInput = document.getElementById('customerExcelInput');
-                                const importButton = document.getElementById('btnCustomerExcelUpload');
-                                const setImportLoading = function(isLoading) {
-                                    if (importButton) {
-                                        importButton.disabled = isLoading;
-                                        importButton.style.pointerEvents = isLoading ? 'none' : 'auto';
-                                        importButton.style.cursor = isLoading ? 'wait' : 'pointer';
-                                        importButton.innerHTML = isLoading
-                                            ? '<i class="fa-solid fa-spinner fa-spin"></i> Mengimpor...'
-                                            : '<i class="fa-solid fa-file-import"></i> Proses Import';
-                                    }
-                                    if (typeof Swal !== 'undefined') {
-                                        if (isLoading) {
-                                            Swal.fire({
-                                                title: 'Mengimpor Data Nasabah',
-                                                text: 'File sedang dibaca dan data sedang disimpan.',
-                                                allowOutsideClick: false,
-                                                allowEscapeKey: false,
-                                                background: '#1e293b',
-                                                color: '#f8fafc',
-                                                didOpen: () => Swal.showLoading()
-                                            });
-                                        } else if (Swal.isLoading && Swal.isLoading()) {
-                                            Swal.close();
-                                        }
-                                    }
-                                };
-                                if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-                                    if (typeof fileInput?.showPicker === 'function') fileInput.showPicker();
-                                    return false;
-                                }
-                                if (importButton && importButton.disabled) return false;
-                                if (typeof XLSX === 'undefined') {
-                                    alert('Library Excel belum termuat. Coba refresh halaman sekali lagi.');
-                                    return false;
-                                }
-
-                                const file = fileInput.files[0];
-                                const reader = new FileReader();
-                                setImportLoading(true);
-                                const compactCustomerForStorage = function(customer) {
-                                    if (!customer || typeof customer !== 'object') return customer;
-                                    const next = { ...customer };
-                                    if (typeof next.foto_id === 'string' && next.foto_id.length > 5000) delete next.foto_id;
-                                    delete next.raw_json;
-                                    return next;
-                                };
-                                const saveImportedCustomersCache = function(customers) {
-                                    const compactCustomers = customers.map(compactCustomerForStorage);
-                                    window.__mcCustomersMemory = compactCustomers;
-                                    window.__almaraLastLocalCustomerWriteAt = Date.now();
-                                    try {
-                                        localStorage.setItem('mc_customers', JSON.stringify(compactCustomers));
-                                        return true;
-                                    } catch (error) {
-                                        if (error && (error.name === 'QuotaExceededError' || String(error.message || '').toLowerCase().includes('quota'))) {
-                                            localStorage.removeItem('mc_customers');
-                                            try {
-                                                localStorage.setItem('mc_customers', JSON.stringify(compactCustomers));
-                                                return true;
-                                            } catch (retryError) {
-                                                console.warn('Cache nasabah lokal penuh, data tetap disimpan ke database.', retryError);
-                                                window.__mcCustomersMemory = compactCustomers;
-                                                return false;
-                                            }
-                                        }
-                                        throw error;
-                                    }
-                                };
-                                const parseCustomerCsvRows = function(text) {
-                                    const rows = [];
-                                    let row = [];
-                                    let field = '';
-                                    let inQuotes = false;
-                                    const normalized = String(text || '').replace(/^\uFEFF/, '');
-                                    const firstLine = normalized.split(/\r?\n/, 1)[0] || '';
-                                    const delimiterCounts = {
-                                        ',': (firstLine.match(/,/g) || []).length,
-                                        ';': (firstLine.match(/;/g) || []).length,
-                                        '\t': (firstLine.match(/\t/g) || []).length
-                                    };
-                                    const delimiter = Object.keys(delimiterCounts).sort((a, b) => delimiterCounts[b] - delimiterCounts[a])[0] || ',';
-
-                                    for (let i = 0; i < normalized.length; i++) {
-                                        const ch = normalized[i];
-                                        const next = normalized[i + 1];
-
-                                        if (ch === '"') {
-                                            if (inQuotes && next === '"') {
-                                                field += '"';
-                                                i++;
-                                            } else {
-                                                inQuotes = !inQuotes;
-                                            }
-                                            continue;
-                                        }
-
-                                        if (ch === delimiter && !inQuotes) {
-                                            row.push(field.trim());
-                                            field = '';
-                                            continue;
-                                        }
-
-                                        if ((ch === '\n' || ch === '\r') && !inQuotes) {
-                                            if (ch === '\r' && next === '\n') i++;
-                                            row.push(field.trim());
-                                            if (row.some(cell => String(cell || '').trim() !== '')) rows.push(row);
-                                            row = [];
-                                            field = '';
-                                            continue;
-                                        }
-
-                                        field += ch;
-                                    }
-
-                                    row.push(field.trim());
-                                    if (row.some(cell => String(cell || '').trim() !== '')) rows.push(row);
-                                    return rows;
-                                };
-
-                                reader.onload = async function(e) {
-                                    try {
-                                        const fileName = String(file.name || '').toLowerCase();
-                                        let jsonData = [];
-                                        if (fileName.endsWith('.csv')) {
-                                            const csvText = new TextDecoder('utf-8').decode(e.target.result);
-                                            jsonData = parseCustomerCsvRows(csvText);
-                                            if (jsonData.length === 0 || jsonData.every(row => row.length < 3)) {
-                                                const workbook = XLSX.read(csvText, { type: 'string' });
-                                                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                                                jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false });
-                                            }
-                                        } else {
-                                            const data = new Uint8Array(e.target.result);
-                                            const workbook = XLSX.read(data, { type: 'array' });
-                                            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                                            jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false });
-                                        }
-
-                                        let customers = getCustomersFallback();
-                                        let addCount = 0;
-                                        const importedCustomers = [];
-                                        const normalizeImportHeader = (value) => String(value || '')
-                                            .toLowerCase()
-                                            .replace(/[^a-z0-9]+/g, '');
-                                        const headerMap = {};
-                                        if (Array.isArray(jsonData[0])) {
-                                            jsonData[0].forEach((header, index) => {
-                                                const key = normalizeImportHeader(header);
-                                                if (key) headerMap[key] = index;
-                                            });
-                                        }
-                                        const requiredHeaders = [
-                                            'ID_Nasabah', 'IDPJK', 'Tipe', 'Nama', 'Tempat_Lahir', 'Tanggal_Lahir', 'Alamat',
-                                            'Warga_Negara', 'Jenis_Kelamin', 'Pekerjaan', 'No_HP', 'No_Rekening', 'No_KTP',
-                                            'Selain_KTP', 'No_CIF', 'NPWP', 'Local_ID', 'Tgl_Daftar'
-                                        ];
-                                        const missingHeaders = requiredHeaders.filter(header => headerMap[normalizeImportHeader(header)] === undefined);
-                                        if (missingHeaders.length) {
-                                            throw new Error('Header kolom wajib belum lengkap: ' + missingHeaders.join(', '));
-                                        }
-                                        const getHeaderCell = (row, aliases, fallbackIndex) => {
-                                            for (const alias of aliases) {
-                                                const index = headerMap[normalizeImportHeader(alias)];
-                                                if (index !== undefined && row[index] !== undefined && String(row[index]).trim() !== '') {
-                                                    return row[index];
-                                                }
-                                            }
-                                            return row[fallbackIndex];
-                                        };
-
-                                        jsonData.forEach((row, i) => {
-                                            if (!Array.isArray(row) || row.length < 3) return;
-                                            if (i === 0 || row.includes('ID Nasabah') || row.includes('Tipe')) return;
-
-                                            const idNasabahValue = getHeaderCell(row, ['ID_Nasabah', 'ID Nasabah', 'ID NASABAH', 'internal_id'], 0);
-                                            const tipeValue = getHeaderCell(row, ['Tipe', 'KN(TIPE)', 'KN Tipe', 'KN', 'customer_type'], 2);
-                                            const namaValue = getHeaderCell(row, ['Nama', 'Nama Lengkap', 'NAMA LENGKAP', 'name'], 3);
-                                            const idNasabah = idNasabahValue !== undefined ? String(idNasabahValue).trim() : null;
-                                            const tipeLabel = tipeValue !== undefined ? String(tipeValue).trim() : '';
-                                            const nama = namaValue !== undefined ? String(namaValue).trim() : null;
-                                            const idpjk = getHeaderCell(row, ['IDPJK'], 1) !== undefined ? String(getHeaderCell(row, ['IDPJK'], 1)).trim() : '-';
-                                            const tempat_lahir = getHeaderCell(row, ['Tempat_Lahir', 'Tempat Lahir'], 4) !== undefined ? String(getHeaderCell(row, ['Tempat_Lahir', 'Tempat Lahir'], 4)).trim() : '-';
-                                            const tanggal_lahir = getHeaderCell(row, ['Tanggal_Lahir', 'Tanggal Lahir'], 5) !== undefined ? String(getHeaderCell(row, ['Tanggal_Lahir', 'Tanggal Lahir'], 5)).trim() : '-';
-                                            const alamat = getHeaderCell(row, ['Alamat'], 6) !== undefined ? String(getHeaderCell(row, ['Alamat'], 6)).trim() : '-';
-                                            const warga_negara = getHeaderCell(row, ['Warga_Negara', 'Warga Negara'], 7) !== undefined ? String(getHeaderCell(row, ['Warga_Negara', 'Warga Negara'], 7)).trim() : '-';
-                                            const jenis_kelamin = getHeaderCell(row, ['Jenis_Kelamin', 'Jenis Kelamin'], 8) !== undefined ? String(getHeaderCell(row, ['Jenis_Kelamin', 'Jenis Kelamin'], 8)).trim() : '-';
-                                            const pekerjaan = getHeaderCell(row, ['Pekerjaan'], 9) !== undefined ? String(getHeaderCell(row, ['Pekerjaan'], 9)).trim() : '-';
-                                            const no_hp = getHeaderCell(row, ['No_HP', 'No HP', 'NO TLP', 'No TLP', 'No Telp', 'Phone'], 10) !== undefined ? String(getHeaderCell(row, ['No_HP', 'No HP', 'NO TLP', 'No TLP', 'No Telp', 'Phone'], 10)).trim() : '-';
-                                            const no_rekening = getHeaderCell(row, ['No_Rekening', 'No Rekening'], 11) !== undefined ? String(getHeaderCell(row, ['No_Rekening', 'No Rekening'], 11)).trim() : '';
-                                            const no_ktp = getHeaderCell(row, ['No_KTP', 'No KTP', 'NO KTP', 'identity_number'], 12) !== undefined ? String(getHeaderCell(row, ['No_KTP', 'No KTP', 'NO KTP', 'identity_number'], 12)).trim() : '-';
-                                            const selain_ktp = getHeaderCell(row, ['Selain_KTP', 'Selain KTP', 'ID Lain'], 13) !== undefined ? String(getHeaderCell(row, ['Selain_KTP', 'Selain KTP', 'ID Lain'], 13)).trim() : '-';
-                                            const no_cif = getHeaderCell(row, ['No_CIF', 'No CIF', 'id_cif'], 14) !== undefined ? String(getHeaderCell(row, ['No_CIF', 'No CIF', 'id_cif'], 14)).trim() : '';
-                                            const npwp = getHeaderCell(row, ['NPWP'], 15) !== undefined ? String(getHeaderCell(row, ['NPWP'], 15)).trim() : '';
-                                            const local_id = getHeaderCell(row, ['Local_ID', 'Local ID'], 16) !== undefined ? String(getHeaderCell(row, ['Local_ID', 'Local ID'], 16)).trim() : '';
-
-                                            if (!idNasabah || !nama || idNasabah === '-' || idNasabah === '') return;
-
-                                            let typeKn = '1';
-                                            if (tipeLabel.toLowerCase().includes('perusahaan') || tipeLabel.toLowerCase().includes('corporate') || tipeLabel === '2') {
-                                                typeKn = '2';
-                                            }
-
-                                            let finalId = idNasabah;
-                                            if (!idNasabah || idNasabah === '-' || isNaN(parseInt(idNasabah, 10)) || idNasabah.includes('Perorangan') || idNasabah.includes('Corporate') || idNasabah.toLowerCase().includes('tipe')) {
-                                                finalId = buildUniqueImportedCustomerId(customers, i);
-                                            }
-
-                                            const existingIdx = customers.findIndex(c => String(c.id_nasabah || '').trim() === String(finalId).trim());
-                                            let finalTglDaftar = new Date().toISOString();
-                                            const tglDaftarValue = getHeaderCell(row, ['Tgl_Daftar', 'Tgl Daftar', 'Tanggal Daftar'], 17);
-                                            const tglDaftarExcel = tglDaftarValue !== undefined ? String(tglDaftarValue).trim() : null;
-
-                                            if (tglDaftarExcel && tglDaftarExcel !== '-') {
-                                                const parsed = new Date(tglDaftarExcel);
-                                                if (!isNaN(parsed.getTime())) finalTglDaftar = parsed.toISOString();
-                                            } else if (existingIdx !== -1 && customers[existingIdx].tgl_daftar) {
-                                                finalTglDaftar = customers[existingIdx].tgl_daftar;
-                                            }
-
-                                            const newCustomer = {
-                                                id_nasabah: finalId,
-                                                idpjk,
-                                                kn: typeKn,
-                                                nama,
-                                                tempat_lahir,
-                                                tanggal_lahir,
-                                                alamat,
-                                                jenis_kelamin,
-                                                warga_negara,
-                                                pekerjaan,
-                                                no_ktp,
-                                                selain_ktp,
-                                                no_hp,
-                                                no_rekening,
-                                                no_cif,
-                                                npwp,
-                                                local_id,
-                                                tgl_daftar: finalTglDaftar
-                                            };
-
-                                            if (existingIdx !== -1) {
-                                                customers[existingIdx] = { ...customers[existingIdx], ...newCustomer };
-                                            } else {
-                                                customers.push(newCustomer);
-                                            }
-                                            importedCustomers.push(newCustomer);
-                                            addCount++;
-                                        });
-
-                                        if (addCount > 0) {
-                                            let mysqlSuccessCount = 0;
-                                            let mysqlFailedCount = 0;
-                                            let errorDetails = '';
-
-                                            if (typeof window.saveBulkToMySQL_Customers === 'function') {
-                                                if (typeof Swal !== 'undefined' && Swal.update) {
-                                                    Swal.update({ text: 'Mengunggah ' + importedCustomers.length + ' data nasabah ke MySQL...' });
-                                                }
-                                                const bulkResult = await window.saveBulkToMySQL_Customers(importedCustomers, {
-                                                    onProgress: function(progress) {
-                                                        if (typeof Swal !== 'undefined' && Swal.update) {
-                                                            Swal.update({ text: 'Menyimpan data nasabah: batch ' + progress.completedBatches + '/' + progress.totalBatches + ' ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â berhasil ' + progress.successCount + ', gagal ' + progress.failedCount + '.' });
-                                                        }
-                                                    }
-                                                });
-                                                mysqlSuccessCount = bulkResult.successCount;
-                                                mysqlFailedCount = bulkResult.failedCount;
-                                                if (!bulkResult.ok) {
-                                                    mysqlFailedCount = importedCustomers.length;
-                                                    errorDetails = '\n\nServer belum menerima data: ' + (bulkResult.message || 'respons penyimpanan tidak valid');
-                                                }
-                                                if (bulkResult.errors && bulkResult.errors.length > 0) {
-                                                    errorDetails = '\n\nDetail Gagal:\n' + bulkResult.errors.slice(0, 5).join('\n') + 
-                                                                   (bulkResult.errors.length > 5 ? '\n...dan ' + (bulkResult.errors.length - 5) + ' baris lainnya.' : '');
-                                                }
-                                            } else if (typeof window.saveToMySQL_Customer === 'function') {
-                                                for (let index = 0; index < importedCustomers.length; index++) {
-                                                    const customer = importedCustomers[index];
-                                                    if (typeof Swal !== 'undefined' && Swal.update) {
-                                                        Swal.update({ text: 'Menyimpan data ' + (index + 1) + ' dari ' + importedCustomers.length + '...' });
-                                                    }
-                                                    const result = await window.saveToMySQL_Customer(customer);
-                                                    if (result && result.ok) mysqlSuccessCount++;
-                                                    else mysqlFailedCount++;
-                                                }
-                                            }
-                                            const cacheSaved = saveImportedCustomersCache(customers);
-                                            if (mysqlFailedCount === 0 && mysqlSuccessCount > 0) {
-                                                localStorage.removeItem('mc_customers_reset_at');
-                                            }
-                                            if (typeof window.loadCustomersTable === 'function') window.loadCustomersTable();
-                                            const successText = !cacheSaved
-                                                ? 'Data sudah dikirim ke database. Cache browser penuh, jadi tabel ditampilkan dari memori sementara.'
-                                                : mysqlFailedCount > 0
-                                                ? 'Berhasil membaca ' + addCount + ' data. Tersimpan ke database: ' + mysqlSuccessCount + ', gagal: ' + mysqlFailedCount + '.' + errorDetails
-                                                : 'Berhasil mengimpor / memperbarui ' + addCount + ' data nasabah.';
-                                            if (typeof Swal !== 'undefined') {
-                                                Swal.fire({
-                                                    icon: (mysqlFailedCount > 0 || !cacheSaved) ? 'warning' : 'success',
-                                                    title: (mysqlFailedCount > 0 || !cacheSaved) ? 'Import Selesai Sebagian' : 'Import Berhasil',
-                                                    text: successText,
-                                                    background: '#1e293b',
-                                                    color: '#f8fafc'
-                                                });
-                                            } else {
-                                                alert(successText);
-                                            }
-                                            fileInput.value = '';
-                                            updateCustomerExcelLabel();
-                                        } else {
-                                            if (typeof Swal !== 'undefined') {
-                                                Swal.fire('Tidak Ada Data Valid', 'Tidak ada data nasabah valid yang diunggah. Pastikan format tabel cocok.', 'warning');
-                                            } else {
-                                                alert('Tidak ada data nasabah valid yang diunggah. Pastikan format tabel cocok.');
-                                            }
-                                        }
-                                    } catch (error) {
-                                        console.error(error);
-                                        if (typeof Swal !== 'undefined') {
-                                            Swal.fire('Gagal Import', 'Gagal membaca file nasabah: ' + (error.message || error) + '. Gunakan file .xlsx, .xls, atau .csv dengan kolom nasabah yang sesuai.', 'error');
-                                        } else {
-                                            alert('Gagal membaca file nasabah: ' + (error.message || error) + '. Gunakan file .xlsx, .xls, atau .csv dengan kolom nasabah yang sesuai.');
-                                        }
-                                    } finally {
-                                        setImportLoading(false);
-                                    }
-                                };
-                                reader.onerror = function() {
-                                    setImportLoading(false);
-                                    if (typeof Swal !== 'undefined') {
-                                        Swal.fire('Gagal Membaca File', 'Browser gagal membaca file yang dipilih.', 'error');
-                                    } else {
-                                        alert('Browser gagal membaca file yang dipilih.');
-                                    }
-                                };
-
-                                reader.readAsArrayBuffer(file);
-                                return false;
-                            }
-
-                            window.handleCustomerExcelSelected = updateCustomerExcelLabel;
-                            window.uploadCustomersExcel = importCustomersInline;
-
-                            setTimeout(function() {
-                                const input = document.getElementById('customerExcelInput');
-                                const button = document.getElementById('btnCustomerExcelUpload');
-                                if (input) {
-                                    input.disabled = false;
-                                    input.addEventListener('change', updateCustomerExcelLabel);
-                                }
-                                if (button) {
-                                    button.disabled = false;
-                                    button.classList.remove('disabled');
-                                    button.onclick = function() { return importCustomersInline(); };
-                                    button.onpointerdown = function(e) { e.preventDefault(); return importCustomersInline(); };
-                                    button.onmousedown = function(e) { e.preventDefault(); return importCustomersInline(); };
-                                }
-                                updateCustomerExcelLabel();
-                            }, 50);
-                        })();
-                    </script>
+                    <div class="cx-stats" id="cxStats"></div>
 
                     <style>
-                        #customers-view .customer-table-panel {
-                            padding: 16px;
-                            border-radius: 10px;
-                        }
-                        #customers-view .customer-table-toolbar {
-                            display: grid;
-                            grid-template-columns: 1fr;
-                            gap: 10px;
-                            align-items: stretch;
-                            margin-bottom: 12px;
-                        }
-                        #customers-view .customer-filter-bar {
-                            display: grid;
-                            grid-template-columns: minmax(320px, 1fr) 150px 154px 28px 154px 38px;
-                            gap: 8px;
-                            align-items: center;
-                            min-width: 0;
-                        }
-                        #customers-view #searchCustomerInput {
-                            width: 100%;
-                            min-width: 0;
-                            height: 38px;
-                        }
-                        #customers-view .customer-filter-bar .form-control {
-                            height: 38px;
-                            margin: 0;
-                            font-size: 0.82rem;
-                            min-width: 0;
-                        }
-                        #customers-view .customer-toolbar-actions {
-                            display: flex;
-                            gap: 8px;
-                            align-items: center;
-                            justify-content: flex-end;
-                            flex-wrap: wrap;
-                            min-width: 0;
-                        }
-                        #customers-view .customer-toolbar-actions .btn {
-                            height: 36px;
-                            min-width: 36px;
-                            padding: 0 11px;
-                            border-radius: 8px;
-                            font-size: 0.8rem;
-                            font-weight: 700;
-                            display: inline-flex;
-                            align-items: center;
-                            justify-content: center;
-                            gap: 6px;
-                            white-space: nowrap;
-                        }
-                        #customers-view .customer-date-reset-btn {
-                            width: 38px;
-                            height: 38px;
-                            min-width: 38px;
-                            padding: 0;
-                            border-radius: 8px;
-                            display: inline-flex;
-                            align-items: center;
-                            justify-content: center;
-                            border: 1px solid rgba(148, 163, 184, 0.28);
-                            background: rgba(15, 23, 42, 0.58);
-                            color: #cbd5e1;
-                            cursor: pointer;
-                        }
-                        #customers-view .customer-date-reset-btn:hover {
-                            color: #f8fafc;
-                            border-color: rgba(96, 165, 250, 0.55);
-                            background: rgba(59, 130, 246, 0.18);
-                        }
-                        #customers-view #customerTotalSummary {
-                            height: 36px;
-                            display: inline-flex;
-                            align-items: center;
-                            font-size: 0.82rem !important;
-                            padding: 0 10px !important;
-                            max-width: 100%;
-                        }
-                        #customers-view .customers-table-wrap {
-                            border: 1px solid rgba(148, 163, 184, 0.15);
-                            border-radius: 10px;
-                            max-height: 62vh;
-                            overflow: auto;
-                        }
-                        #customers-view .customers-ledger-table {
-                            border-collapse: collapse;
-                            font-size: 0.78rem;
-                            line-height: 1.2;
-                            margin: 0;
-                        }
-                        #customers-view .customers-ledger-table thead th {
-                            position: sticky;
-                            top: 0;
-                            z-index: 3;
-                            background: #111827;
-                            padding: 8px 9px;
-                            color: #aebbd0;
-                            font-size: 0.7rem;
-                            letter-spacing: 0.02em;
-                            border-bottom: 1px solid rgba(148, 163, 184, 0.22);
-                            white-space: nowrap;
-                        }
-                        #customers-view .customers-ledger-table tbody td {
-                            padding: 5px 9px;
-                            border-bottom: 1px solid rgba(148, 163, 184, 0.13);
-                            vertical-align: middle;
-                            white-space: nowrap;
-                        }
-                        #customers-view .customers-ledger-table tbody tr:nth-child(even) td {
-                            background: rgba(15, 23, 42, 0.22);
-                        }
-                        #customers-view .customers-ledger-table tbody tr:hover td {
-                            background: rgba(59, 130, 246, 0.09);
-                        }
-                        #customers-view .customers-ledger-table .customer-name-cell {
-                            min-width: 190px;
-                            white-space: normal;
-                        }
-                        #customers-view .customers-ledger-table .customer-address-cell {
-                            max-width: 260px;
-                            white-space: nowrap;
-                            overflow: hidden;
-                            text-overflow: ellipsis;
-                        }
-                        #customers-view .customers-ledger-table .customer-action-cell {
-                            position: sticky;
-                            right: 0;
-                            background: #111827;
-                            z-index: 2;
-                            box-shadow: -4px 0 10px rgba(0,0,0,0.22);
-                            padding: 4px 7px;
-                        }
-                        #customers-view .customer-row-actions {
-                            display: inline-flex;
-                            gap: 5px;
-                            align-items: center;
-                            justify-content: center;
-                            padding: 3px;
-                            border: 1px solid rgba(148, 163, 184, 0.16);
-                            border-radius: 7px;
-                            background: rgba(15, 23, 42, 0.72);
-                        }
-                        #customers-view .customer-row-actions .btn {
-                            width: 27px;
-                            height: 27px;
-                            min-width: 27px;
-                            padding: 0;
-                            border-radius: 6px;
-                            margin: 0 !important;
-                            display: inline-flex;
-                            align-items: center;
-                            justify-content: center;
-                            font-size: 0.72rem;
-                        }
-                        @media (max-width: 980px) {
-                            #customers-view .customer-filter-bar {
-                                grid-template-columns: 1fr 1fr;
-                            }
-                            #customers-view .customer-filter-separator {
-                                display: none !important;
-                            }
-                            #customers-view .customer-toolbar-actions {
-                                justify-content: flex-start;
-                            }
-                        }
-                        @media (max-width: 640px) {
-                            #customers-view .customer-filter-bar {
-                                grid-template-columns: 1fr;
-                            }
-                        }
+                        #customers-view .cx-import{padding:18px 20px}
+                        #customers-view .cx-import-head{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px}
+                        #customers-view .cx-title{font-weight:800;font-size:1rem;display:flex;gap:9px;align-items:center}
+                        #customers-view .cx-sub{font-size:.8rem;opacity:.7;margin-top:4px;max-width:640px;line-height:1.45}
+                        #customers-view .cx-import-tools{display:flex;gap:8px;flex-wrap:wrap}
+                        #customers-view .cx-btn{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 15px;border-radius:10px;border:1px solid rgba(148,163,184,.35);background:transparent;color:inherit;font-weight:700;font-size:.82rem;cursor:pointer;font-family:inherit;white-space:nowrap}
+                        #customers-view .cx-btn:hover{border-color:#3b82f6;color:#3b82f6}
+                        #customers-view .cx-btn.primary{background:#10B981;border-color:#10B981;color:#fff}
+                        #customers-view .cx-btn.primary:hover{background:#059669;color:#fff}
+                        #customers-view .cx-btn.primary:disabled{opacity:.45;cursor:not-allowed}
+                        #customers-view .cx-btn.danger{border-color:rgba(239,68,68,.5);color:#ef4444}
+                        #customers-view .cx-btn.danger:hover{background:#ef4444;color:#fff;border-color:#ef4444}
+                        #customers-view .cx-drop{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:2px dashed rgba(148,163,184,.45);border-radius:14px;padding:14px 16px;transition:.15s}
+                        #customers-view .cx-drop.drag{border-color:#3b82f6;background:rgba(59,130,246,.08)}
+                        #customers-view .cx-drop.has-file{border-style:solid;border-color:#10B981;background:rgba(16,185,129,.06)}
+                        #customers-view .cx-drop-ico{font-size:1.6rem;opacity:.6}
+                        #customers-view .cx-drop-text{flex:1;min-width:200px}
+                        #customers-view .cx-drop-text b{display:block;font-size:.9rem;word-break:break-all}
+                        #customers-view .cx-drop-text small{opacity:.65;font-size:.76rem}
+                        #customers-view .cx-format{margin-top:12px;font-size:.8rem}
+                        #customers-view .cx-format summary{cursor:pointer;font-weight:700;opacity:.8}
+                        #customers-view .cx-format div{margin-top:8px;line-height:1.55;opacity:.8}
+
+                        #customers-view .cx-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:16px}
+                        #customers-view .cx-stat{display:flex;gap:14px;align-items:center;padding:16px 18px;border-radius:14px;border:1px solid rgba(148,163,184,.25);background:rgba(148,163,184,.06)}
+                        #customers-view .cx-stat-ico{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.05rem;flex:none}
+                        #customers-view .cx-stat.blue .cx-stat-ico{background:rgba(59,130,246,.16);color:#3b82f6}
+                        #customers-view .cx-stat.green .cx-stat-ico{background:rgba(16,185,129,.16);color:#10b981}
+                        #customers-view .cx-stat.amber .cx-stat-ico{background:rgba(245,158,11,.16);color:#f59e0b}
+                        #customers-view .cx-stat.violet .cx-stat-ico{background:rgba(139,92,246,.16);color:#8b5cf6}
+                        #customers-view .cx-stat.teal .cx-stat-ico{background:rgba(20,184,166,.16);color:#14b8a6}
+                        #customers-view .cx-stat-label{font-size:.74rem;opacity:.7;font-weight:600}
+                        #customers-view .cx-stat-val{font-size:1.55rem;font-weight:800;line-height:1.15;font-variant-numeric:tabular-nums}
+                        #customers-view .cx-stat-sub{font-size:.7rem;opacity:.55;margin-top:1px}
+
+                        #customers-view .customer-table-panel{padding:16px 18px}
+                        #customers-view .cx-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+                        #customers-view .cx-search{position:relative;flex:1 1 280px;min-width:220px}
+                        #customers-view .cx-search>i{position:absolute;left:13px;top:50%;transform:translateY(-50%);opacity:.5;pointer-events:none}
+                        #customers-view .cx-search #searchCustomerInput{width:100%;height:40px;padding:0 38px 0 38px;border-radius:10px;margin:0}
+                        #customers-view .cx-search button{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:24px;height:24px;border:0;border-radius:50%;background:rgba(148,163,184,.3);color:inherit;cursor:pointer;display:none;align-items:center;justify-content:center;font-size:.7rem}
+                        #customers-view .cx-toolbar select,#customers-view .cx-toolbar input[type=date]{height:40px;border-radius:10px;margin:0;font-size:.82rem}
+                        #customers-view .cx-dates{display:flex;gap:6px;align-items:center}
+                        #customers-view .cx-dates span{opacity:.55;font-size:.76rem}
+                        #customers-view .cx-actions{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;align-items:center}
+                        #customers-view .cx-actions .cx-btn{height:40px}
+                        #customers-view .cx-menu{position:relative}
+                        #customers-view .cx-menu-list{position:absolute;right:0;top:calc(100% + 6px);min-width:250px;background:var(--mc-card-bg,#1e293b);color:var(--mc-text,inherit);border:1px solid rgba(148,163,184,.3);border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.28);padding:6px;display:none;z-index:60}
+                        #customers-view .cx-menu-list.open{display:block}
+                        #customers-view .cx-menu-list button{display:flex;width:100%;gap:10px;align-items:center;text-align:left;border:0;background:transparent;color:inherit;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:.82rem;font-family:inherit}
+                        #customers-view .cx-menu-list button:hover{background:rgba(59,130,246,.12)}
+                        #customers-view .cx-menu-list hr{border:0;border-top:1px solid rgba(148,163,184,.25);margin:4px 0}
+                        #customers-view .cx-sub-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+                        #customers-view .cx-qd{display:flex;gap:6px;flex-wrap:wrap}
+                        #customers-view .cx-qd button{border:1px solid rgba(148,163,184,.3);background:transparent;color:inherit;border-radius:999px;padding:4px 12px;font-size:.74rem;cursor:pointer;font-family:inherit}
+                        #customers-view .cx-qd button:hover{border-color:#3b82f6;color:#3b82f6}
+                        #customers-view .cx-count{font-size:.8rem;opacity:.75;margin-left:auto;font-weight:600}
+                        #customers-view .cx-active{display:none;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+                        #customers-view .cx-chip{display:inline-flex;gap:6px;align-items:center;padding:4px 6px 4px 12px;border-radius:999px;background:rgba(59,130,246,.14);color:#3b82f6;font-size:.76rem;font-weight:600}
+                        #customers-view .cx-chip button{border:0;background:rgba(59,130,246,.25);color:inherit;width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:.62rem}
+                        #customers-view .cx-link{border:0;background:transparent;color:#3b82f6;cursor:pointer;font-size:.78rem;font-weight:700;text-decoration:underline;font-family:inherit}
+
+                        #customers-view .customers-table-wrap{margin-top:12px;border:1px solid rgba(148,163,184,.25);border-radius:12px;max-height:62vh;overflow:auto}
+                        #customers-view .customers-ledger-table{border-collapse:separate;border-spacing:0;font-size:.8rem;margin:0;width:100%}
+                        #customers-view .customers-ledger-table thead th{position:sticky;top:0;z-index:3;background:var(--mc-table-head,var(--mc-card-bg,#1e293b));padding:11px 10px;font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;opacity:1;color:var(--mc-text-muted,#94a3b8);border-bottom:1px solid rgba(148,163,184,.3);white-space:nowrap}
+                        #customers-view .customers-ledger-table tbody td{padding:9px 10px;border-bottom:1px solid rgba(148,163,184,.14);vertical-align:middle;white-space:nowrap;background:transparent}
+                        #customers-view .customers-ledger-table tbody tr:hover td{background:rgba(59,130,246,.07)}
+                        #customers-view .customers-ledger-table .customer-name-cell{min-width:200px;white-space:normal}
+                        #customers-view .customers-ledger-table .customer-address-cell{max-width:260px;overflow:hidden;text-overflow:ellipsis}
+                        #customers-view .customers-ledger-table thead th:last-child{right:0;z-index:4}
+                        #customers-view .customers-ledger-table .customer-action-cell{position:sticky;right:0;background:var(--mc-card-bg,#1e293b);z-index:2;box-shadow:-6px 0 12px rgba(0,0,0,.12);padding:6px 9px}
+                        #customers-view .customer-row-actions{display:inline-flex;gap:5px}
+                        #customers-view .customer-row-actions .btn{width:28px;height:28px;min-width:28px;padding:0;border-radius:8px;margin:0!important;display:inline-flex;align-items:center;justify-content:center;font-size:.72rem}
+                        #customers-view .cx-kn{display:inline-block;min-width:22px;text-align:center;padding:2px 7px;border-radius:6px;font-weight:800;font-size:.72rem}
+                        #customers-view .cx-kn.k1{background:rgba(16,185,129,.16);color:#10b981}
+                        #customers-view .cx-kn.k2{background:rgba(245,158,11,.18);color:#f59e0b}
+                        #customers-view .cx-audit{font-size:.66rem;opacity:.6;margin-top:2px}
+                        #customers-view .cx-empty{text-align:center;padding:44px 16px!important;opacity:.75}
+                        #customers-view .cx-empty i{font-size:2rem;display:block;margin-bottom:10px;opacity:.5}
+                        #customers-view .cx-pager{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
+                        #customers-view .cx-pager-info{font-size:.8rem;opacity:.75}
+                        #customers-view .cx-pager-nav{display:flex;gap:4px;flex-wrap:wrap}
+                        #customers-view .cx-pager-nav button{min-width:34px;height:34px;border-radius:8px;border:1px solid rgba(148,163,184,.3);background:transparent;color:inherit;cursor:pointer;font-weight:700;font-size:.78rem;font-family:inherit}
+                        #customers-view .cx-pager-nav button:hover:not(:disabled){border-color:#3b82f6;color:#3b82f6}
+                        #customers-view .cx-pager-nav button.on{background:#3b82f6;border-color:#3b82f6;color:#fff}
+                        #customers-view .cx-pager-nav button:disabled{opacity:.35;cursor:not-allowed}
+                        #customers-view .cx-pager-nav .gap{padding:0 6px;align-self:center;opacity:.5}
+                        @media(max-width:760px){#customers-view .cx-actions{margin-left:0}#customers-view .cx-count{margin-left:0;width:100%}}
                     </style>
 
-                    <div class="panel mt-4 customer-table-panel">
-                        <div class="customer-table-toolbar">
-                            <div class="customer-filter-bar">
-                                <input type="text" id="searchCustomerInput" class="form-control" placeholder="Cari nasabah..." autocomplete="off" oninput="filterCustomersTable()">
-                                <select id="filterCustomerType" class="form-control" onchange="filterCustomersTable()">
-                                    <option value="ALL">Semua Tipe</option>
-                                    <option value="1">Perorangan</option>
-                                    <option value="2">Corporate</option>
-                                </select>
-                                <input type="date" id="filterCustomerDateStart" class="form-control" title="Dari Tanggal Daftar" onchange="filterCustomersTable()">
-                                <span class="customer-filter-separator" style="display: flex; align-items: center; justify-content:center; color: #94A3B8; font-size:0.78rem;">s.d</span>
-                                <input type="date" id="filterCustomerDateEnd" class="form-control" title="Sampai Tanggal Daftar" onchange="filterCustomersTable()">
-                                <button type="button" class="customer-date-reset-btn" onclick="resetCustomerDateFilters()" title="Reset tanggal awal dan akhir"><i class="fa-solid fa-rotate-left"></i></button>
+                    <div class="panel mt-3 customer-table-panel">
+                        <div class="cx-toolbar">
+                            <div class="cx-search">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="text" id="searchCustomerInput" class="form-control" placeholder="Cari nama, ID, no. HP, KTP, CIF, NPWP, alamat..." autocomplete="off">
+                                <button type="button" id="cxSearchClear" title="Hapus pencarian"><i class="fa-solid fa-xmark"></i></button>
                             </div>
-                            <div class="customer-toolbar-actions">
-                                <div id="customerTotalSummary" class="text-muted" style="font-size: 0.9rem; white-space: nowrap; padding: 8px 10px; border: 1px solid rgba(148,163,184,0.18); border-radius: 6px; background: rgba(15,23,42,0.35);">
-                                    Total Nasabah: 0
+                            <select id="filterCustomerType" class="form-control" style="width:auto">
+                                <option value="ALL">Semua Tipe</option>
+                                <option value="1">Perorangan</option>
+                                <option value="2">Perusahaan</option>
+                            </select>
+                            <div class="cx-dates">
+                                <input type="date" id="filterCustomerDateStart" class="form-control" title="Terdaftar dari tanggal">
+                                <span>s.d</span>
+                                <input type="date" id="filterCustomerDateEnd" class="form-control" title="Terdaftar sampai tanggal">
+                            </div>
+                            <div class="cx-actions">
+                                <button type="button" class="cx-btn" onclick="openBlastWaModal()" title="Kirim WhatsApp ke nasabah yang dicentang"><i class="fa-brands fa-whatsapp" style="color:#25d366"></i> WA</button>
+                                <div class="cx-menu">
+                                    <button type="button" class="cx-btn" id="cxExportToggle"><i class="fa-solid fa-file-export"></i> Ekspor <i class="fa-solid fa-chevron-down" style="font-size:.65rem"></i></button>
+                                    <div class="cx-menu-list" id="cxExportMenu">
+                                        <button type="button" data-export="xlsx-filter"><i class="fa-solid fa-file-excel" style="color:#10b981"></i> Excel - sesuai hasil filter</button>
+                                        <button type="button" data-export="xlsx-all"><i class="fa-solid fa-file-excel" style="color:#10b981"></i> Excel - semua nasabah</button>
+                                        <button type="button" data-export="csv-filter"><i class="fa-solid fa-file-csv" style="color:#0ea5e9"></i> CSV - sesuai hasil filter</button>
+                                        <hr>
+                                        <button type="button" data-export="template"><i class="fa-solid fa-table" style="color:#f59e0b"></i> Template import kosong</button>
+                                    </div>
                                 </div>
-                                <button class="btn btn-success" onclick="openBlastWaModal()" title="Broadcast WhatsApp"><i class="fa-brands fa-whatsapp"></i> WA</button>
-                                <button class="btn btn-primary" style="background: #10B981; border: none;" onclick="exportCustomersXlsx()" title="Export Excel"><i class="fa-solid fa-file-excel"></i> Excel</button>
-                                <button class="btn btn-danger" onclick="printCustomersPdf()" title="Cetak PDF"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                                <button type="button" class="cx-btn" onclick="printCustomersPdf()" title="Cetak / simpan PDF sesuai hasil filter"><i class="fa-solid fa-file-pdf" style="color:#ef4444"></i> PDF</button>
                             </div>
                         </div>
+                        <div class="cx-sub-toolbar">
+                            <div class="cx-qd">
+                                <button type="button" data-qdate="today">Hari ini</button>
+                                <button type="button" data-qdate="7">7 hari</button>
+                                <button type="button" data-qdate="month">Bulan ini</button>
+                                <button type="button" data-qdate="year">Tahun ini</button>
+                            </div>
+                            <select id="cxSort" class="form-control" style="width:auto;height:34px;font-size:.78rem;border-radius:8px;margin:0">
+                                <option value="newest">Urutan: Terbaru</option>
+                                <option value="oldest">Urutan: Terlama</option>
+                                <option value="name_asc">Nama A-Z</option>
+                                <option value="name_desc">Nama Z-A</option>
+                            </select>
+                            <select id="cxPageSize" class="form-control" style="width:auto;height:34px;font-size:.78rem;border-radius:8px;margin:0">
+                                <option value="25">25 / halaman</option>
+                                <option value="50" selected>50 / halaman</option>
+                                <option value="100">100 / halaman</option>
+                                <option value="250">250 / halaman</option>
+                                <option value="0">Tampilkan semua</option>
+                            </select>
+                            <span class="cx-count" id="customerTotalSummary">0 nasabah</span>
+                        </div>
+                        <div class="cx-active" id="cxActive"></div>
+
                         <div class="table-responsive customers-table-wrap">
                             <table class="table customers-ledger-table">
                                 <thead>
                                     <tr style="white-space: nowrap;">
-                                        <th style="width: 40px; text-align: center;"><input type="checkbox" id="chkAllCust" onchange="toggleAllCustomers(this)"></th>
+                                        <th style="width:40px;text-align:center;"><input type="checkbox" id="chkAllCust" onchange="toggleAllCustomers(this)" title="Pilih semua pada halaman ini"></th>
                                         <th>IDPJK</th>
                                         <th>KN(tipe)</th>
                                         <th>NO TLP</th>
@@ -3701,14 +2008,13 @@
                                         <th>Warga Negara</th>
                                         <th>Pekerjaan</th>
                                         <th>No Rekening</th>
-                                        <th style="position: sticky; right: 0; background: #0f172a; z-index: 2; box-shadow: -4px 0 10px rgba(0,0,0,0.3);">Aksi</th>
+                                        <th>Aksi</th>
                                     </tr>
                                 </thead>
-                                <tbody id="customersTableBody">
-                                    <!-- Injected -->
-                                </tbody>
+                                <tbody id="customersTableBody"></tbody>
                             </table>
                         </div>
+                        <div class="cx-pager" id="cxPager"></div>
                     </div>
                 </section>
 
@@ -3717,6 +2023,7 @@
                     <div class="panel header-panel flex-between">
                         <div>
                             <h2>Data Mutasi Rekening Bank</h2>
+                            <p class="text-muted mt-2" style="margin:4px 0 0;">Klik kartu bank untuk melihat rincian mutasi. Tabel di bawah adalah mutasi manual yang diinput kasir.</p>
                         </div>
                         <div style="display:flex; gap:10px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
                             <input type="file" id="historicalMutationInput" class="form-control" accept=".xlsx, .xls, .csv" style="max-width: 200px;" title="Gunakan file hasil Export Excel">
@@ -3726,6 +2033,10 @@
                             <button class="btn btn-success" onclick="openMutationModal()"><i class="fa-solid fa-plus"></i> Tambah Mutasi</button>
                         </div>
                     </div>
+                    <!-- Kartu saldo per rekening bank (dari ledger ERP) -->
+                    <div id="bankMutationCards" class="mt-4" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px;"></div>
+                    <div id="bankMutationDetail" class="panel mt-4" style="display:none;"></div>
+
                     <div class="panel mt-4">
                         <div class="table-responsive">
                             <table class="table" id="mutationTable">
@@ -3749,211 +2060,197 @@
 
                 <!-- Galeri Valas View -->
                 <section id="valas-gallery-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="border-left: 4px solid #f59e0b;">
-                        <div>
-                            <h2 style="color: #f59e0b;"><i class="fa-solid fa-images"></i> Galeri Referensi Valas</h2>
-                            <p class="text-muted mt-2">Acuan visual mata uang yang diterima (Accepted) dan tidak diterima (Rejected/Expired).</p>
-                        </div>
-                        <div id="valasGalleryAdminBtn" style="display: none;">
-                            <button class="btn btn-primary" onclick="window.openValasGalleryModal()"><i class="fa-solid fa-plus"></i> Tambah Acuan Valas</button>
-                        </div>
-                    </div>
-
-                    <!-- Filter & Pencarian -->
-                    <div class="panel mt-4">
-                        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                            <div style="flex: 1; min-width: 250px;">
-                                <label style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px; display: block;">Cari Deskripsi / Keterangan</label>
-                                <input type="text" id="valasGallerySearch" class="form-control" placeholder="Ketik kode valas, judul, atau kata kunci..." oninput="window.loadValasGalleryGrid()">
-                            </div>
-                            <div style="width: 200px;">
-                                <label style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px; display: block;">Status Penerimaan</label>
-                                <select id="valasGalleryStatusFilter" class="form-control" onchange="window.loadValasGalleryGrid()">
-                                    <option value="ALL">Semua Status</option>
-                                    <option value="DITERIMA">Diterima (Accepted)</option>
-                                    <option value="TIDAK_DITERIMA">Tidak Diterima (Rejected)</option>
-                                </select>
-                            </div>
-                            <div style="margin-top: 24px;">
-                                <button class="btn btn-outline" onclick="window.resetValasGalleryFilter()"><i class="fa-solid fa-rotate-left"></i> Reset</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Grid Card Acuan -->
-                    <div class="mt-4" id="valasGalleryGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">
-                        <!-- Injected dynamically -->
-                    </div>
+                    <!-- Galeri Valas (dirender oleh public/js/modules/11-gallery.js) -->
+                    <div id="vgRoot"></div>
                 </section>
 
-                <!-- Catatan Gantungan View -->
+                <!-- Gantungan View -->
                 <section id="gantungan-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="border-left: 4px solid #FBBF24;">
-                        <div>
-                            <h2 style="color: #FBBF24;"><i class="fa-solid fa-hand-holding-dollar"></i> Gantungan per Nama</h2>
-                            <p class="text-muted mt-2">Catat pinjaman dan cicilan berdasarkan nama. Saldo setiap orang ditampilkan pada kartu masing-masing.</p>
-                        </div>
-                        <div>
-                            <button class="btn btn-primary" onclick="window.openGantunganModal()"><i class="fa-solid fa-plus"></i> Tambah Gantungan</button>
-                        </div>
-                    </div>
+                    <style id="gt-style">
+                        .gt-root, .gt-overlay {
+                            --gt-bd: var(--mc-border, rgba(148,163,184,.28));
+                            --gt-card: var(--mc-card-bg, #18181b);
+                            --gt-tx: var(--mc-text, #fafafa);
+                            --gt-mut: var(--mc-text-muted, #a1a1aa);
+                            --gt-pri: var(--mc-primary, #22c55e);
+                            --gt-ok: var(--mc-buy, #22c55e);
+                            --gt-bad: var(--mc-danger, #ef4444);
+                            --gt-warn: var(--mc-warning, #f59e0b);
+                            --gt-info: var(--mc-info, #3b82f6);
+                            --gt-r: var(--mc-radius, 12px);
+                            --gt-br: var(--mc-btn-radius, 8px);
+                            --gt-ir: var(--mc-input-radius, 8px);
+                            --gt-soft: color-mix(in srgb, var(--gt-tx) 5%, transparent);
+                            --gt-soft2: color-mix(in srgb, var(--gt-tx) 9%, transparent);
+                            --gt-in-bg: var(--mc-input-bg, color-mix(in srgb, var(--gt-tx) 6%, var(--gt-card)));
+                            --gt-in-bd: var(--mc-input-border, var(--gt-bd));
+                            color: var(--gt-tx);
+                        }
+                        .gt-root { display: block; }
+                        .gt-root *, .gt-overlay * { box-sizing: border-box; }
+                        .gt-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; background: var(--gt-card); border: 1px solid var(--gt-bd); border-left: 4px solid var(--gt-warn); border-radius: var(--gt-r); padding: 18px 20px; box-shadow: var(--mc-shadow, none); }
+                        .gt-head h2 { margin: 0; font-size: 1.35rem; display: flex; align-items: center; gap: 10px; color: var(--gt-warn); }
+                        .gt-head p { margin: 6px 0 0; color: var(--gt-mut); max-width: 62ch; line-height: 1.5; font-size: .92rem; }
+                        .gt-head p b { color: var(--gt-tx); }
+                        .gt-head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-                    <div id="gantunganPersonCards" class="dashboard-grid mt-3" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:15px;"></div>
+                        .gt-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: var(--gt-br); padding: 9px 15px; font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; transition: filter .15s, transform .05s, background .15s; line-height: 1.2; }
+                        .gt-btn:disabled { opacity: .55; cursor: not-allowed; }
+                        .gt-btn:active:not(:disabled) { transform: translateY(1px); }
+                        .gt-btn-primary { background: var(--gt-pri); color: var(--mc-primary-contrast, #fff); }
+                        .gt-btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+                        .gt-btn-ghost { background: var(--gt-soft); color: var(--gt-tx); border-color: var(--gt-bd); }
+                        .gt-btn-ghost:hover:not(:disabled) { background: var(--gt-soft2); }
+                        .gt-btn-danger { background: color-mix(in srgb, var(--gt-bad) 14%, transparent); color: var(--gt-bad); border-color: color-mix(in srgb, var(--gt-bad) 35%, transparent); }
+                        .gt-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--gt-bad) 24%, transparent); }
+                        .gt-sm { padding: 7px 12px; font-size: .82rem; }
+                        .gt-xs { padding: 5px 8px; font-size: .78rem; }
 
-                    <!-- Statistik Ringkasan Gantungan -->
-                    <div class="dashboard-grid mt-4" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 15px;">
-                        <div class="stat-card panel" style="border-top: 4px solid #F59E0B;">
-                            <div class="stat-title" style="color: #94a3b8; font-size: 0.85rem;">Total Gantungan Piutang (Uang Kurang)</div>
-                            <div class="stat-value" id="gantunganTotalPiutang" style="font-size: 1.8rem; font-weight: bold; margin-top: 8px; color: #F59E0B;">Rp 0</div>
-                        </div>
-                        <div class="stat-card panel" style="border-top: 4px solid #3B82F6;">
-                            <div class="stat-title" style="color: #94a3b8; font-size: 0.85rem;">Total Gantungan Utang (Kembalian Menggantung)</div>
-                            <div class="stat-value" id="gantunganTotalUtang" style="font-size: 1.8rem; font-weight: bold; margin-top: 8px; color: #3B82F6;">Rp 0</div>
-                        </div>
-                        <div class="stat-card panel" style="border-top: 4px solid #cbd5e1;">
-                            <div class="stat-title" style="color: #94a3b8; font-size: 0.85rem;">Net Saldo Gantungan (Piutang - Utang)</div>
-                            <div class="stat-value" id="gantunganNetSaldo" style="font-size: 1.8rem; font-weight: bold; margin-top: 8px; color: #cbd5e1;">Rp 0</div>
-                        </div>
-                    </div>
+                        .gt-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 16px; }
+                        .gt-kpi { --t: var(--gt-mut); background: var(--gt-card); border: 1px solid var(--gt-bd); border-top: 3px solid var(--t); border-radius: var(--gt-r); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--mc-shadow, none); }
+                        .gt-kpi.tone-warn { --t: var(--gt-warn); } .gt-kpi.tone-info { --t: var(--gt-info); } .gt-kpi.tone-ok { --t: var(--gt-ok); } .gt-kpi.tone-bad { --t: var(--gt-bad); }
+                        .gt-kpi span { font-size: .78rem; color: var(--gt-mut); text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
+                        .gt-kpi span i { color: var(--t); margin-right: 5px; }
+                        .gt-kpi b { font-size: 1.55rem; font-weight: 800; color: var(--t); font-variant-numeric: tabular-nums; }
+                        .gt-kpi.tone-mut b { color: var(--gt-tx); }
+                        .gt-kpi small { color: var(--gt-mut); font-size: .78rem; }
+                        .gt-today { margin: 12px 2px 0; color: var(--gt-mut); font-size: .85rem; }
+                        .gt-today i { margin-right: 6px; }
+                        .tx-ok { color: var(--gt-ok); } .tx-bad { color: var(--gt-bad); } .tx-warn { color: var(--gt-warn); }
 
-                    <!-- Filter & Tabel -->
-                    <div class="panel mt-4">
-                        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-bottom: 20px;">
-                            <div style="flex: 1; min-width: 250px;">
-                                <label style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px; display: block;">Cari Nasabah / Keterangan</label>
-                                <input type="text" id="gantunganSearch" class="form-control" placeholder="Ketik nama nasabah, keterangan, atau ID..." oninput="window.loadGantungansTable()">
-                            </div>
-                            <div style="width: 200px;">
-                                <label style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px; display: block;">Status Pelunasan</label>
-                                <select id="gantunganFilterStatus" class="form-control" onchange="window.loadGantungansTable()">
-                                    <option value="all">Semua Status</option>
-                                    <option value="BELUM_LUNAS">Belum Lunas</option>
-                                    <option value="LUNAS">Sudah Lunas</option>
-                                </select>
-                            </div>
-                            <div style="margin-top: 24px;">
-                                <button class="btn btn-outline" onclick="document.getElementById('gantunganSearch').value=''; document.getElementById('gantunganFilterStatus').value='all'; window.loadGantungansTable();"><i class="fa-solid fa-rotate-left"></i> Reset</button>
-                            </div>
-                        </div>
+                        .gt-section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 24px 0 10px; }
+                        .gt-section-head h3 { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 9px; }
+                        .gt-section-head h3 i { color: var(--gt-warn); }
+                        .gt-count { font-size: .78rem; font-weight: 600; color: var(--gt-mut); background: var(--gt-soft); border: 1px solid var(--gt-bd); border-radius: 999px; padding: 2px 10px; }
+                        .gt-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+                        .gt-search { position: relative; }
+                        .gt-search i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--gt-mut); font-size: .85rem; pointer-events: none; }
+                        .gt-search input, .gt-select { background: var(--gt-in-bg); color: var(--gt-tx); border: 1px solid var(--gt-in-bd); border-radius: var(--gt-ir); padding: 9px 12px; font: inherit; font-size: .88rem; }
+                        .gt-search input { padding-left: 34px; width: min(300px, 78vw); }
+                        .gt-search input:focus, .gt-select:focus { outline: 2px solid color-mix(in srgb, var(--gt-pri) 55%, transparent); outline-offset: 1px; }
 
-                        <div class="table-responsive">
-                            <table class="table" id="gantunganTable">
-                                <thead>
-                                    <tr>
-                                        <th>Tanggal</th>
-                                        <th>Usia</th>
-                                        <th>ID Gantungan</th>
-                                <th>Nama</th>
-                                <th>Jenis Catatan</th>
-                                        <th style="text-align: right;">Nominal Awal</th>
-                                        <th style="text-align: right;">Sisa Saldo</th>
-                                        <th>Keterangan / Alasan</th>
-                                        <th style="text-align: center;">Status</th>
-                                        <th style="text-align: center;">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="gantunganTableBody">
-                                    <!-- Diisi via JS -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                        .gt-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+                        .gt-chip { background: var(--gt-soft); color: var(--gt-tx); border: 1px solid var(--gt-bd); border-radius: 999px; padding: 6px 13px; font: inherit; font-size: .82rem; cursor: pointer; display: inline-flex; gap: 7px; align-items: center; }
+                        .gt-chip i { font-style: normal; font-size: .72rem; background: var(--gt-soft2); border-radius: 999px; padding: 1px 7px; color: var(--gt-mut); }
+                        .gt-chip.on { background: color-mix(in srgb, var(--gt-pri) 18%, transparent); border-color: var(--gt-pri); }
+                        .gt-chip.on i { background: var(--gt-pri); color: var(--mc-primary-contrast, #fff); }
+
+                        .gt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+                        .gt-card { --t: var(--gt-ok); background: var(--gt-card); border: 1px solid var(--gt-bd); border-top: 4px solid var(--t); border-radius: var(--gt-r); padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--mc-shadow, none); transition: transform .15s, border-color .15s; }
+                        .gt-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--t) 55%, var(--gt-bd)); }
+                        .gt-card.tone-warn { --t: var(--gt-warn); } .gt-card.tone-bad { --t: var(--gt-bad); } .gt-card.tone-info { --t: var(--gt-info); }
+                        .gt-card header { display: flex; align-items: center; gap: 11px; }
+                        .gt-avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 1.05rem; color: var(--t); background: color-mix(in srgb, var(--t) 16%, transparent); border: 1px solid color-mix(in srgb, var(--t) 40%, transparent); flex: none; }
+                        .gt-who { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+                        .gt-who b { font-size: 1.02rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                        .gt-who small { color: var(--gt-mut); font-size: .75rem; }
+                        .gt-age { font-size: .74rem; font-weight: 700; color: var(--t); background: color-mix(in srgb, var(--t) 14%, transparent); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+                        .gt-sisa { display: flex; flex-direction: column; }
+                        .gt-sisa small { color: var(--gt-mut); font-size: .76rem; }
+                        .gt-sisa strong { font-size: 1.7rem; font-weight: 800; color: var(--t); font-variant-numeric: tabular-nums; line-height: 1.15; }
+                        .gt-split { display: flex; gap: 14px; font-size: .78rem; color: var(--gt-mut); flex-wrap: wrap; }
+                        .gt-split b { color: var(--gt-tx); }
+                        .gt-bar { height: 7px; background: var(--gt-soft2); border-radius: 999px; overflow: hidden; }
+                        .gt-bar i { display: block; height: 100%; background: var(--gt-ok); border-radius: 999px; transition: width .3s; }
+                        .gt-meta { font-size: .76rem; color: var(--gt-mut); margin-top: -4px; }
+                        .gt-mini { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; border-top: 1px dashed var(--gt-bd); padding-top: 8px; }
+                        .gt-mini li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: .82rem; }
+                        .gt-mini li span { min-width: 0; display: flex; flex-direction: column; }
+                        .gt-mini li b { font-weight: 600; }
+                        .gt-mini li small { color: var(--gt-mut); font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                        .gt-mini li em { font-style: normal; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+                        .gt-mini li.owed em { color: var(--gt-info); }
+                        .gt-mini li.more { color: var(--gt-mut); font-size: .76rem; justify-content: flex-start; }
+                        .gt-card footer { display: flex; gap: 8px; margin-top: auto; padding-top: 4px; }
+                        .gt-card footer .gt-btn-primary { flex: 1; }
+
+                        .gt-state { grid-column: 1 / -1; text-align: center; padding: 34px 16px; background: var(--gt-card); border: 1px dashed var(--gt-bd); border-radius: var(--gt-r); color: var(--gt-mut); }
+                        .gt-state i { font-size: 1.4rem; display: block; margin-bottom: 8px; }
+                        .gt-state-ok i { color: var(--gt-ok); } .gt-state-bad i { color: var(--gt-bad); }
+
+                        .gt-tablewrap { background: var(--gt-card); border: 1px solid var(--gt-bd); border-radius: var(--gt-r); overflow-x: auto; }
+                        .gt-table { width: 100%; border-collapse: collapse; font-size: .85rem; min-width: 880px; }
+                        .gt-table th { background: var(--mc-table-head, var(--gt-soft)); text-align: left; padding: 10px 12px; font-size: .74rem; text-transform: uppercase; letter-spacing: .03em; color: var(--gt-mut); white-space: nowrap; }
+                        .gt-table td { padding: 10px 12px; border-top: 1px solid var(--gt-bd); vertical-align: middle; }
+                        .gt-table tbody tr:hover { background: var(--mc-table-hover, var(--gt-soft)); }
+                        .gt-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+                        .gt-desc { max-width: 260px; color: var(--gt-mut); }
+                        .gt-actions { white-space: nowrap; text-align: right; }
+                        .gt-actions .gt-btn { margin-left: 4px; }
+                        .gt-cat { display: block; color: var(--gt-mut); font-size: .72rem; margin-top: 3px; }
+                        .gt-mut { color: var(--gt-mut); }
+                        .gt-pill { --t: var(--gt-mut); display: inline-block; font-size: .72rem; font-weight: 700; color: var(--t); background: color-mix(in srgb, var(--t) 14%, transparent); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+                        .gt-pill.tone-ok { --t: var(--gt-ok); } .gt-pill.tone-warn { --t: var(--gt-warn); } .gt-pill.tone-bad { --t: var(--gt-bad); } .gt-pill.tone-info { --t: var(--gt-info); }
+
+                        /* Modal */
+                        .gt-overlay { position: fixed; inset: 0; z-index: 10050; background: rgba(2, 6, 23, .62); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 16px; }
+                        .gt-dialog { background: var(--gt-card); color: var(--gt-tx); border: 1px solid var(--gt-bd); border-radius: var(--gt-r); width: min(540px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; padding: 20px; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+                        .gt-dlg-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+                        .gt-dlg-head h3 { margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 9px; }
+                        .gt-dlg-head h3 i { color: var(--gt-pri); }
+                        .gt-x { background: none; border: 0; color: var(--gt-mut); font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 0 4px; }
+                        .gt-x:hover { color: var(--gt-tx); }
+                        .gt-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
+                        .gt-field > span { font-size: .8rem; color: var(--gt-mut); font-weight: 600; }
+                        .gt-field input[type=text], .gt-field input[type=search], .gt-field select, .gt-field textarea { background: var(--gt-in-bg); color: var(--gt-tx); border: 1px solid var(--gt-in-bd); border-radius: var(--gt-ir); padding: 10px 12px; font: inherit; width: 100%; }
+                        .gt-field input:focus, .gt-field select:focus, .gt-field textarea:focus { outline: 2px solid color-mix(in srgb, var(--gt-pri) 55%, transparent); outline-offset: 1px; }
+                        .gt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                        @media (max-width: 520px) { .gt-row { grid-template-columns: 1fr; } }
+                        .gt-hint { color: var(--gt-warn); min-height: 1em; font-size: .78rem; }
+                        .gt-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+                        .gt-seg label { position: relative; display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--gt-bd); border-radius: var(--gt-ir); padding: 10px 12px 10px 34px; cursor: pointer; background: var(--gt-soft); }
+                        .gt-seg label:has(input:checked) { border-color: var(--gt-pri); background: color-mix(in srgb, var(--gt-pri) 12%, transparent); }
+                        .gt-seg input { position: absolute; left: 12px; top: 14px; accent-color: var(--gt-pri); }
+                        .gt-seg b { font-size: .86rem; }
+                        .gt-seg small { color: var(--gt-mut); font-size: .72rem; line-height: 1.35; }
+                        @media (max-width: 520px) { .gt-seg { grid-template-columns: 1fr; } }
+                        .gt-note { color: var(--gt-mut); font-size: .8rem; margin: 2px 0 14px; line-height: 1.5; }
+                        .gt-note i { margin-right: 5px; color: var(--gt-info); }
+                        .gt-dlg-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+                        .gt-payinfo { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+                        .gt-payinfo > div { flex: 1; min-width: 110px; background: var(--gt-soft); border: 1px solid var(--gt-bd); border-radius: var(--gt-ir); padding: 9px 12px; display: flex; flex-direction: column; }
+                        .gt-payinfo small { color: var(--gt-mut); font-size: .72rem; }
+                        .gt-payinfo b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+                        .gt-quick { display: flex; gap: 8px; margin: -4px 0 13px; }
+                        .gt-quick button { flex: 1; background: var(--gt-soft); color: var(--gt-tx); border: 1px solid var(--gt-bd); border-radius: var(--gt-br); padding: 7px; font: inherit; font-size: .8rem; cursor: pointer; }
+                        .gt-quick button:hover { border-color: var(--gt-pri); }
+                        .gt-after { font-size: .85rem; color: var(--gt-mut); margin-bottom: 8px; min-height: 1.3em; }
+                        .gt-after b { color: var(--gt-tx); }
+                        .gt-detail { display: flex; flex-direction: column; gap: 12px; }
+                        .gt-item { border: 1px solid var(--gt-bd); border-radius: var(--gt-ir); padding: 12px; background: var(--gt-soft); display: flex; flex-direction: column; gap: 8px; }
+                        .gt-item.done { opacity: .75; }
+                        .gt-item-top { display: flex; justify-content: space-between; gap: 12px; }
+                        .gt-item-amt { text-align: right; display: flex; flex-direction: column; }
+                        .gt-item-amt small { color: var(--gt-mut); font-size: .72rem; }
+                        .gt-item-amt b { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+                        .gt-item-desc { margin: 0; font-size: .84rem; }
+                        .gt-pays { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+                        .gt-pays li { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: .8rem; color: var(--gt-mut); }
+                        .gt-pays li i { font-size: .45rem; color: var(--gt-ok); margin-right: 6px; vertical-align: middle; }
+                        .gt-pays li span { flex: 1; }
+                        .gt-pays li b { color: var(--gt-ok); font-variant-numeric: tabular-nums; }
+                        .gt-item-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+                        .gt-done summary { cursor: pointer; color: var(--gt-mut); font-size: .84rem; margin: 6px 0; }
+                        .gt-done .gt-item { margin-top: 8px; }
+                        @media (max-width: 640px) {
+                            .gt-head-actions { width: 100%; }
+                            .gt-head-actions .gt-btn-primary { flex: 1; }
+                            .gt-kpi b { font-size: 1.3rem; }
+                        }
+                    </style>
+                    <div id="gantunganRoot" class="gt-root"></div>
                 </section>
 
-                <!-- Serah Terima & Pickup Valas (Ojol-Style) View -->
+                <!-- Serah Terima / Pickup Valas View -->
                 <section id="pickup-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between" style="border-left: 4px solid #F97316;">
-                        <div>
-                            <h2 style="color: #F97316; display: flex; align-items: center; gap: 10px; margin: 0;"><i class="fa-solid fa-motorcycle"></i> Serah Terima & Pickup Valas (Ojol-Style)</h2>
-                            <p class="text-muted mt-2">Pencatatan alur pelepasan, pengiriman, dan serah terima valas yang dibawa kurir untuk dijual ke luar kantor.</p>
-                        </div>
-                        <div>
-                            <button class="btn btn-primary" style="background:#F97316; border-color:#F97316;" onclick="window.openCreatePickupModal()"><i class="fa-solid fa-plus"></i> Buat Permintaan Pickup</button>
-                        </div>
-                    </div>
-
-                    <!-- Statistik Ringkasan Pickup -->
-                    <div class="dashboard-grid mt-4" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 15px;">
-                        <div class="stat-card panel" style="border-top: 4px solid #F59E0B;">
-                            <div class="stat-title" style="color: #94a3b8; font-size: 0.85rem;">Pickup / Penugasan Aktif</div>
-                            <div class="stat-value" id="pickupStatActive" style="font-size: 1.8rem; font-weight: bold; margin-top: 8px; color: #F59E0B;">0</div>
-                        </div>
-                        <div class="stat-card panel" style="border-top: 4px solid #3B82F6;">
-                            <div class="stat-title" style="color: #94a3b8; font-size: 0.85rem;">Volume Valas Transit (Est. Rp)</div>
-                            <div class="stat-value" id="pickupStatTransit" style="font-size: 1.8rem; font-weight: bold; margin-top: 8px; color: #3B82F6;">Rp 0</div>
-                        </div>
-                        <div class="stat-card panel" style="border-top: 4px solid #10B981;">
-                            <div class="stat-title" style="color: #94a3b8; font-size: 0.85rem;">Selesai Hari Ini</div>
-                            <div class="stat-value" id="pickupStatCompletedToday" style="font-size: 1.8rem; font-weight: bold; margin-top: 8px; color: #10B981;">0</div>
-                        </div>
-                    </div>
-
-                    <!-- Judul Section Realtime -->
-                    <h3 class="mt-5 mb-3" style="color: #f8fafc; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;"><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10B981; animation: pulse 2s infinite;"></span> Tugas & Pelacakan Aktif (Real-Time)</h3>
-                    
-                    <!-- Grid Penugasan Ojol Aktif -->
-                    <div id="pickupActiveList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px;" class="mb-5">
-                        <!-- Injected dynamically by JS -->
-                    </div>
-
-                    <!-- Riwayat Serah Terima Selesai -->
-                    <div class="panel mt-4">
-                        <h3 style="color: #cbd5e1; margin-top: 0; margin-bottom: 20px;"><i class="fa-solid fa-clock-rotate-left"></i> Riwayat Serah Terima Selesai</h3>
-                        <div class="table-responsive">
-                            <table class="table" id="pickupHistoryTable">
-                                <thead>
-                                    <tr>
-                                        <th>Tanggal Buat</th>
-                                        <th>No. Pickup</th>
-                                        <th>Kurir / Driver</th>
-                                        <th>Tujuan</th>
-                                        <th>Valas Bawaan</th>
-                                        <th style="text-align: right;">Total Estimasi</th>
-                                        <th style="text-align: right;">Total Realisasi Jual</th>
-                                        <th style="text-align: center;">Status</th>
-                                        <th style="text-align: center;">Bukti / Struk</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="pickupHistoryTableBody">
-                                    <!-- Diisi via JS -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <!-- Seluruh isi dirender oleh public/js/modules/40-pickup.js -->
+                    <div id="pickupRoot"></div>
                 </section>
 
                 <!-- Jurnal Keuangan View -->
                 <section id="expense-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between">
-                        <div>
-                            <h2>Jurnal Keuangan (Pendapatan & Pengeluaran)</h2>
-                        </div>
-                        <div style="display:flex; gap:10px;">
-                            <button class="btn btn-primary" onclick="exportTableToExcel('expenseTable', 'Jurnal_Keuangan')"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
-                            <button class="btn btn-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> Cetak PDF</button>
-                            <button class="btn btn-success" onclick="openExpenseModal()"><i class="fa-solid fa-plus"></i> Tambah Jurnal</button>
-                        </div>
-                    </div>
-                    <div class="panel mt-4">
-                        <div class="table-responsive">
-                            <table class="table" id="expenseTable">
-                                <thead>
-                                    <tr>
-                                        <th>Waktu</th>
-                                        <th>ID Jurnal</th>
-                                        <th>Tipe</th>
-                                        <th>Kategori Akun (BI)</th>
-                                        <th>Keterangan</th>
-                                        <th>Kas/Bank</th>
-                                        <th style="text-align: right;">Nominal (Rp)</th>
-                                        <th style="text-align: center;">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="expensesTableBody">
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <!-- Jurnal Keuangan: seluruh isi dirender oleh public/js/modules/37-expenses.js -->
+                    <div id="expenseRoot"></div>
                 </section>
 
                 <!-- Ekuitas & Kewajiban View -->
@@ -3989,304 +2286,323 @@
                     </div>
                 </section>
 
-                <!-- Investor View -->
+                <!-- Penanam Saham: seluruh isi dirender oleh public/js/modules/35-investors.js -->
                 <section id="investor-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between">
-                        <div>
-                            <h2>Penanam Saham / Investor</h2>
-                            <p class="text-muted mt-2">Kelola daftar investor dan peraga pembagian dividen laba bulanan.</p>
-                        </div>
-                        <div style="display:flex; gap:10px;">
-                            <button class="btn btn-primary" onclick="openInvestorModal()"><i class="fa-solid fa-plus"></i> Tambah Investor</button>
-                        </div>
-                    </div>
-                    
-                    <div class="panel mt-4">
-                        <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #334155;">
-                            <button class="btn btn-link tabInvMode" style="color: #f8fafc; font-weight: bold; border-bottom: 2px solid #3b82f6; border-radius: 0; padding: 10px 20px; background: transparent !important; box-shadow: none;" onclick="switchInvestorTab('list')" id="tabInvList">Daftar Investor</button>
-                            <button class="btn btn-link tabInvMode" style="color: #94A3B8; font-weight: normal; border-radius: 0; padding: 10px 20px; border-bottom: 2px solid transparent; background: transparent !important; box-shadow: none;" onclick="switchInvestorTab('dividend')" id="tabInvDiv">Peraga Pembagian Laba</button>
-                        </div>
-                        
-                        <div id="investorListContainer">
-                            <div class="table-responsive">
-                                <table class="table table-bordered">
-                                    <thead>
-                                        <tr>
-                                            <th>ID Investor</th>
-                                            <th>Nama</th>
-                                            <th>Kontak (HP/Email)</th>
-                                            <th style="text-align: right;">Modal Disetor (Rp)</th>
-                                            <th style="text-align: center;">Hak (%)</th>
-                                            <th style="text-align: right;">Fee (Rp)</th>
-                                            <th>Tgl Gabung</th>
-                                            <th style="text-align: center;">Aksi</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="investorsTableBody">
-                                    </tbody>
-                                    <tfoot>
-                                        <tr style="background: rgba(15,23,42,0.8); font-weight: bold;">
-                                            <td colspan="3" class="text-end">Total:</td>
-                                            <td class="text-end text-green" id="invTotalModal">Rp 0</td>
-                                            <td class="text-center text-blue" id="invTotalPercent">0%</td>
-                                            <td class="text-end text-blue" id="invTotalFee">Rp 0</td>
-                                            <td colspan="2"></td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
-                        
-                        <div id="investorDividendContainer" class="hidden" style="display: none;">
-                            <div class="form-group row align-center" style="margin-bottom: 15px;">
-                                <div class="col-md-4">
-                                    <label>Pilih Bulan Laba (Basis Transaksi)</label>
-                                    <input type="month" id="dividendMonthInput" class="form-control" onchange="simulateDividend()">
-                                    
-                                    <label style="margin-top: 10px; display: block;">Metode Kalkulasi Persentase</label>
-                                    <select id="dividendMethodInput" class="form-control" onchange="simulateDividend()" style="background: rgba(15, 23, 42, 0.8); color: #f8fafc; border: 1px solid rgba(59, 130, 246, 0.3);">
-                                        <option value="net_profit">Profesional (% dikalikan Laba Bersih)</option>
-                                        <option value="flat_capital">Perjanjian Nilai Tetap (% dikalikan Modal Disetor)</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-8">
-                                    <div class="summary-box" style="padding: 10px 20px;">
-                                        <span style="font-size: 0.9rem; color: #94A3B8;">Otomatisasi Laba Bersih Bulan Terpilih (Sebelum Pajak & Prive):</span>
-                                        <h3 id="dividendNetProfit" class="text-green mt-1">Rp 0</h3>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="table-responsive">
-                                <table class="table table-bordered">
-                                    <thead>
-                                        <tr>
-                                            <th>Nama Investor</th>
-                                            <th style="text-align: center;">Persentase Hak (%)</th>
-                                            <th style="text-align: right;">Estimasi Laba Diterima (Rp)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="dividendSimulationBody">
-                                        <tr><td colspan="3" class="text-center text-muted">Silahkan pilih bulan untuk simulasi pembagian laba.</td></tr>
-                                    </tbody>
-                                    <tfoot>
-                                        <tr style="background: rgba(15,23,42,0.8); font-weight: bold; border-top: 2px solid rgba(255,255,255,0.1);">
-                                            <td colspan="2" class="text-end">Total Peraga Pembagian:</td>
-                                            <td class="text-end text-blue" id="divTotalDistributed">Rp 0</td>
-                                        </tr>
-                                        <tr style="background: rgba(15,23,42,0.8); font-weight: bold;">
-                                            <td colspan="2" class="text-end">Sisa Laba / Disimpan:</td>
-                                            <td class="text-end text-green" id="divTotalRetained">Rp 0</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-                
-                <!-- Investor Modal -->
-                <div id="investorModal" class="modal">
-                    <div class="modal-content panel" style="max-width: 450px;">
-                        <div class="flex-between mb-3">
-                            <h3 id="investorModalTitle">Tambah Investor</h3>
-                            <span class="close-modal" onclick="closeInvestorModal()"><i class="fa-solid fa-xmark"></i></span>
-                        </div>
-                        <hr class="divider mb-3">
-                        <input type="hidden" id="modalInvId">
-                        <div class="form-group mb-2">
-                            <label>Nama Investor</label>
-                            <input type="text" id="modalInvName" class="form-control" placeholder="Nama Lengkap / Perusahaan">
-                        </div>
-                        <div class="form-group mb-2">
-                            <label>Kontak (No. HP/Email)</label>
-                            <input type="text" id="modalInvContact" class="form-control" placeholder="081xxx atau email">
-                        </div>
-                        <div class="form-group mb-2">
-                            <label>Modal Disetor (Konversi Nilai Rupiah)</label>
-                            <input type="text" id="modalInvCapital" class="form-control" placeholder="0" oninput="formatCurrencyInput(this)">
-                        </div>
-                        <div class="form-group mb-3">
-                            <label>Hak Persentase Pembagian (%)</label>
-                            <input type="number" id="modalInvPercent" class="form-control" placeholder="Maksimal 100" min="0" max="100" step="0.01">
-                        </div>
-                        <div class="form-group mb-3">
-                            <label>Tanggal Gabung</label>
-                            <input type="date" id="modalInvJoinDate" class="form-control">
-                        </div>
-                        <button class="btn btn-primary w-100 mt-2" onclick="saveInvestor()"><i class="fa-solid fa-save"></i> Simpan Data Investor</button>
-                    </div>
-                </div>
+                    <style id="iv-style">
+                        .iv-root, .iv-overlay {
+                            --iv-bd: var(--mc-border, rgba(148,163,184,.28));
+                            --iv-card: var(--mc-card-bg, #18181b);
+                            --iv-tx: var(--mc-text, #fafafa);
+                            --iv-mut: var(--mc-text-muted, #a1a1aa);
+                            --iv-pri: var(--mc-primary, #22c55e);
+                            --iv-ok: var(--mc-buy, #22c55e);
+                            --iv-bad: var(--mc-danger, #ef4444);
+                            --iv-warn: var(--mc-warning, #f59e0b);
+                            --iv-info: var(--mc-info, #3b82f6);
+                            --iv-r: var(--mc-radius, 12px);
+                            --iv-br: var(--mc-btn-radius, 8px);
+                            --iv-ir: var(--mc-input-radius, 8px);
+                            --iv-soft: color-mix(in srgb, var(--iv-tx) 5%, transparent);
+                            --iv-soft2: color-mix(in srgb, var(--iv-tx) 9%, transparent);
+                            --iv-in-bg: var(--mc-input-bg, color-mix(in srgb, var(--iv-tx) 6%, var(--iv-card)));
+                            --iv-in-bd: var(--mc-input-border, var(--iv-bd));
+                            color: var(--iv-tx);
+                        }
+                        .iv-root *, .iv-overlay * { box-sizing: border-box; }
+                        .iv-hide { display: none !important; }
+                        .iv-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; background: var(--iv-card); border: 1px solid var(--iv-bd); border-left: 4px solid var(--iv-pri); border-radius: var(--iv-r); padding: 18px 20px; box-shadow: var(--mc-shadow, none); }
+                        .iv-head h2 { margin: 0; font-size: 1.35rem; display: flex; align-items: center; gap: 10px; color: var(--iv-pri); }
+                        .iv-head p { margin: 6px 0 0; color: var(--iv-mut); max-width: 66ch; line-height: 1.5; font-size: .92rem; }
+                        .iv-head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-                <!-- Closing Kasir View -->
+                        .iv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: var(--iv-br); padding: 9px 15px; font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; transition: filter .15s, background .15s; line-height: 1.2; }
+                        .iv-btn:disabled { opacity: .55; cursor: not-allowed; }
+                        .iv-btn-primary { background: var(--iv-pri); color: var(--mc-primary-contrast, #fff); }
+                        .iv-btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+                        .iv-btn-ghost { background: var(--iv-soft); color: var(--iv-tx); border-color: var(--iv-bd); }
+                        .iv-btn-ghost:hover:not(:disabled) { background: var(--iv-soft2); }
+                        .iv-btn-danger { background: color-mix(in srgb, var(--iv-bad) 14%, transparent); color: var(--iv-bad); border-color: color-mix(in srgb, var(--iv-bad) 35%, transparent); }
+                        .iv-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--iv-bad) 24%, transparent); }
+                        .iv-xs { padding: 5px 8px; font-size: .78rem; }
+
+                        .iv-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 16px; }
+                        .iv-kpi { --t: var(--iv-mut); background: var(--iv-card); border: 1px solid var(--iv-bd); border-top: 3px solid var(--t); border-radius: var(--iv-r); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--mc-shadow, none); }
+                        .iv-kpi.tone-ok { --t: var(--iv-ok); } .iv-kpi.tone-info { --t: var(--iv-info); } .iv-kpi.tone-warn { --t: var(--iv-warn); } .iv-kpi.tone-bad { --t: var(--iv-bad); }
+                        .iv-kpi span { font-size: .78rem; color: var(--iv-mut); text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
+                        .iv-kpi span i { color: var(--t); margin-right: 5px; }
+                        .iv-kpi b { font-size: 1.5rem; font-weight: 800; color: var(--t); font-variant-numeric: tabular-nums; }
+                        .iv-kpi.tone-mut b { color: var(--iv-tx); }
+                        .iv-kpi small { color: var(--iv-mut); font-size: .78rem; }
+
+                        .iv-comp { margin-top: 14px; }
+                        .iv-compbar { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: var(--iv-soft2); border: 1px solid var(--iv-bd); }
+                        .iv-compbar i { display: block; height: 100%; opacity: .9; border-right: 2px solid var(--iv-card); }
+                        .iv-compbar i.rest, .iv-legend i.rest { background: repeating-linear-gradient(45deg, var(--iv-soft2), var(--iv-soft2) 4px, transparent 4px, transparent 8px); opacity: 1; }
+                        .iv-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: .8rem; color: var(--iv-mut); }
+                        .iv-legend span { display: inline-flex; align-items: center; gap: 6px; }
+                        .iv-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+                        .iv-legend b { color: var(--iv-tx); }
+
+                        .iv-tabs { display: flex; gap: 6px; margin: 22px 0 14px; border-bottom: 1px solid var(--iv-bd); flex-wrap: wrap; }
+                        .iv-tab { background: none; border: 0; border-bottom: 3px solid transparent; color: var(--iv-mut); padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; margin-bottom: -1px; }
+                        .iv-tab:hover { color: var(--iv-tx); }
+                        .iv-tab.on { color: var(--iv-tx); border-bottom-color: var(--iv-pri); }
+                        .iv-tab.on i { color: var(--iv-pri); }
+
+                        .iv-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+                        .iv-search { position: relative; }
+                        .iv-search i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--iv-mut); font-size: .85rem; pointer-events: none; }
+                        .iv-search input, .iv-select { background: var(--iv-in-bg); color: var(--iv-tx); border: 1px solid var(--iv-in-bd); border-radius: var(--iv-ir); padding: 9px 12px; font: inherit; font-size: .88rem; }
+                        .iv-search input { padding-left: 34px; width: min(320px, 78vw); }
+                        .iv-search input:focus, .iv-select:focus { outline: 2px solid color-mix(in srgb, var(--iv-pri) 55%, transparent); outline-offset: 1px; }
+
+                        .iv-tablewrap { background: var(--iv-card); border: 1px solid var(--iv-bd); border-radius: var(--iv-r); overflow-x: auto; }
+                        .iv-table { width: 100%; border-collapse: collapse; font-size: .86rem; min-width: 860px; }
+                        .iv-table th { background: var(--mc-table-head, var(--iv-soft)); text-align: left; padding: 10px 12px; font-size: .74rem; text-transform: uppercase; letter-spacing: .03em; color: var(--iv-mut); white-space: nowrap; }
+                        .iv-table td { padding: 11px 12px; border-top: 1px solid var(--iv-bd); vertical-align: middle; }
+                        .iv-table tbody tr:hover { background: var(--mc-table-hover, var(--iv-soft)); }
+                        .iv-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+                        .iv-table tfoot td { font-weight: 700; background: var(--iv-soft); }
+                        .iv-who { display: flex; align-items: center; gap: 11px; }
+                        .iv-who > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+                        .iv-who small { color: var(--iv-mut); font-size: .74rem; }
+                        .iv-avatar { width: 36px; height: 36px; border-radius: 50%; flex: none; display: grid; place-items: center; font-weight: 800; color: var(--iv-pri); background: color-mix(in srgb, var(--iv-pri) 16%, transparent); border: 1px solid color-mix(in srgb, var(--iv-pri) 38%, transparent); }
+                        .iv-contact { color: var(--iv-mut); font-size: .8rem; line-height: 1.5; }
+                        .iv-minibar { height: 4px; background: var(--iv-soft2); border-radius: 999px; margin-top: 5px; overflow: hidden; min-width: 56px; margin-left: auto; width: 70px; }
+                        .iv-minibar i { display: block; height: 100%; background: var(--iv-pri); }
+                        .iv-actions { white-space: nowrap; text-align: right; }
+                        .iv-actions .iv-btn { margin-left: 4px; }
+                        .iv-sub { display: block; color: var(--iv-mut); font-size: .72rem; margin-top: 2px; font-weight: 400; }
+                        .iv-mut { color: var(--iv-mut); }
+                        .iv-pill { --t: var(--iv-mut); display: inline-block; font-size: .72rem; font-weight: 700; color: var(--t); background: color-mix(in srgb, var(--t) 14%, transparent); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+                        .iv-pill.tone-ok { --t: var(--iv-ok); } .iv-pill.tone-warn { --t: var(--iv-warn); } .iv-pill.tone-bad { --t: var(--iv-bad); }
+                        .tx-ok { color: var(--iv-ok); } .tx-bad { color: var(--iv-bad); }
+                        .iv-state { text-align: center; padding: 36px 16px; color: var(--iv-mut); }
+                        .iv-state i { font-size: 1.4rem; display: block; margin-bottom: 8px; }
+                        .iv-state-bad i { color: var(--iv-bad); }
+                        .iv-state .iv-btn { margin-top: 12px; }
+                        .iv-note { color: var(--iv-mut); font-size: .8rem; margin: 12px 2px 0; line-height: 1.5; }
+                        .iv-note i { margin-right: 5px; color: var(--iv-info); }
+
+                        .iv-simbar { display: grid; grid-template-columns: minmax(180px, 240px) minmax(220px, 320px) 1fr; gap: 14px; align-items: end; margin-bottom: 14px; }
+                        @media (max-width: 900px) { .iv-simbar { grid-template-columns: 1fr; } }
+                        .iv-netbox { background: var(--iv-card); border: 1px solid var(--iv-bd); border-radius: var(--iv-r); padding: 10px 16px; display: flex; flex-direction: column; }
+                        .iv-netbox small { color: var(--iv-mut); font-size: .76rem; }
+                        .iv-netbox b { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+
+                        /* Modal */
+                        .iv-overlay { position: fixed; inset: 0; z-index: 10050; background: rgba(2, 6, 23, .62); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 16px; }
+                        .iv-dialog { background: var(--iv-card); color: var(--iv-tx); border: 1px solid var(--iv-bd); border-radius: var(--iv-r); width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; padding: 20px; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+                        .iv-dialog.wide { width: min(680px, 100%); }
+                        .iv-dlg-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+                        .iv-dlg-head h3 { margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 9px; }
+                        .iv-dlg-head h3 i { color: var(--iv-pri); }
+                        .iv-dlg-head h3 small { color: var(--iv-mut); font-weight: 500; font-size: .8rem; }
+                        .iv-x { background: none; border: 0; color: var(--iv-mut); font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 0 4px; }
+                        .iv-x:hover { color: var(--iv-tx); }
+                        .iv-dialog fieldset { border: 1px solid var(--iv-bd); border-radius: var(--iv-ir); padding: 12px 14px 4px; margin: 0 0 14px; min-width: 0; }
+                        .iv-dialog legend { padding: 0 8px; font-size: .76rem; text-transform: uppercase; letter-spacing: .04em; color: var(--iv-mut); font-weight: 700; }
+                        .iv-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; min-width: 0; }
+                        .iv-field > span { font-size: .8rem; color: var(--iv-mut); font-weight: 600; }
+                        .iv-field > span em { color: var(--iv-bad); font-style: normal; }
+                        .iv-field input[type=text], .iv-field input[type=tel], .iv-field input[type=email], .iv-field input[type=number], .iv-field input[type=date], .iv-field input[type=month], .iv-field select, .iv-field textarea { background: var(--iv-in-bg); color: var(--iv-tx); border: 1px solid var(--iv-in-bd); border-radius: var(--iv-ir); padding: 10px 12px; font: inherit; width: 100%; color-scheme: light dark; }
+                        .iv-field input:focus, .iv-field select:focus, .iv-field textarea:focus { outline: 2px solid color-mix(in srgb, var(--iv-pri) 55%, transparent); outline-offset: 1px; }
+                        .iv-field input.bad { border-color: var(--iv-bad); }
+                        .iv-err { color: var(--iv-bad); font-size: .76rem; min-height: 0; }
+                        .iv-hint { color: var(--iv-mut); font-size: .76rem; }
+                        .iv-hint b { color: var(--iv-tx); }
+                        .iv-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                        @media (max-width: 560px) { .iv-row { grid-template-columns: 1fr; } }
+                        .iv-seg { display: grid; gap: 8px; }
+                        .iv-seg.two { grid-template-columns: 1fr 1fr; }
+                        .iv-seg label { position: relative; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--iv-bd); border-radius: var(--iv-ir); padding: 9px 12px 9px 32px; cursor: pointer; background: var(--iv-soft); }
+                        .iv-seg label:has(input:checked) { border-color: var(--iv-pri); background: color-mix(in srgb, var(--iv-pri) 12%, transparent); }
+                        .iv-seg input { position: absolute; left: 11px; top: 12px; accent-color: var(--iv-pri); }
+                        .iv-seg b { font-size: .84rem; }
+                        .iv-seg small { color: var(--iv-mut); font-size: .72rem; }
+                        .iv-readonly { background: var(--iv-soft); border: 1px dashed var(--iv-bd); border-radius: var(--iv-ir); padding: 9px 12px; font-weight: 700; display: flex; flex-direction: column; }
+                        .iv-readonly small { font-weight: 400; color: var(--iv-mut); font-size: .72rem; }
+                        .iv-dlg-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+                        .iv-info { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+                        .iv-info > div { flex: 1; min-width: 120px; background: var(--iv-soft); border: 1px solid var(--iv-bd); border-radius: var(--iv-ir); padding: 9px 12px; display: flex; flex-direction: column; }
+                        .iv-info small { color: var(--iv-mut); font-size: .72rem; }
+                        .iv-info b { font-size: 1.02rem; font-variant-numeric: tabular-nums; }
+                        .iv-after { font-size: .85rem; color: var(--iv-mut); min-height: 1.3em; }
+                        .iv-after b { color: var(--iv-tx); }
+                        .iv-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+                        .iv-kv > div { background: var(--iv-soft); border: 1px solid var(--iv-bd); border-radius: var(--iv-ir); padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+                        .iv-kv small { color: var(--iv-mut); font-size: .72rem; }
+                        .iv-notes { margin: 12px 0 0; font-size: .86rem; color: var(--iv-mut); }
+                        .iv-notes i { margin-right: 6px; }
+                        .iv-sub-h { margin: 18px 0 8px; font-size: .9rem; }
+                        .iv-moves { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+                        .iv-moves li { display: flex; align-items: center; gap: 10px; background: var(--iv-soft); border: 1px solid var(--iv-bd); border-radius: var(--iv-ir); padding: 8px 10px; }
+                        .iv-mv-ico { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: .75rem; }
+                        .iv-moves li.in .iv-mv-ico { color: var(--iv-ok); background: color-mix(in srgb, var(--iv-ok) 16%, transparent); }
+                        .iv-moves li.out .iv-mv-ico { color: var(--iv-warn); background: color-mix(in srgb, var(--iv-warn) 16%, transparent); }
+                        .iv-mv-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+                        .iv-mv-main small { color: var(--iv-mut); font-size: .74rem; }
+                        .iv-moves em { font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+                        .iv-moves li.in em { color: var(--iv-ok); } .iv-moves li.out em { color: var(--iv-warn); }
+                        .iv-empty { color: var(--iv-mut); justify-content: center; font-size: .85rem; }
+                        @media (max-width: 640px) { .iv-head-actions { width: 100%; } .iv-head-actions .iv-btn-primary { flex: 1; } }
+                    </style>
+                    <div id="investorRoot" class="iv-root"></div>
+                </section>
+
+                <!-- Closing Harian: seluruh isi dirender oleh public/js/modules/34-closing-daily.js -->
                 <section id="closing-view" class="view-section hidden">
-                    <div class="panel header-panel">
-                        <h2>Closing Harian Kasir (Rincian Fisik Uang Rupiah)</h2>
-                    </div>
-                    <div class="panel mt-4">
-                        <div class="row" style="display: flex; gap: 20px; flex-wrap: wrap;">
-                            <div class="col" style="flex: 1; min-width: 300px;">
-                                <h3>Input Denominasi</h3>
-                                <hr class="divider">
-                                <div class="form-group row align-center">
-                                    <label class="col" style="flex: 1;">Lembar / Keping - <strong>100.000</strong></label>
-                                    <input type="number" id="denom100k" class="form-control denom-input" placeholder="0" style="flex: 1;" min="0">
-                                </div>
-                                <div class="form-group row align-center">
-                                    <label class="col" style="flex: 1;">Lembar / Keping - <strong>50.000</strong></label>
-                                    <input type="number" id="denom50k" class="form-control denom-input" placeholder="0" style="flex: 1;" min="0">
-                                </div>
-                                <div class="form-group row align-center">
-                                    <label class="col" style="flex: 1;">Lembar / Keping - <strong>20.000</strong></label>
-                                    <input type="number" id="denom20k" class="form-control denom-input" placeholder="0" style="flex: 1;" min="0">
-                                </div>
-                                <div class="form-group row align-center">
-                                    <label class="col" style="flex: 1;">Lembar / Keping - <strong>10.000</strong></label>
-                                    <input type="number" id="denom10k" class="form-control denom-input" placeholder="0" style="flex: 1;" min="0">
-                                </div>
-                                <div class="form-group row align-center">
-                                    <label class="col" style="flex: 1;">Lembar / Keping - <strong>5.000</strong></label>
-                                    <input type="number" id="denom5k" class="form-control denom-input" placeholder="0" style="flex: 1;" min="0">
-                                </div>
-                                <div class="form-group row align-center">
-                                    <label class="col" style="flex: 1;">Lembar / Keping - <strong>2.000</strong></label>
-                                    <input type="number" id="denom2k" class="form-control denom-input" placeholder="0" style="flex: 1;" min="0">
-                                </div>
-                                <div class="form-group row align-center">
-                                    <label class="col" style="flex: 1;">Lembar / Keping - <strong>1.000</strong></label>
-                                    <input type="number" id="denom1k" class="form-control denom-input" placeholder="0" style="flex: 1;" min="0">
-                                </div>
-                                <div class="form-group row align-center">
-                                    <label class="col" style="flex: 1;">Total Koin (Rupiah)</label>
-                                    <input type="text" id="denomKoin" class="form-control denom-input" placeholder="Rp 0" style="flex: 1;" inputmode="numeric">
-                                </div>
-                            </div>
-                            
-                            <div class="col" style="flex: 1; min-width: 300px; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 8px;">
-                                <h3>Ringkasan Rekonsiliasi</h3>
-                                <hr class="divider">
-                                <div class="summary-box mt-3">
-                                    <div class="summary-row">
-                                        <span>Total Uang Fisik (Kalkulasi)</span>
-                                        <strong id="closingFisik" class="text-green">Rp 0</strong>
-                                    </div>
-                                    <div class="summary-row" style="color:#C084FC; font-size:0.9rem; margin-top:4px;">
-                                        <span>Total Valas (Nilai Stok dalam Rp)</span>
-                                        <span id="closingValasValue">Rp 0</span>
-                                    </div>
-                                    <div class="summary-row">
-                                        <span>Total Bank (BCA + Mandiri)</span>
-                                        <strong id="closingBankSistem">Rp 0</strong>
-                                    </div>
-                                    <div class="summary-row" style="font-size:0.8rem; color:#93C5FD; margin-top:2px; padding-left:12px;">
-                                        <span>ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚Â³ BCA</span><span id="closingBankBca">Rp 0</span>
-                                    </div>
-                                    <div class="summary-row" style="font-size:0.8rem; color:#93C5FD; margin-top:2px; padding-left:12px;">
-                                        <span>ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚Â³ Mandiri</span><span id="closingBankMandiri">Rp 0</span>
-                                    </div>
-                                    <div class="summary-row">
-                                        <span>Total Rp (Sisa di Brankas)</span>
-                                        <strong id="closingKasSistem">Rp 0</strong>
-                                    </div>
-                                    <div class="summary-row" style="color: #F87171; font-size: 0.9rem; margin-top: 4px;">
-                                        <span>Pengeluaran Hari Ini</span>
-                                        <span id="closingTotalExpenses">Rp 0</span>
-                                    </div>
-                                    <div class="summary-row" style="color: #F59E0B; font-size: 0.9rem; margin-top: 6px;">
-                                        <span>Total Gantungan (Piutang)</span>
-                                        <span id="closingGantunganPiutang">Rp 0</span>
-                                    </div>
-                                    <div class="summary-row hidden" aria-hidden="true"><span>Gantungan Utang</span><span id="closingGantunganUtang">Rp 0</span></div>
-                                    <div class="summary-row hidden" aria-hidden="true"><span>Total Sistem</span><span id="closingTotalSistemRupiah">Rp 0</span></div>
-                                    <div class="summary-row hidden" aria-hidden="true"><span>Total Fisik + Bank</span><span id="closingTotalFisikBank">Rp 0</span></div>
-                                    <hr style="border-color: rgba(255,255,255,0.1); margin: 10px 0;">
-                                    <div class="summary-row">
-                                        <span>Selisih Rekonsiliasi</span>
-                                        <h2 id="closingSelisih">Rp 0</h2>
-                                    </div>
-                                </div>
-                                
-                                <div class="form-group mt-4">
-                                    <label>Tanggal & Waktu Closing (Kosongkan jika hari ini/sekarang)</label>
-                                    <input type="datetime-local" id="closingDateInput" class="form-control" onchange="calculateClosingPhysical()">
-                                </div>
-                                <div class="form-group mt-2">
-                                    <label>Jenis Closing</label>
-                                    <select id="closingType" class="form-control" onchange="updateClosingModeUi()">
-                                        <option value="temporary">Cek Sementara</option>
-                                        <option value="final">Closing Final</option>
-                                    </select>
-                                    <small id="closingModeHelp" class="text-muted" style="display:block; margin-top:6px;">Cek sementara hanya mencatat posisi kas dan tidak mengubah saldo kas sistem.</small>
-                                </div>
-                                <div class="form-group mt-2">
-                                    <label>Catatan Closing (Opsional)</label>
-                                    <textarea id="closingNote" class="form-control" rows="3" placeholder="Keterangan jika ada selisih..."></textarea>
-                                </div>
-                                
-                                <button id="btnSaveClosing" class="btn btn-primary btn-block btn-lg mt-3" onclick="saveClosing()"><i class="fa-solid fa-clipboard-check"></i> Simpan Cek Sementara</button>
-                                <button class="btn btn-secondary btn-block mt-2" onclick="openClosingHistoryModal()"><i class="fa-solid fa-history"></i> Lihat Riwayat Closing</button>
-                            </div>
-                        </div>
-                    </div>
+                    <style id="cd-style">
+                        #closing-view .cd {
+                            --cd-bd: var(--mc-border, rgba(148,163,184,.28));
+                            --cd-card: var(--mc-card-bg, #18181b);
+                            --cd-tx: var(--mc-text, #fafafa);
+                            --cd-mut: var(--mc-text-muted, #a1a1aa);
+                            --cd-pri: var(--mc-primary, #22c55e);
+                            --cd-ok: var(--mc-buy, #22c55e);
+                            --cd-bad: var(--mc-danger, #ef4444);
+                            --cd-warn: var(--mc-warning, #f59e0b);
+                            --cd-info: var(--mc-info, #3b82f6);
+                            --cd-r: var(--mc-radius, 12px);
+                            --cd-br: var(--mc-btn-radius, 8px);
+                            --cd-ir: var(--mc-input-radius, 8px);
+                            --cd-soft: color-mix(in srgb, var(--cd-tx) 5%, transparent);
+                            --cd-soft2: color-mix(in srgb, var(--cd-tx) 9%, transparent);
+                            color: var(--cd-tx);
+                            display: grid; gap: 16px;
+                        }
+                        #closing-view .cd-card { background: var(--cd-card); border: 1px solid var(--cd-bd); border-radius: var(--cd-r); padding: 18px 20px; box-shadow: var(--mc-shadow, none); min-width: 0; }
+                        #closing-view .cd-center { text-align: center; padding: 28px 16px; color: var(--cd-mut); }
+                        #closing-view .cd-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+                        #closing-view .cd-head-main { display: flex; align-items: center; gap: 14px; }
+                        #closing-view .cd-head h2 { margin: 0; font-size: 1.25rem; color: var(--cd-tx); }
+                        #closing-view .cd-head p { margin: 3px 0 0; font-size: .85rem; color: var(--cd-mut); }
+                        #closing-view .cd-ico { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; flex: none;
+                            color: var(--cd-pri); background: color-mix(in srgb, var(--cd-pri) 16%, transparent); }
+                        #closing-view .cd-head-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+                        #closing-view .cd-datenav { display: flex; align-items: center; gap: 6px; }
+                        #closing-view input[type=date], #closing-view input[type=month], #closing-view .cd-filters select, #closing-view .cd-field textarea, #closing-view .cd-input-sm, #closing-view .cd-stepper input {
+                            font: inherit; color: var(--cd-tx); background: var(--mc-input-bg, var(--cd-soft)); border: 1px solid var(--mc-input-border, var(--cd-bd));
+                            border-radius: var(--cd-ir); padding: 8px 10px; outline: none; box-sizing: border-box; color-scheme: light dark; }
+                        #closing-view input:focus, #closing-view textarea:focus, #closing-view select:focus { border-color: var(--cd-pri); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cd-pri) 22%, transparent); }
+                        #closing-view input:disabled, #closing-view textarea:disabled { opacity: .65; cursor: not-allowed; }
+                        #closing-view .cd-btn-ico { width: 36px; height: 36px; border-radius: var(--cd-br); border: 1px solid var(--cd-bd); background: var(--cd-soft); color: var(--cd-tx); cursor: pointer; }
+                        #closing-view .cd-btn-ico:hover:not(:disabled) { border-color: var(--cd-pri); color: var(--cd-pri); }
+                        #closing-view .cd-btn-ico:disabled { opacity: .4; cursor: not-allowed; }
+                        #closing-view .cd-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 99px; font-size: .8rem; font-weight: 700; white-space: nowrap;
+                            --t: var(--cd-mut); color: var(--t); background: color-mix(in srgb, var(--t) 15%, transparent); border: 1px solid color-mix(in srgb, var(--t) 38%, transparent); }
+                        #closing-view .tone-ok { --t: var(--cd-ok); } #closing-view .tone-bad { --t: var(--cd-bad); }
+                        #closing-view .tone-warn { --t: var(--cd-warn); } #closing-view .tone-info { --t: var(--cd-info); } #closing-view .tone-mut { --t: var(--cd-mut); }
+                        #closing-view .cd-banner { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--cd-r); margin-bottom: 8px; --t: var(--cd-mut);
+                            border: 1px solid color-mix(in srgb, var(--t) 40%, transparent); background: color-mix(in srgb, var(--t) 11%, transparent); font-size: .88rem; }
+                        #closing-view .cd-banner > i { color: var(--t); font-size: 1.1rem; }
+                        #closing-view .cd-banner > div { flex: 1; }
+                        #closing-view .cd-linkbtn { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-size: .82rem; font-weight: 600; color: var(--mc-link, var(--cd-pri)); }
+                        #closing-view .cd-linkbtn:hover { text-decoration: underline; }
+                        #closing-view .cd-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+                        #closing-view .cd-kpi { display: flex; gap: 14px; align-items: center; padding: 16px 18px; background: var(--cd-card); border: 1px solid var(--cd-bd); border-radius: var(--cd-r); --t: var(--cd-info); }
+                        #closing-view .cd-kpi.tone-ok { --t: var(--cd-ok); } #closing-view .cd-kpi.tone-bad { --t: var(--cd-bad); } #closing-view .cd-kpi.tone-primary { --t: var(--cd-pri); border-color: color-mix(in srgb, var(--cd-pri) 55%, transparent); }
+                        #closing-view .cd-kpi-ico { width: 42px; height: 42px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; color: var(--t); background: color-mix(in srgb, var(--t) 16%, transparent); }
+                        #closing-view .cd-kpi small { display: block; color: var(--cd-mut); font-size: .76rem; }
+                        #closing-view .cd-kpi strong { display: block; font-size: 1.2rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+                        #closing-view .cd-kpi em { font-style: normal; font-size: .72rem; color: var(--cd-mut); }
+                        #closing-view .cd-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+                        #closing-view .cd-main { display: grid; gap: 16px; min-width: 0; }
+                        #closing-view .cd-side { display: grid; gap: 16px; position: sticky; top: 12px; }
+                        #closing-view .cd-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+                        #closing-view .cd-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+                        #closing-view .cd-card-head h3 { margin: 0; font-size: 1rem; color: var(--cd-tx); }
+                        #closing-view .cd-card-head h3 i { color: var(--cd-pri); margin-right: 8px; }
+                        #closing-view .cd-dens { display: grid; gap: 8px; }
+                        #closing-view .cd-den { display: grid; grid-template-columns: minmax(130px, 1fr) auto minmax(110px, 1fr); gap: 12px; align-items: center; padding: 8px 12px; border: 1px solid var(--cd-bd); border-radius: var(--cd-ir); background: var(--cd-soft); }
+                        #closing-view .cd-den-label { font-weight: 600; font-variant-numeric: tabular-nums; }
+                        #closing-view .cd-den-label i { color: var(--cd-pri); width: 22px; }
+                        #closing-view .cd-den-sub { text-align: right; font-variant-numeric: tabular-nums; color: var(--cd-mut); }
+                        #closing-view .cd-stepper { display: flex; align-items: center; gap: 4px; }
+                        #closing-view .cd-stepper button { width: 32px; height: 34px; border-radius: var(--cd-br); border: 1px solid var(--cd-bd); background: var(--cd-card); color: var(--cd-tx); cursor: pointer; font-size: 1rem; }
+                        #closing-view .cd-stepper button:hover:not(:disabled) { border-color: var(--cd-pri); color: var(--cd-pri); }
+                        #closing-view .cd-stepper button:disabled { opacity: .4; cursor: not-allowed; }
+                        #closing-view .cd-stepper input { width: 84px; text-align: center; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+                        #closing-view .cd-stepper input::-webkit-outer-spin-button, #closing-view .cd-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+                        #closing-view .cd-total { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; padding: 14px 16px; border-radius: var(--cd-ir);
+                            background: color-mix(in srgb, var(--cd-pri) 12%, transparent); border: 1px solid color-mix(in srgb, var(--cd-pri) 40%, transparent); }
+                        #closing-view .cd-total strong { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+                        #closing-view .cd-tablewrap { overflow-x: auto; border: 1px solid var(--cd-bd); border-radius: var(--cd-ir); }
+                        #closing-view .cd-scroll { max-height: 280px; overflow-y: auto; }
+                        #closing-view .cd-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+                        #closing-view .cd-table th { text-align: left; padding: 10px 12px; font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; color: var(--cd-mut);
+                            background: var(--mc-table-head, var(--cd-soft)); border-bottom: 1px solid var(--cd-bd); white-space: nowrap; position: sticky; top: 0; }
+                        #closing-view .cd-table td { padding: 10px 12px; border-bottom: 1px solid var(--cd-bd); vertical-align: middle; }
+                        #closing-view .cd-table tr:last-child td { border-bottom: 0; }
+                        #closing-view .cd-table tbody tr:hover { background: var(--mc-table-hover, var(--cd-soft)); }
+                        #closing-view .cd-table tr.is-active { background: color-mix(in srgb, var(--cd-pri) 10%, transparent); }
+                        #closing-view .cd-table tr.is-legacy { opacity: .78; }
+                        #closing-view .r { text-align: right; font-variant-numeric: tabular-nums; }
+                        #closing-view .cd-input-sm { width: 110px; text-align: right; padding: 6px 8px; }
+                        #closing-view .cd-mut { color: var(--cd-mut); }
+                        #closing-view .cd-hint { margin: 10px 0 0; font-size: .78rem; color: var(--cd-mut); line-height: 1.5; }
+                        #closing-view .cd-empty { text-align: center; color: var(--cd-mut); padding: 18px 10px !important; list-style: none; }
+                        #closing-view .tx-ok { color: var(--cd-ok); } #closing-view .tx-bad { color: var(--cd-bad); }
+                        #closing-view .tx-info { color: var(--cd-info); } #closing-view .tx-warn { color: var(--cd-warn); }
+                        #closing-view .cd-chip { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: .74rem; font-weight: 600; --t: var(--cd-mut);
+                            color: var(--t); background: color-mix(in srgb, var(--t) 14%, transparent); }
+                        #closing-view .cd-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+                        #closing-view .cd-mini { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+                        #closing-view .cd-mini > div { padding: 10px 14px; border: 1px solid var(--cd-bd); border-radius: var(--cd-ir); background: var(--cd-soft); }
+                        #closing-view .cd-mini small { display: block; color: var(--cd-mut); font-size: .74rem; }
+                        #closing-view .cd-mini strong { font-size: 1.02rem; font-variant-numeric: tabular-nums; }
+                        #closing-view .cd-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
+                        #closing-view .cd-list li { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 9px 12px; border: 1px solid var(--cd-bd); border-radius: var(--cd-ir); background: var(--cd-soft); font-variant-numeric: tabular-nums; }
+                        #closing-view .cd-list small { display: block; color: var(--cd-mut); font-size: .74rem; }
+                        #closing-view .cd-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+                        #closing-view .cd-timeline li { display: flex; gap: 12px; align-items: flex-start; }
+                        #closing-view .cd-timeline li > i { font-size: .5rem; margin-top: 7px; color: var(--cd-pri); }
+                        #closing-view .cd-timeline small { display: block; color: var(--cd-mut); font-size: .76rem; }
+                        #closing-view .cd-note { font-style: italic; }
+                        #closing-view .cd-recon .cd-card-head { margin-bottom: 10px; }
+                        #closing-view .cd-rows { display: grid; gap: 8px; font-size: .9rem; }
+                        #closing-view .cd-rows > div { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
+                        #closing-view .cd-rows span { color: var(--cd-mut); }
+                        #closing-view .cd-rows-sum { padding-top: 8px; border-top: 1px dashed var(--cd-bd); }
+                        #closing-view .cd-rows-sum span { color: var(--cd-tx); }
+                        #closing-view .cd-diff { margin: 14px 0; padding: 14px 16px; text-align: center; border-radius: var(--cd-r); --t: var(--cd-mut);
+                            background: color-mix(in srgb, var(--t) 12%, transparent); border: 1px solid color-mix(in srgb, var(--t) 45%, transparent); }
+                        #closing-view .cd-diff.tone-ok { --t: var(--cd-ok); } #closing-view .cd-diff.tone-bad { --t: var(--cd-bad); }
+                        #closing-view .cd-diff.tone-info { --t: var(--cd-info); } #closing-view .cd-diff.tone-mut { --t: var(--cd-mut); }
+                        #closing-view .cd-diff small { display: block; color: var(--cd-mut); }
+                        #closing-view .cd-diff strong { display: block; font-size: 1.9rem; line-height: 1.2; color: var(--t); font-variant-numeric: tabular-nums; }
+                        #closing-view .cd-diff span { font-size: .76rem; font-weight: 700; letter-spacing: .06em; color: var(--t); }
+                        #closing-view .cd-field label { display: block; font-size: .8rem; font-weight: 600; margin-bottom: 6px; }
+                        #closing-view .cd-field textarea { width: 100%; resize: vertical; }
+                        #closing-view .cd-check { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; padding: 10px 12px; border-radius: var(--cd-ir); font-size: .86rem; cursor: pointer;
+                            border: 1px solid color-mix(in srgb, var(--cd-warn) 45%, transparent); background: color-mix(in srgb, var(--cd-warn) 10%, transparent); }
+                        #closing-view .cd-check input { margin-top: 3px; accent-color: var(--cd-pri); }
+                        #closing-view .cd-actions { display: grid; gap: 10px; margin-top: 14px; }
+                        #closing-view .cd-actions .btn { width: 100%; justify-content: center; }
+                        #closing-view .cd-actions .btn:disabled { opacity: .5; cursor: not-allowed; }
+                        #closing-view .cd-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+                        #closing-view .cd-checks li { display: flex; gap: 10px; align-items: flex-start; font-size: .86rem; --t: var(--cd-mut); }
+                        #closing-view .cd-checks li > i { color: var(--t); margin-top: 3px; }
+                        #closing-view .cd-checks li.lv-ok { --t: var(--cd-ok); } #closing-view .cd-checks li.lv-warn { --t: var(--cd-warn); }
+                        #closing-view .cd-checks li.lv-bad { --t: var(--cd-bad); } #closing-view .cd-checks li.lv-info { --t: var(--cd-info); }
+                        #closing-view .cd-checks small { display: block; color: var(--cd-mut); font-size: .76rem; }
+                        #closing-view .cd-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+                        @media (max-width: 1100px) {
+                            #closing-view .cd-grid { grid-template-columns: 1fr; }
+                            #closing-view .cd-side { position: static; order: -1; }
+                        }
+                        @media (max-width: 600px) {
+                            #closing-view .cd-den { grid-template-columns: 1fr auto; }
+                            #closing-view .cd-den-sub { grid-column: 1 / -1; text-align: left; }
+                            #closing-view .cd-card { padding: 14px; }
+                        }
+                    </style>
+                    <div id="closingRoot"></div>
                 </section>
 
                 <!-- Laporan CoreTax View -->
                 <section id="laporan-coretax-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between">
-                        <div>
-                            <h2>Laporan Pajak (Basis CoreTax DJP)</h2>
-                        </div>
-                        <div style="display:flex; gap:10px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">
-                            <button class="btn btn-primary" onclick="exportCoretaxExcel()"><i class="fa-solid fa-file-excel"></i> Export Excel CoreTax</button>
-                            <button class="btn btn-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> Cetak Tampilan</button>
-                        </div>
-                    </div>
-
-                    <div class="panel mt-4">
-                        <div class="filter-controls">
-                            <div class="form-group row">
-                                <div class="col-md-3">
-                                    <label>Tipe Transaksi</label>
-                                    <select id="coretaxFilterType" class="form-control" onchange="loadCoretaxReport()">
-                                        <option value="">-- Semua --</option>
-                                        <option value="JUAL">JUAL</option>
-                                        <option value="BELI">BELI</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-3">
-                                    <label>Dari Tanggal</label>
-                                    <input type="date" id="coretaxStartDate" class="form-control" onchange="loadCoretaxReport()">
-                                </div>
-                                <div class="col-md-3">
-                                    <label>Sampai Tanggal</label>
-                                    <input type="date" id="coretaxEndDate" class="form-control" onchange="loadCoretaxReport()">
-                                </div>
-                                <div class="col-md-3" style="display: flex; align-items: flex-end;">
-                                    <button class="btn btn-secondary w-100" onclick="loadCoretaxReport()"><i class="fa-solid fa-filter"></i> Terapkan Filter</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="table-responsive mt-4">
-                            <table class="table table-bordered" id="coretaxTable">
-                                <thead>
-                                    <tr>
-                                        <th>Tanggal</th>
-                                        <th>No. Dokumen (Invoice)</th>
-                                        <th>NIK / NPWP</th>
-                                        <th>Nama Lawan Transaksi</th>
-                                        <th>Uraian Transaksi</th>
-                                        <th style="text-align: right;">DPP (Total IDR)</th>
-                                        <th style="text-align: right;">Pajak / PPN</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="coretaxTableBody">
-                                    <tr>
-                                        <td colspan="7" class="text-center text-muted">Tidak ada data untuk rentang waktu ini.</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <div id="coretaxRoot"></div>
                 </section>
 
                 <!-- Master Data View -->
@@ -4453,6 +2769,7 @@
                             <button class="btn btn-primary btn-sm settings-tab-btn active" id="btn-tab-settings-profile" onclick="switchSettingsTab('profile')"><i class="fa-solid fa-building"></i> Profil</button>
                             <button class="btn btn-outline btn-sm settings-tab-btn" id="btn-tab-settings-wa" onclick="switchSettingsTab('wa')"><i class="fa-brands fa-whatsapp"></i> Template WA</button>
                             <button class="btn btn-outline btn-sm settings-tab-btn" id="btn-tab-settings-wa-gateway" onclick="switchSettingsTab('wa-gateway')"><i class="fa-solid fa-tower-broadcast"></i> WA Gateway</button>
+                            <button class="btn btn-outline btn-sm settings-tab-btn" id="btn-tab-settings-login" onclick="switchSettingsTab('login')"><i class="fa-solid fa-right-to-bracket"></i> Halaman Login</button>
                             <button class="btn btn-outline btn-sm settings-tab-btn" id="btn-tab-settings-balance" onclick="switchSettingsTab('balance')"><i class="fa-solid fa-scale-balanced"></i> Saldo Awal</button>
                             <button class="btn btn-outline btn-sm settings-tab-btn" id="btn-tab-settings-users" onclick="switchSettingsTab('users')"><i class="fa-solid fa-users-gear"></i> Pengguna & Akses</button>
                             <button class="btn btn-outline btn-sm settings-tab-btn" id="btn-tab-settings-danger" onclick="switchSettingsTab('danger')"><i class="fa-solid fa-triangle-exclamation"></i> Danger Zone</button>
@@ -4461,214 +2778,114 @@
                     </div>
 
                     <div class="panel settings-tab-content" id="settings-tab-profile">
-                        <h2>Pengaturan Identitas Perusahaan</h2>
-                        <hr class="divider mb-4">
-                        <div class="form-group">
-                            <label>Nama Perusahaan / Toko</label>
-                            <input type="text" id="profName" class="form-control" placeholder="Contoh: MC-ALMARA">
+                        <div class="pf">
+                            <div class="pf-head">
+                                <div>
+                                    <h2><i class="fa-solid fa-building"></i> Profil Perusahaan</h2>
+                                    <p>Identitas resmi perusahaan yang tercetak pada struk, invoice, laporan, dan dokumen pelaporan. Pastikan data sesuai dokumen perizinan.</p>
+                                </div>
+                                <div class="pf-actions">
+                                    <span class="pf-dirty" id="pfDirty">Ada perubahan yang belum disimpan</span>
+                                    <button type="button" class="btn btn-primary" onclick="submitProfile()"><i class="fa-solid fa-floppy-disk"></i> Simpan Profil</button>
+                                </div>
+                            </div>
+
+                            <div class="pf-layout">
+                                <div class="pf-main">
+                                    <section class="pf-card">
+                                        <h3><span>1</span> Identitas Perusahaan</h3>
+                                        <p>Nama dan kontak yang ditampilkan kepada nasabah.</p>
+                                        <div class="pf-grid">
+                                            <div class="wide">
+                                                <label class="pf-l" for="profName">Nama perusahaan <em>*</em></label>
+                                                <input type="text" id="profName" class="form-control" maxlength="120" placeholder="Nama perusahaan sesuai izin usaha" autocomplete="organization">
+                                            </div>
+                                            <div class="wide">
+                                                <label class="pf-l" for="profAddress">Alamat lengkap</label>
+                                                <textarea id="profAddress" class="form-control" rows="2" maxlength="300" placeholder="Jalan, nomor, kelurahan, kecamatan, kota"></textarea>
+                                            </div>
+                                            <div>
+                                                <label class="pf-l" for="profPhone">Telepon kantor</label>
+                                                <input type="text" id="profPhone" class="form-control" inputmode="tel" maxlength="30" placeholder="Kode area dan nomor telepon">
+                                            </div>
+                                            <div>
+                                                <label class="pf-l" for="profWaNumber">Nomor WhatsApp perusahaan</label>
+                                                <input type="text" id="profWaNumber" class="form-control" inputmode="tel" maxlength="30" placeholder="Nomor WhatsApp aktif">
+                                                <small>Dicantumkan pada struk dan pesan WA (tag [NO_HP_MC]).</small>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <section class="pf-card">
+                                        <h3><span>2</span> Perizinan &amp; Pelaporan</h3>
+                                        <p>Dipakai pada dokumen resmi dan pelaporan ke regulator (LKU/LKBU BI dan goAML PPATK).</p>
+                                        <div class="pf-grid">
+                                            <div>
+                                                <label class="pf-l" for="profBiLicense">Nomor izin Bank Indonesia</label>
+                                                <input type="text" id="profBiLicense" class="form-control" maxlength="80" placeholder="Nomor izin penyelenggara KUPVA BB">
+                                            </div>
+                                            <div>
+                                                <label class="pf-l" for="profIdpjk">Kode IDPJK (penyelenggara)</label>
+                                                <input type="text" id="profIdpjk" class="form-control" maxlength="40" placeholder="Kode IDPJK">
+                                            </div>
+                                            <div>
+                                                <label class="pf-l" for="profReporterCode">Nomor sandi pelapor (LKU/LKBU BI)</label>
+                                                <input type="text" id="profReporterCode" class="form-control" maxlength="60" placeholder="Nomor sandi pelapor" autocomplete="off">
+                                            </div>
+                                            <div>
+                                                <label class="pf-l" for="profGoamlOrgId">ID organisasi goAML (PPATK)</label>
+                                                <input type="text" id="profGoamlOrgId" class="form-control" maxlength="60" placeholder="ID organisasi goAML" autocomplete="off">
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <section class="pf-card">
+                                        <h3><span>3</span> Cetak Struk</h3>
+                                        <p>Isi pesan WhatsApp dikelola terpisah di tab Template WA.</p>
+                                        <div class="pf-grid">
+                                            <div class="wide">
+                                                <label class="pf-l" for="profFooter">Pesan penutup struk</label>
+                                                <input type="text" id="profFooter" class="form-control" maxlength="160" placeholder="Kalimat penutup di bagian bawah struk">
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <div class="form-group" id="visionKeyBox" style="display:none;"></div>
+
+                                    <section class="pf-card" id="faviconUploadGroup">
+                                        <h3><span>4</span> Identitas Aplikasi</h3>
+                                        <p>Ikon yang tampil di tab browser dan menggantikan favicon bawaan.</p>
+                                        <label class="pf-l" for="faviconUploadInput"><i class="fa-solid fa-image"></i> Favicon aplikasi</label>
+                                        <input type="file" id="faviconUploadInput" class="form-control" accept="image/png">
+                                        <small>Unggah PNG persegi (disarankan 512 &times; 512 px, maksimal 1 MB).</small>
+                                        <div class="pf-fav">
+                                            <img id="faviconPreview" src="<?php echo e(file_exists($faviconPath) ? asset('favicon.png') . '?v=' . filemtime($faviconPath) : asset('favicon.ico')); ?>" alt="Pratinjau favicon" style="width:36px; height:36px; object-fit:contain; border:1px solid #dce4e8; border-radius:7px; background:#fff; padding:3px;">
+                                            <button type="button" class="btn btn-outline btn-sm" onclick="uploadAppFavicon()"><i class="fa-solid fa-upload"></i> Unggah Favicon</button>
+                                        </div>
+                                    </section>
+                                </div>
+
+                                <aside class="pf-side">
+                                    <section class="pf-card">
+                                        <h3>Pratinjau Kop Struk</h3>
+                                        <p>Tampilan ringkas dari isian di samping.</p>
+                                        <div class="pf-slip" id="pfSlip"></div>
+                                    </section>
+                                </aside>
+                            </div>
                         </div>
-                        <div class="form-group row">
-                            <div class="col">
-                                <label>Alamat Perusahaan</label>
-                                <textarea id="profAddress" class="form-control" rows="2" placeholder="Contoh: Jl. Sudirman No 123..."></textarea>
-                            </div>
-                            <div class="col">
-                                <label>Nomor Izin BI</label>
-                                <input type="text" id="profBiLicense" class="form-control" placeholder="Contoh: No. 12/345/BI/2026">
-                            </div>
-                            <div class="col">
-                                <label>Kode IDPJK (Penyelenggara)</label>
-                                <input type="text" id="profIdpjk" class="form-control" placeholder="Contoh: 12345678">
-                            </div>
-                            <div class="col">
-                                <label>Nomor Sandi Pelapor (LKU/LKBU BI)</label>
-                                <input type="text" id="profReporterCode" class="form-control" placeholder="Masukkan nomor sandi pelapor BI" autocomplete="off">
-                            </div>
-                        </div>
-                        <div class="form-group row">
-                            <div class="col">
-                                <label>No. Telepon Kantor</label>
-                                <input type="text" id="profPhone" class="form-control" placeholder="Contoh: 021-1234567">
-                            </div>
-                            <div class="col">
-                                <label>Nomor WhatsApp (Untuk Struk)</label>
-                                <input type="text" id="profWaNumber" class="form-control" placeholder="Contoh: 08123456789">
-                            </div>
-                            <div class="col">
-                                <label>Pesan Footer (Untuk Struk)</label>
-                                <input type="text" id="profFooter" class="form-control" placeholder="Contoh: Terima Kasih Atas Kunjungan Anda">
-                            </div>
-                        </div>
-                        <div class="form-group row mt-3">
-                            <div class="col-md-4">
-                                <label style="color: #10B981;">Token / API Key AI Cloud (Vision)</label>
-                                <input type="password" id="profVisionKey" class="form-control" placeholder="Masukkan Google API Key">
-                            </div>
-                        </div>
-                        <div class="form-group mt-3">
-                            <label>Template Pesan WhatsApp (Pengiriman Bukti Digital)</label>
-                            <textarea id="profWaTemplate" class="form-control" rows="8" placeholder="Ketik template Anda di sini..."></textarea>
-                            <div style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; padding: 10px; margin-top: 10px; font-size: 0.8rem; color: #94A3B8;">
-                                <strong class="text-white">Gunakan Tag Dinamis Berikut:</strong><br>
-                                <code>[NAMA_MC]</code> : Nama Toko/Perusahaan<br>
-                                <code>[NAMA_NASABAH]</code> : Memanggil Nama Nasabah Terpilih (atau 'Kak' jika Umum)<br>
-                                <code>[NO_INVOICE]</code> : Nomor Invoice<br>
-                                <code>[TANGGAL]</code> : Tanggal Transaksi<br>
-                                <code>[VALUTA_LIST]</code> : Daftar Rincian Valuta<br>
-                                <code>[GRAND_TOTAL]</code> : Nilai Total Tagihan / Kembali<br>
-                                <code>[METODE_BAYAR]</code> : Metode Pembayaran (CASH/TRANSFER/SPLIT)<br>
-                                <code>[METODE_RINCIAN]</code> : Rincian Split Bill (Jika SPLIT)<br>
-                            </div>
-                        </div>
-                        <div class="form-group mt-3" id="faviconUploadGroup">
-                            <label><i class="fa-solid fa-image"></i> Favicon Aplikasi</label>
-                            <input type="file" id="faviconUploadInput" class="form-control" accept="image/png">
-                            <small class="text-muted" style="display:block; margin-top:6px;">Unggah PNG persegi (disarankan 512 ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â 512 px, maksimal 1 MB). Ikon ini tampil di tab browser dan akan menggantikan favicon bawaan.</small>
-                            <div style="display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap;">
-                                <img id="faviconPreview" src="<?php echo e(file_exists($faviconPath) ? asset('favicon.png') . '?v=' . filemtime($faviconPath) : asset('favicon.ico')); ?>" alt="Preview favicon" style="width:36px; height:36px; object-fit:contain; border:1px solid #dce4e8; border-radius:7px; background:#fff; padding:3px;">
-                                <button type="button" class="btn btn-outline btn-sm" onclick="uploadAppFavicon()"><i class="fa-solid fa-upload"></i> Unggah Favicon</button>
-                            </div>
-                        </div>
-                        <button class="btn btn-primary mt-3" onclick="submitProfile()"><i class="fa-solid fa-save"></i> Simpan Pengaturan Profil</button>
                     </div>
 
                     <div class="panel mt-4 settings-tab-content hidden" id="settings-tab-wa" style="display:none;">
-                        <div class="flex-between" style="gap: 12px; flex-wrap: wrap;">
-                            <div>
-                                <h2>Template WhatsApp</h2>
-                                <p class="text-muted mt-2">Kelola pilihan pesan yang muncul di tombol WA riwayat transaksi.</p>
-                            </div>
-                            <button class="btn btn-success" onclick="newWaTemplate()"><i class="fa-solid fa-plus"></i> Template Baru</button>
-                        </div>
-                        <hr class="divider mb-4">
-
-                        <div class="row" style="display:flex; gap:20px; flex-wrap:wrap;">
-                            <div class="col" style="flex: 1.1; min-width: 320px;">
-                                <div class="table-responsive">
-                                    <table class="table table-bordered">
-                                        <thead>
-                                            <tr>
-                                                <th>Nama Template</th>
-                                                <th>Kategori</th>
-                                                <th>Peruntukan Tombol WA</th>
-                                                <th style="width:90px; text-align:center;">Default</th>
-                                                <th style="width:130px; text-align:center;">Aksi</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="waTemplatesTableBody">
-                                            <tr><td colspan="5" class="text-center text-muted">Belum ada template.</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div class="col" style="flex: 1; min-width: 320px;">
-                                <input type="hidden" id="waTemplateId">
-                                <div class="form-group">
-                                    <label>Nama Template</label>
-                                    <input type="text" id="waTemplateName" class="form-control" placeholder="Contoh: Reminder DP">
-                                </div>
-                                <div class="form-group">
-                                    <label>Kategori</label>
-                                    <input type="text" id="waTemplateCategory" class="form-control" placeholder="Contoh: Transaksi / Follow Up">
-                                </div>
-                                <div class="form-group">
-                                    <label>Isi Pesan</label>
-                                    <textarea id="waTemplateContent" class="form-control" rows="10" placeholder="Tulis pesan template WA..."></textarea>
-                                </div>
-                                <div class="form-group">
-                                    <label>Peruntukan Template</label>
-                                    <small class="text-muted" style="display:block; margin:-2px 0 8px;">Pilih tombol/halaman WA yang memakai template ini. Template tanpa pilihan memakai status Default.</small>
-                                    <div id="waTemplatePurposes" style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:7px; padding:10px; border:1px solid rgba(255,255,255,.1); border-radius:8px;"></div>
-                                </div>
-                                <label style="display:flex; gap:8px; align-items:center; margin: 8px 0 14px;">
-                                    <input type="checkbox" id="waTemplateDefault">
-                                    Jadikan default untuk tombol WA transaksi
-                                </label>
-                                <div style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; padding: 10px; font-size: 0.8rem; color: #94A3B8;">
-                                    <strong class="text-white">Tag yang bisa dipakai:</strong><br>
-                                    <code>[NAMA_MC]</code>, <code>[NO_HP_MC]</code>, <code>[NAMA_NASABAH]</code>, <code>[NO_INVOICE]</code>, <code>[TANGGAL]</code>, <code>[VALUTA_LIST]</code>, <code>[GRAND_TOTAL]</code>, <code>[METODE_BAYAR]</code>, <code>[METODE_RINCIAN]</code>
-                                </div>
-                                <div class="mt-3" style="display:flex; gap:10px; flex-wrap:wrap;">
-                                    <button class="btn btn-primary" onclick="saveWaTemplateFromSettings()"><i class="fa-solid fa-save"></i> Simpan Template</button>
-                                    <button class="btn btn-secondary" onclick="newWaTemplate()"><i class="fa-solid fa-eraser"></i> Bersihkan Kolom</button>
-                                </div>
-                            </div>
-                        </div>
+                        <div id="waTplRoot"><p class="text-muted">Memuat template WhatsApp...</p></div>
                     </div>
 
                     <div class="panel mt-4 settings-tab-content hidden" id="settings-tab-wa-gateway" style="display:none;">
-                        <div class="flex-between" style="gap: 12px; flex-wrap: wrap;">
-                            <div>
-                                <h2><i class="fa-solid fa-tower-broadcast" style="color:#25D366;"></i> Pengaturan WhatsApp Gateway</h2>
-                                <p class="text-muted mt-2">Simpan koneksi provider WhatsApp Gateway untuk integrasi pengiriman pesan otomatis.</p>
-                            </div>
-                            <span id="waGatewayStatus" class="badge" style="background:#64748b;color:#fff;padding:6px 10px;border-radius:99px;">Nonaktif</span>
-                        </div>
-                        <hr class="divider mb-4">
+                        <div id="waGwRoot"><p class="text-muted">Memuat pengaturan WA Gateway...</p></div>
+                    </div>
 
-                        <div class="form-group row">
-                            <div class="col-md-4">
-                                <label>Provider / Nama Gateway</label>
-                                <input type="text" id="waGatewayProvider" class="form-control" placeholder="Contoh: Fonnte, Wablas, WAHA">
-                            </div>
-                            <div class="col-md-8">
-                                <label>URL Endpoint API</label>
-                                <input type="url" id="waGatewayEndpoint" class="form-control" placeholder="https://domain-gateway.com/api/send-message">
-                                <small class="text-muted">Masukkan endpoint pengiriman pesan dari provider Anda.</small>
-                            </div>
-                        </div>
-                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-2px 0 14px;">
-                            <span class="text-muted" style="font-size:.8rem;">Pakai format siap pakai:</span>
-                            <button type="button" class="btn btn-sm btn-outline" onclick="applyWaGatewayPreset('fonnte')"><i class="fa-solid fa-wand-magic-sparkles"></i> Gunakan Format Fonnte</button>
-                            <small class="text-muted">Token tetap Anda isi dari dashboard Fonnte.</small>
-                        </div>
-                        <div class="form-group row">
-                            <div class="col-md-3">
-                                <label>Metode Request</label>
-                                <select id="waGatewayMethod" class="form-control"><option value="POST">POST</option><option value="GET">GET</option></select>
-                            </div>
-                            <div class="col-md-3">
-                                <label>Format Body</label>
-                                <select id="waGatewayBodyFormat" class="form-control"><option value="form">Form Data</option><option value="json">JSON</option></select>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Header API (JSON)</label>
-                            <textarea id="waGatewayHeaders" class="form-control" rows="3" spellcheck="false" placeholder='Contoh: {"Authorization":"{TOKEN}"}'></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Payload API (JSON)</label>
-                            <textarea id="waGatewayPayload" class="form-control" rows="5" spellcheck="false" placeholder='Contoh: {"target":"{TARGET}","message":"{MESSAGE}"}'></textarea>
-                            <small class="text-muted">Placeholder tersedia: <code>{TOKEN}</code>, <code>{TARGET}</code>, <code>{MESSAGE}</code>, <code>{SENDER}</code>, <code>{REFERENCE}</code>. Ikuti dokumentasi provider Anda.</small>
-                        </div>
-                        <div class="form-group row">
-                            <div class="col-md-6">
-                                <label>Token / API Key</label>
-                                <div style="display:flex; gap:8px;">
-                                    <input type="password" id="waGatewayToken" class="form-control" autocomplete="new-password" placeholder="Token dari provider WhatsApp Gateway">
-                                    <button type="button" class="btn btn-outline" onclick="toggleWaGatewayTokenVisibility()" title="Tampilkan/sembunyikan token"><i class="fa-solid fa-eye"></i></button>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <label>Nomor Pengirim / Device ID</label>
-                                <input type="text" id="waGatewaySender" class="form-control" placeholder="Contoh: 628123456789 atau device-utama">
-                            </div>
-                        </div>
-                        <label style="display:flex; align-items:center; gap:9px; margin: 14px 0; cursor:pointer;">
-                            <input type="checkbox" id="waGatewayEnabled" onchange="persistWaGatewayEnabled(); updateWaGatewayStatus()">
-                            Aktifkan WhatsApp Gateway untuk integrasi otomatis
-                        </label>
-                        <div style="background:rgba(245,158,11,.10);border-left:3px solid #f59e0b;padding:10px 12px;font-size:.82rem;color:#cbd5e1;">
-                            Semua tombol WhatsApp aplikasi memakai koneksi ini. Isi header dan payload sesuai dokumentasi provider agar Anda bisa mengganti gateway tanpa perubahan kode.
-                        </div>
-                        <div class="mt-3" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
-                            <button class="btn btn-primary" onclick="saveWaGatewaySettings()"><i class="fa-solid fa-floppy-disk"></i> Simpan Pengaturan WA Gateway</button>
-                            <div style="min-width:220px;flex:1;max-width:360px;">
-                                <label style="font-size:.78rem;">Nomor WA untuk tes</label>
-                                <input type="text" id="waGatewayTestPhone" class="form-control" placeholder="Contoh: 081234567890">
-                            </div>
-                            <button class="btn btn-success" onclick="testWaGatewayConnection()"><i class="fa-solid fa-paper-plane"></i> Kirim Pesan Tes</button>
-                        </div>
+                    <div class="panel mt-4 settings-tab-content hidden" id="settings-tab-login" style="display:none;">
+                        <div id="loginPageRoot"><p class="text-muted">Memuat pengaturan halaman login...</p></div>
                     </div>
 
                     <div class="panel mt-4 settings-tab-content hidden" id="settings-tab-balance" style="display:none;">
@@ -4729,7 +2946,7 @@
                             </table>
                         </div>
                         <div class="mt-3" style="padding: 12px 14px; background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3b82f6; border-radius: 6px; color: #cbd5e1;">
-                            <strong>Catatan kurs modal awal:</strong> kurs pada menu `Saldo Awal` sekarang independen. Kode valas masih bisa diambil dari `Manajemen Kurs`, tetapi nilai kurs diisi dan disimpan manual di Pengaturan, tidak mengikuti `Sync Smartdeal`, dan tidak otomatis berubah dari halaman kurs utama.
+                            <strong>Catatan kurs modal awal:</strong> kurs pada menu `Saldo Awal` sekarang independen. Kode valas masih bisa diambil dari `Manajemen Kurs`, tetapi nilai kurs diisi dan disimpan manual di Pengaturan, tidak mengikuti sinkronisasi kurs otomatis, dan tidak otomatis berubah dari halaman kurs utama.
                         </div>
 
                         <div class="mt-4 p-3 rounded text-center" style="background: #1e293b; border: 1px solid #334155;">
@@ -4740,165 +2957,390 @@
                         <button class="btn btn-success mt-4 w-100" onclick="saveInitialBalances()"><i class="fa-solid fa-save"></i> Terapkan Semua Saldo Awal ke Sistem</button>
                     </div>
 
-                    <!-- Manajemen Pengguna (User Management) -->
+                    <!-- Pengguna & Akses -->
                     <div class="panel mt-4 settings-tab-content hidden" id="settings-tab-users" style="display:none;">
-                        <div id="userManagementPanel">
-                        <div class="flex-between">
-                            <h2><i class="fa-solid fa-users-gear"></i> Manajemen Pengguna (Akses)</h2>
-                            <button class="btn btn-primary" onclick="openUserModal()"><i class="fa-solid fa-user-plus"></i> Tambah Pengguna</button>
-                        </div>
-                        <hr class="divider mb-4">
-                        <div class="table-responsive">
-                            <table class="table table-bordered">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 50px;">Foto</th>
-                                        <th>Username</th>
-                                        <th>Nama Lengkap</th>
-                                        <th>Role / Akses</th>
-                                        <th class="text-center">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="userTableBody">
-                                    <!-- Dynamic Users -->
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="mt-4" id="roleAccessSettingsPanel">
-                            <div class="flex-between" style="align-items: flex-start; gap: 12px;">
-                                <div>
-                                    <h3 style="margin-bottom: 6px;"><i class="fa-solid fa-key"></i> Setting Hak Akses</h3>
-                                    <p class="text-muted" style="margin: 0;">Atur sendiri menu dan area khusus untuk tiap role pengguna.</p>
-                                </div>
-                                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                                    <select id="roleAccessEditor" class="form-control" onchange="loadRoleAccessEditor()" style="min-width: 170px;">
-                                        <option value="owner">Owner</option>
-                                        <option value="admin">Admin</option>
-                                        <option value="kasir">Kasir</option>
-                                        <option value="teller">Teller</option>
-                                    </select>
-                                    <button class="btn btn-outline" onclick="resetRoleAccessToDefault()"><i class="fa-solid fa-rotate-left"></i> Reset Default</button>
-                                    <button class="btn btn-primary" onclick="saveRoleAccessSettings()"><i class="fa-solid fa-save"></i> Simpan Hak Akses</button>
-                                </div>
-                            </div>
-                            <div class="row mt-3" style="display:flex; gap:20px; flex-wrap:wrap;">
-                                <div class="col" style="flex: 2; min-width: 320px;">
-                                    <label class="mb-2 d-block">Akses Menu</label>
-                                    <div id="roleAccessMenuList" style="display:grid; gap:14px;"></div>
-                                </div>
-                                <div class="col" style="flex: 1; min-width: 260px;">
-                                    <label class="mb-2 d-block">Area Khusus</label>
-                                    <div id="roleAccessSpecialList" style="display:grid; gap:10px;"></div>
-                                    <label class="mb-2 d-block mt-4">Hak Tombol Aksi</label>
-                                    <div id="roleAccessActionList" style="display:grid; gap:10px;"></div>
-                                </div>
-                            </div>
-                        </div>
-                        </div>
-                    </div>
+                        <style id="ua-style">
+                            #settings-tab-users, #userModal {
+                                --ua-bd: var(--mc-border, rgba(148,163,184,.28));
+                                --ua-card: var(--mc-card-bg, #18181b);
+                                --ua-tx: var(--mc-text, #fafafa);
+                                --ua-mut: var(--mc-text-muted, #a1a1aa);
+                                --ua-pri: var(--mc-primary, #22c55e);
+                                --ua-info: var(--mc-info, #3b82f6);
+                                --ua-warn: var(--mc-warning, #f59e0b);
+                                --ua-ok: var(--mc-buy, #22c55e);
+                                --ua-bad: var(--mc-danger, #ef4444);
+                                --ua-r: var(--mc-radius, 12px);
+                                --ua-br: var(--mc-btn-radius, 8px);
+                                --ua-ir: var(--mc-input-radius, 8px);
+                                --ua-soft: color-mix(in srgb, var(--ua-tx) 5%, transparent);
+                                --ua-soft2: color-mix(in srgb, var(--ua-tx) 9%, transparent);
+                            }
+                            #settings-tab-users .ua { color: var(--ua-tx); }
+                            #settings-tab-users .ua-head, #settings-tab-users .ua-sec-head { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+                            #settings-tab-users .ua-ico { width:44px; height:44px; border-radius:calc(var(--ua-r) * .9); display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex:none;
+                                background: color-mix(in srgb, var(--ua-pri) 16%, transparent); color: var(--ua-pri); }
+                            #settings-tab-users .ua-head-txt { flex:1; min-width:220px; }
+                            #settings-tab-users .ua-head-txt h2, #settings-tab-users .ua-sec-head h3 { margin:0; font-size:1.15rem; color:var(--ua-tx); }
+                            #settings-tab-users .ua-head-txt p, #settings-tab-users .ua-sec-head p { margin:3px 0 0; font-size:.84rem; color:var(--ua-mut); }
+                            #settings-tab-users .ua-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin:18px 0; }
+                            #settings-tab-users .ua-stat { display:flex; align-items:center; gap:12px; padding:14px 16px; background:var(--ua-card); border:1px solid var(--ua-bd); border-radius:var(--ua-r); }
+                            #settings-tab-users .ua-stat-ico { width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex:none; --t:var(--ua-pri);
+                                background:color-mix(in srgb, var(--t) 16%, transparent); color:var(--t); }
+                            #settings-tab-users .ua-stat.tone-info .ua-stat-ico { --t:var(--ua-info); }
+                            #settings-tab-users .ua-stat.tone-buy .ua-stat-ico { --t:var(--ua-ok); }
+                            #settings-tab-users .ua-stat.tone-warning .ua-stat-ico { --t:var(--ua-warn); }
+                            #settings-tab-users .ua-stat strong { display:block; font-size:1.35rem; line-height:1.1; }
+                            #settings-tab-users .ua-stat small { color:var(--ua-mut); font-size:.78rem; }
+                            #settings-tab-users .ua-toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+                            #settings-tab-users .ua-search { position:relative; flex:1; min-width:220px; }
+                            #settings-tab-users .ua-search i { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--ua-mut); pointer-events:none; }
+                            #settings-tab-users .ua-search input { padding-left:36px; }
+                            #settings-tab-users .ua-input, #userModal .ua-input { width:100%; box-sizing:border-box; padding:10px 12px; font:inherit; color:var(--ua-tx);
+                                background:var(--mc-input-bg, var(--ua-soft)); border:1px solid var(--mc-input-border, var(--ua-bd)); border-radius:var(--ua-ir); outline:none; transition:border-color .15s, box-shadow .15s; }
+                            #settings-tab-users .ua-input:focus, #userModal .ua-input:focus { border-color:var(--ua-pri); box-shadow:0 0 0 3px color-mix(in srgb, var(--ua-pri) 22%, transparent); }
+                            #settings-tab-users select.ua-input, #userModal select.ua-input { width:auto; min-width:160px; }
+                            #userModal select.ua-input { width:100%; }
+                            #settings-tab-users .ua-count { font-size:.82rem; color:var(--ua-mut); margin-left:auto; }
+                            #settings-tab-users .ua-tablewrap { overflow-x:auto; border:1px solid var(--ua-bd); border-radius:var(--ua-r); background:var(--ua-card); }
+                            #settings-tab-users .ua-table { width:100%; border-collapse:collapse; min-width:560px; }
+                            #settings-tab-users .ua-table th { text-align:left; padding:11px 16px; font-size:.74rem; letter-spacing:.05em; text-transform:uppercase; color:var(--ua-mut);
+                                background:var(--mc-table-head, var(--ua-soft)); border-bottom:1px solid var(--ua-bd); white-space:nowrap; }
+                            #settings-tab-users .ua-table td { padding:12px 16px; border-bottom:1px solid var(--ua-bd); vertical-align:middle; }
+                            #settings-tab-users .ua-table tr:last-child td { border-bottom:0; }
+                            #settings-tab-users .ua-table tbody tr:hover { background:var(--mc-table-hover, var(--ua-soft)); }
+                            #settings-tab-users .ua-user { display:flex; align-items:center; gap:12px; }
+                            #settings-tab-users .ua-user-txt b { display:block; }
+                            #settings-tab-users .ua-user-txt small, #settings-tab-users .ua-muted { color:var(--ua-mut); font-size:.82rem; }
+                            .ua-av { --ua-c:var(--mc-primary,#22c55e); width:38px; height:38px; border-radius:50%; flex:none; display:inline-flex; align-items:center; justify-content:center; overflow:hidden;
+                                font-weight:700; font-size:.85rem; color:var(--ua-c); background:color-mix(in srgb, var(--ua-c) 18%, transparent); border:2px solid color-mix(in srgb, var(--ua-c) 45%, transparent); }
+                            .ua-av img { width:100%; height:100%; object-fit:cover; display:block; }
+                            #settings-tab-users .ua-you { font-size:.68rem; font-weight:700; padding:2px 7px; border-radius:99px; margin-left:6px; vertical-align:middle;
+                                background:color-mix(in srgb, var(--ua-pri) 18%, transparent); color:var(--ua-pri); }
+                            #settings-tab-users .ua-badge { display:inline-block; padding:4px 11px; border-radius:99px; font-size:.78rem; font-weight:700;
+                                color:var(--ua-c); background:color-mix(in srgb, var(--ua-c) 16%, transparent); border:1px solid color-mix(in srgb, var(--ua-c) 40%, transparent); }
+                            #settings-tab-users .ua-actions-cell { text-align:right; white-space:nowrap; }
+                            #settings-tab-users .ua-icon-btn { width:34px; height:34px; border-radius:var(--ua-br); border:1px solid var(--ua-bd); background:var(--ua-soft); color:var(--ua-tx); cursor:pointer; margin-left:6px; transition:all .15s; }
+                            #settings-tab-users .ua-icon-btn:hover { border-color:var(--ua-pri); color:var(--ua-pri); background:color-mix(in srgb, var(--ua-pri) 12%, transparent); }
+                            #settings-tab-users .ua-icon-btn.danger:hover { border-color:var(--ua-bad); color:var(--ua-bad); background:color-mix(in srgb, var(--ua-bad) 12%, transparent); }
+                            #settings-tab-users .ua-empty { text-align:center; padding:36px 16px !important; color:var(--ua-mut); }
+                            #settings-tab-users .ua-empty i { font-size:1.8rem; display:block; margin-bottom:8px; opacity:.6; }
 
-                    <!-- User Modal Form (Hidden) -->
-                    <div id="userModal" class="modal">
-                        <div class="modal-content panel" style="max-width: 400px; max-height: 90vh; overflow-y: auto;">
-                            <div class="flex-between mb-3">
-                                <h3 id="userModalTitle">Form Pengguna</h3>
-                                <span class="close-modal" onclick="closeUserModal()"><i class="fa-solid fa-xmark"></i></span>
+                            #settings-tab-users .ua-access { margin-top:30px; padding-top:24px; border-top:1px solid var(--ua-bd); }
+                            #settings-tab-users .ua-sec-actions { margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+                            #settings-tab-users .ua-dirty { font-size:.78rem; font-weight:700; padding:4px 10px; border-radius:99px; color:var(--ua-warn); background:color-mix(in srgb, var(--ua-warn) 16%, transparent); }
+                            #settings-tab-users .ua-dirty[hidden] { display:none; }
+                            #settings-tab-users .ua-hidden-select { display:none; }
+                            #settings-tab-users .ua-rolebar { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 8px; }
+                            #settings-tab-users .ua-pill { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:99px; cursor:pointer; font:inherit; font-size:.86rem; font-weight:600;
+                                color:var(--ua-tx); background:var(--ua-soft); border:1px solid var(--ua-bd); transition:all .15s; }
+                            #settings-tab-users .ua-pill:hover { border-color:var(--ua-c); }
+                            #settings-tab-users .ua-pill.active { color:var(--ua-c); background:color-mix(in srgb, var(--ua-c) 16%, transparent); border-color:var(--ua-c); }
+                            #settings-tab-users .ua-dot { width:9px; height:9px; border-radius:50%; background:var(--ua-c); }
+                            #settings-tab-users .ua-pill em { font-style:normal; font-size:.72rem; padding:1px 7px; border-radius:99px; background:var(--ua-soft2); color:var(--ua-mut); }
+                            #settings-tab-users .ua-meta { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; margin:10px 0 16px; font-size:.84rem; color:var(--ua-mut); }
+                            #settings-tab-users .ua-meta b { color:var(--ua-tx); }
+                            #settings-tab-users .ua-summary { display:flex; gap:16px; flex-wrap:wrap; }
+                            #settings-tab-users .ua-meta .ua-search { max-width:280px; margin-left:auto; flex:1; }
+                            #settings-tab-users .ua-note { font-size:.82rem; color:var(--ua-warn); margin-bottom:12px; }
+                            #settings-tab-users .ua-cols { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
+                            #settings-tab-users .ua-col-main { flex:2; min-width:320px; display:grid; gap:14px; }
+                            #settings-tab-users .ua-col-side { flex:1; min-width:260px; display:grid; gap:14px; }
+                            #settings-tab-users .ua-group { background:var(--ua-card); border:1px solid var(--ua-bd); border-radius:var(--ua-r); padding:14px; }
+                            #settings-tab-users .ua-group-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+                            #settings-tab-users .ua-group-count { font-size:.74rem; padding:2px 8px; border-radius:99px; background:var(--ua-soft2); color:var(--ua-mut); }
+                            #settings-tab-users .ua-group-btns { margin-left:auto; display:flex; gap:12px; }
+                            #settings-tab-users .ua-link { background:none; border:0; padding:0; cursor:pointer; font:inherit; font-size:.78rem; color:var(--mc-link, var(--ua-pri)); }
+                            #settings-tab-users .ua-link:hover { text-decoration:underline; }
+                            #settings-tab-users .ua-opts { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:8px; }
+                            #settings-tab-users .ua-group.compact .ua-opts { grid-template-columns:1fr; }
+                            #settings-tab-users .ua-opt { position:relative; display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; user-select:none; font-size:.88rem;
+                                border:1px solid var(--ua-bd); border-radius:var(--ua-ir); background:var(--ua-soft); transition:border-color .15s, background .15s; }
+                            #settings-tab-users .ua-opt:hover { border-color:var(--ua-pri); }
+                            #settings-tab-users .ua-opt input { position:absolute; opacity:0; pointer-events:none; }
+                            #settings-tab-users .ua-sw { width:34px; height:19px; border-radius:99px; flex:none; position:relative; background:var(--ua-soft2); border:1px solid var(--ua-bd); transition:background .18s; }
+                            #settings-tab-users .ua-sw::after { content:""; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:var(--ua-mut); transition:transform .18s, background .18s; }
+                            #settings-tab-users .ua-opt input:checked + .ua-sw { background:color-mix(in srgb, var(--ua-pri) 35%, transparent); border-color:var(--ua-pri); }
+                            #settings-tab-users .ua-opt input:checked + .ua-sw::after { transform:translateX(15px); background:var(--ua-pri); }
+                            #settings-tab-users .ua-opt:has(input:checked) { border-color:color-mix(in srgb, var(--ua-pri) 55%, transparent); background:color-mix(in srgb, var(--ua-pri) 7%, transparent); }
+                            #settings-tab-users .ua-opt input:focus-visible + .ua-sw { outline:2px solid var(--ua-pri); outline-offset:2px; }
+
+                            #userModal { display:none; position:fixed; inset:0; z-index:10050; align-items:center; justify-content:center; padding:16px; background:rgba(2,6,23,.62); backdrop-filter:blur(3px); }
+                            #userModal .ua-dialog { width:100%; max-width:480px; max-height:92vh; overflow:auto; box-sizing:border-box; color:var(--ua-tx);
+                                background:var(--ua-card); border:1px solid var(--ua-bd); border-radius:var(--ua-r); box-shadow:var(--mc-shadow, 0 24px 60px rgba(0,0,0,.5)); }
+                            #userModal .ua-dhead { display:flex; align-items:center; gap:12px; padding:18px 22px; border-bottom:1px solid var(--ua-bd); }
+                            #userModal .ua-dhead h3 { margin:0; font-size:1.05rem; flex:1; color:var(--ua-tx); }
+                            #userModal .ua-x { width:34px; height:34px; border-radius:50%; border:0; cursor:pointer; background:var(--ua-soft); color:var(--ua-mut); }
+                            #userModal .ua-x:hover { color:var(--ua-bad); }
+                            #userModal .ua-dbody { padding:20px 22px; display:grid; gap:16px; }
+                            #userModal .ua-photo { display:flex; align-items:center; gap:16px; }
+                            #userModal .ua-photo .ua-av { width:76px; height:76px; font-size:1.4rem; }
+                            #userModal .ua-photo-btns { display:flex; gap:8px; flex-wrap:wrap; }
+                            #userModal .ua-field label { display:block; font-size:.8rem; font-weight:600; margin-bottom:6px; color:var(--ua-mut); }
+                            #userModal .ua-hint { margin-top:6px; font-size:.78rem; color:var(--ua-mut); }
+                            #userModal .ua-pwwrap { position:relative; }
+                            #userModal .ua-pwwrap .ua-input { padding-right:42px; }
+                            #userModal .ua-eye { position:absolute; right:4px; top:50%; transform:translateY(-50%); width:34px; height:34px; border:0; background:none; cursor:pointer; color:var(--ua-mut); }
+                            #userModal .ua-meter { height:4px; border-radius:4px; margin-top:8px; background:var(--ua-soft2); overflow:hidden; }
+                            #userModal .ua-meter > div { height:100%; width:0; border-radius:4px; transition:width .2s; }
+                            #userModal .ua-meter .weak { background:var(--ua-bad); }
+                            #userModal .ua-meter .mid { background:var(--ua-warn); }
+                            #userModal .ua-meter .good { background:var(--ua-ok); }
+                            #userModal .ua-dfoot { display:flex; gap:10px; justify-content:flex-end; padding:14px 22px 20px; border-top:1px solid var(--ua-bd); }
+                            #settings-tab-users .ua-urow { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:16px 0 8px; }
+                            #settings-tab-users .ua-urow select.ua-input { flex:1; min-width:240px; max-width:420px; }
+                            #settings-tab-users .ua-custom-toggle { width:auto; }
+                            #settings-tab-users .ua-info { color:var(--ua-mut); }
+                            #settings-tab-users .ua-info b { color:var(--ua-tx); }
+                            #settings-tab-users .ua-cols.is-locked .ua-opt { opacity:.55; pointer-events:none; }
+                            #settings-tab-users .ua-cols.is-locked .ua-link { display:none; }
+                            #settings-tab-users .ua-subtitle { margin:24px 0 10px; font-size:.95rem; color:var(--ua-tx); }
+                            #settings-tab-users .ua-subtitle i { color:var(--ua-warn); margin-right:6px; }
+                            #settings-tab-users .ua-crow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 14px; margin-bottom:8px; background:var(--ua-card); border:1px solid var(--ua-bd); border-radius:var(--ua-r); }
+                            #settings-tab-users .ua-crow .ua-user-txt { flex:1; min-width:140px; }
+                            #settings-tab-users .ua-crow-btns { margin-left:auto; }
+                            #settings-tab-users .ua-custom-tag { font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:99px; margin-left:6px; color:var(--ua-warn); background:color-mix(in srgb, var(--ua-warn) 16%, transparent); }
+                            @media (max-width:640px) {
+                                #settings-tab-users .ua-count { margin-left:0; }
+                                #settings-tab-users .ua-meta .ua-search { max-width:none; margin-left:0; }
+                                #userModal .ua-dfoot .btn { flex:1; }
+                            }
+                        </style>
+
+                        <div id="userManagementPanel" class="ua">
+                            <div class="ua-head">
+                                <div class="ua-ico"><i class="fa-solid fa-users-gear"></i></div>
+                                <div class="ua-head-txt">
+                                    <h2>Pengguna &amp; Akses</h2>
+                                    <p>Kelola akun yang bisa masuk ke aplikasi dan atur menu yang boleh dibuka tiap role.</p>
+                                </div>
+                                <button type="button" class="btn btn-primary" onclick="openUserModal()"><i class="fa-solid fa-user-plus"></i> Tambah Pengguna</button>
                             </div>
-                            <div style="display:flex; gap:8px; justify-content:flex-end; margin-bottom:10px;">
-                                <button type="button" class="btn btn-sm btn-outline" onclick="scrollUserProfileForm('userModal', -1)"><i class="fa-solid fa-arrow-up"></i> Atas</button>
-                                <button type="button" class="btn btn-sm btn-outline" onclick="scrollUserProfileForm('userModal', 1)"><i class="fa-solid fa-arrow-down"></i> Bawah</button>
+
+                            <div class="ua-stats" id="uaStats"></div>
+
+                            <div class="ua-toolbar">
+                                <div class="ua-search">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                    <input type="search" id="uaSearch" class="ua-input" placeholder="Cari username, nama, atau role..." autocomplete="off">
+                                </div>
+                                <select id="uaRoleFilter" class="ua-input" aria-label="Filter role"><option value="all">Semua role</option></select>
+                                <span class="ua-count" id="uaCount"></span>
                             </div>
-                            <hr class="divider mb-3">
-                            <input type="hidden" id="editUserId">
-                            <div class="form-group mb-2">
-                                <label>Username</label>
-                                <input type="text" id="mUserUsername" class="form-control">
+
+                            <div class="ua-tablewrap">
+                                <table class="ua-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Pengguna</th>
+                                            <th>Role</th>
+                                            <th>Level Akses</th>
+                                            <th style="text-align:right;">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="userTableBody"></tbody>
+                                </table>
                             </div>
-                            <div class="form-group mb-2">
-                                <label>Nama Lengkap</label>
-                                <input type="text" id="mUserFullName" class="form-control">
-                            </div>
-                            <div class="form-group mb-2" style="text-align: center;">
-                                <label>Foto Profil / Wajah (Opsional)</label>
-                                <input type="file" id="mUserPhoto" class="form-control" accept="image/*" onchange="handleUserPhoto(this)">
-                                <div id="previewUserPhoto" style="margin-top:10px; max-height:100px; display:flex; justify-content:center; overflow:hidden; border-radius: 5px;"></div>
-                            </div>
-                            <div class="form-group mb-2">
-                                <label>Password (Isi jika ingin diubah/baru)</label>
-                                <input type="password" id="mUserPassword" class="form-control" placeholder="Kata sandi...">
-                            </div>
-                            <div class="form-group mb-3">
-                                <label>Role (Hak Akses)</label>
-                                <select id="mUserRole" class="form-control" style="background-image: none;">
-                                    <option value="owner">Owner (Admin Super)</option>
+
+                            <div class="ua-access" id="roleAccessSettingsPanel">
+                                <div class="ua-sec-head">
+                                    <div class="ua-ico"><i class="fa-solid fa-key"></i></div>
+                                    <div>
+                                        <h3>Setting Hak Akses</h3>
+                                        <p>Pilih role, lalu aktifkan menu dan fitur yang boleh dipakai role tersebut.</p>
+                                    </div>
+                                    <div class="ua-sec-actions">
+                                        <span class="ua-dirty" id="raDirty" hidden><i class="fa-solid fa-circle-exclamation"></i> Belum disimpan</span>
+                                        <button type="button" class="btn btn-outline" onclick="resetRoleAccessToDefault()"><i class="fa-solid fa-rotate-left"></i> Reset Default</button>
+                                        <button type="button" class="btn btn-primary" onclick="saveRoleAccessSettings()"><i class="fa-solid fa-floppy-disk"></i> Simpan Hak Akses</button>
+                                    </div>
+                                </div>
+
+                                <select id="roleAccessEditor" class="ua-hidden-select" onchange="loadRoleAccessEditor()" aria-hidden="true" tabindex="-1">
+                                    <option value="owner">Owner</option>
+                                    <option value="admin">Admin</option>
                                     <option value="kasir">Kasir</option>
                                     <option value="teller">Teller</option>
-                                    <option value="admin">Admin</option>
-                                    <option value="supervisor">Supervisor</option>
-                                    <option value="kurir">Kurir</option>
-                                    <option value="keamanan">Keamanan / Satpam</option>
-                                    <option value="papan">Papan Kurs</option>
-                                    <option value="lainnya">Lainnya</option>
                                 </select>
+                                <div class="ua-rolebar" id="raRolePills"></div>
+
+                                <div class="ua-meta">
+                                    <div class="ua-summary" id="raSummary"></div>
+                                    <div class="ua-search">
+                                        <i class="fa-solid fa-magnifying-glass"></i>
+                                        <input type="search" id="raSearch" class="ua-input" placeholder="Cari menu atau fitur..." autocomplete="off">
+                                    </div>
+                                </div>
+                                <div class="ua-note" id="raNote" style="display:none;"></div>
+
+                                <div class="ua-cols">
+                                    <div class="ua-col-main" id="roleAccessMenuList"></div>
+                                    <div class="ua-col-side">
+                                        <div id="roleAccessSpecialList"></div>
+                                        <div id="roleAccessActionList"></div>
+                                    </div>
+                                </div>
                             </div>
-                            <button class="btn btn-primary w-100 mt-2" onclick="saveUser()"><i class="fa-solid fa-save"></i> Simpan Pengguna</button>
+
+                            <div class="ua-access" id="userAccessPanel" data-role-special="accessSettings">
+                                <div class="ua-sec-head">
+                                    <div class="ua-ico"><i class="fa-solid fa-user-lock"></i></div>
+                                    <div>
+                                        <h3>Akses Per Pengguna</h3>
+                                        <p>Role memberi akses dasar. Di sini Anda bisa mengatur menu khusus untuk satu orang tanpa mengubah role-nya.</p>
+                                    </div>
+                                    <div class="ua-sec-actions">
+                                        <span class="ua-dirty" id="uaUDirty" hidden><i class="fa-solid fa-circle-exclamation"></i> Belum disimpan</span>
+                                        <button type="button" class="btn btn-outline" id="uaUCopy"><i class="fa-solid fa-copy"></i> Salin dari Role</button>
+                                        <button type="button" class="btn btn-outline" id="uaUClear"><i class="fa-solid fa-rotate-left"></i> Kembali ke Role</button>
+                                        <button type="button" class="btn btn-primary" id="uaUSave"><i class="fa-solid fa-floppy-disk"></i> Simpan Akses Pengguna</button>
+                                    </div>
+                                </div>
+
+                                <div class="ua-urow">
+                                    <select id="uaUserSel" class="ua-input" aria-label="Pilih pengguna"></select>
+                                    <label class="ua-opt ua-custom-toggle">
+                                        <input type="checkbox" id="uaCustomOn">
+                                        <span class="ua-sw"></span><span class="ua-opt-txt">Pakai akses khusus untuk pengguna ini</span>
+                                    </label>
+                                </div>
+                                <div class="ua-note ua-info" id="uaUInfo"></div>
+
+                                <div class="ua-meta">
+                                    <div class="ua-summary" id="uaUSummary"></div>
+                                    <div class="ua-search">
+                                        <i class="fa-solid fa-magnifying-glass"></i>
+                                        <input type="search" id="uaUserSearch" class="ua-input" placeholder="Cari menu atau fitur..." autocomplete="off">
+                                    </div>
+                                </div>
+
+                                <div class="ua-cols is-locked" id="uaUCols">
+                                    <div class="ua-col-main" id="uaUserMenuList"></div>
+                                    <div class="ua-col-side">
+                                        <div id="uaUserSpecialList"></div>
+                                        <div id="uaUserActionList"></div>
+                                    </div>
+                                </div>
+
+                                <h4 class="ua-subtitle"><i class="fa-solid fa-star"></i> Pengguna dengan akses khusus</h4>
+                                <div id="uaCustomList"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Form Pengguna -->
+                    <div id="userModal" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
+                        <div class="ua-dialog">
+                            <div class="ua-dhead">
+                                <div class="ua-ico" style="width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb, var(--ua-pri) 16%, transparent);color:var(--ua-pri);"><i class="fa-solid fa-user-pen"></i></div>
+                                <h3 id="userModalTitle">Form Pengguna</h3>
+                                <button type="button" class="ua-x" onclick="closeUserModal()" aria-label="Tutup"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                            <div class="ua-dbody">
+                                <input type="hidden" id="editUserId">
+                                <div class="ua-photo">
+                                    <div id="previewUserPhoto"></div>
+                                    <div>
+                                        <div class="ua-photo-btns">
+                                            <label for="mUserPhoto" class="btn btn-outline btn-sm" style="cursor:pointer;margin:0;"><i class="fa-solid fa-camera"></i> Pilih Foto</label>
+                                            <button type="button" class="btn btn-outline btn-sm" id="uaPhotoClear" onclick="clearUserPhoto()" style="display:none;"><i class="fa-solid fa-trash"></i> Hapus</button>
+                                        </div>
+                                        <div class="ua-hint">Opsional. JPG atau PNG, maksimal 3 MB.</div>
+                                        <input type="file" id="mUserPhoto" accept="image/*" onchange="handleUserPhoto(this)" style="display:none;">
+                                    </div>
+                                </div>
+                                <div class="ua-field">
+                                    <label for="mUserUsername">Username</label>
+                                    <input type="text" id="mUserUsername" class="ua-input" autocomplete="off" placeholder="contoh: nama.kasir">
+                                </div>
+                                <div class="ua-field">
+                                    <label for="mUserFullName">Nama Lengkap</label>
+                                    <input type="text" id="mUserFullName" class="ua-input" autocomplete="off">
+                                </div>
+                                <div class="ua-field">
+                                    <label for="mUserPassword">Password</label>
+                                    <div class="ua-pwwrap">
+                                        <input type="password" id="mUserPassword" class="ua-input" autocomplete="new-password" placeholder="Kata sandi...">
+                                        <button type="button" class="ua-eye" onclick="toggleUserPassword()" aria-label="Tampilkan password"><i class="fa-solid fa-eye" id="uaPwEye"></i></button>
+                                    </div>
+                                    <div class="ua-meter"><div id="uaPwBar"></div></div>
+                                    <div class="ua-hint" id="uaPwText"></div>
+                                </div>
+                                <div class="ua-field">
+                                    <label for="mUserRole">Role (Hak Akses)</label>
+                                    <select id="mUserRole" class="ua-input">
+                                        <option value="owner">Owner (Admin Super)</option>
+                                        <option value="kasir">Kasir</option>
+                                        <option value="teller">Teller</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="supervisor">Supervisor</option>
+                                        <option value="kurir">Kurir</option>
+                                        <option value="keamanan">Keamanan / Satpam</option>
+                                        <option value="papan">Papan Kurs</option>
+                                        <option value="lainnya">Lainnya</option>
+                                    </select>
+                                    <div class="ua-hint" id="uaRoleHint"></div>
+                                </div>
+                            </div>
+                            <div class="ua-dfoot">
+                                <button type="button" class="btn btn-outline" onclick="closeUserModal()">Batal</button>
+                                <button type="button" class="btn btn-primary" id="uaSaveBtn" onclick="saveUser()"><i class="fa-solid fa-floppy-disk"></i> Simpan Pengguna</button>
+                            </div>
                         </div>
                     </div>
 
 
-                    <div class="panel mt-4 settings-tab-content hidden" id="settings-tab-danger" style="display:none; border: 1px solid #ef4444;">
-                        <h2 style="color: #3B82F6;"><i class="fa-solid fa-triangle-exclamation"></i> Manajemen Data (Danger Zone)</h2>
-                        <p class="mt-2 text-muted">Pilih hanya halaman/data yang ingin direset. Master valuta, profil perusahaan, dan pengguna tidak dihapus dari sini.</p>
-                        <div class="mt-3" style="padding: 12px 14px; background: rgba(239, 68, 68, 0.08); border-left: 3px solid #ef4444; border-radius: 6px;">
-                            <div style="font-weight: 600; margin-bottom: 8px;">Pilih data yang ingin direset:</div>
-                            <div class="text-muted" style="line-height: 1.7; display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px 16px;">
-                                <label><input type="checkbox" data-reset-scope="transactions"> Transaksi Utama & Riwayat</label>
-                                <label><input type="checkbox" data-reset-scope="customers"> Data Nasabah</label>
-                                <label><input type="checkbox" data-reset-scope="cashBank"> Kas & Saldo Bank</label>
-                                <label><input type="checkbox" data-reset-scope="currencyStock"> Stok Valas</label>
-                                <label><input type="checkbox" data-reset-scope="expenses"> Pengeluaran</label>
-                                <label><input type="checkbox" data-reset-scope="operations"> Mutasi, Closing, Penyesuaian, Aset, Investor & HRIS</label>
-                                <label><input type="checkbox" data-reset-scope="bookingDemo"> Booking & Demo Transaksi</label>
-                                <label><input type="checkbox" data-reset-scope="gantungan"> Gantungan</label>
-                                <label><input type="checkbox" data-reset-scope="oldMoney"> Koin & Uang Lama</label>
-                                <label><input type="checkbox" data-reset-scope="biRates"> Kurs BI / LKU</label>
+                    <div class="panel mt-4 settings-tab-content hidden" id="settings-tab-danger" style="display:none;">
+                        <style>
+                            #settings-tab-danger .dz-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+                            #settings-tab-danger .dz-head .dz-ico{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+                            #settings-tab-danger .dz-ico.green{background:rgba(16,185,129,.15);color:#10b981}
+                            #settings-tab-danger .dz-ico.red{background:rgba(239,68,68,.15);color:#ef4444}
+                            #settings-tab-danger .dz-head h3{margin:0;font-size:1.1rem}
+                            #settings-tab-danger .dz-head p{margin:2px 0 0;font-size:.82rem;opacity:.7}
+                            #settings-tab-danger .dz-section{border-radius:16px;padding:22px;margin-bottom:22px;border:1px solid rgba(148,163,184,.28)}
+                            #settings-tab-danger .dz-section.backup{border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.04)}
+                            #settings-tab-danger .dz-section.reset{border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.04)}
+                            #settings-tab-danger .dz-checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:16px}
+                            #settings-tab-danger .dz-checks label{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(148,163,184,.3);border-radius:10px;cursor:pointer;font-size:.88rem}
+                            #settings-tab-danger .dz-checks label:hover{border-color:#ef4444;background:rgba(239,68,68,.06)}
+                            #settings-tab-danger .dz-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+                            #settings-tab-danger .dz-note{margin-top:14px;padding:10px 14px;border-left:3px solid #f59e0b;background:rgba(245,158,11,.08);border-radius:6px;font-size:.82rem;line-height:1.5}
+                        </style>
+
+                        <div class="dz-section backup">
+                            <div class="dz-head">
+                                <div class="dz-ico green"><i class="fa-solid fa-database"></i></div>
+                                <div>
+                                    <h3>Backup &amp; Restore</h3>
+                                    <p>Backup otomatis terjadwal ke MySQL (ledger ERP) dan backup manual. Dilakukan sebelum reset data apa pun.</p>
+                                </div>
                             </div>
-                            </div>
-                            <div class="d-flex gap-2 mt-4 flex-wrap">
-                                <button type="button" class="btn btn-success" onclick="backupDatabase()"><i class="fa-solid fa-download"></i> Backup Database (Unduh JSON)</button>
-                                <button type="button" class="btn btn-info" onclick="triggerRestore()" style="background: #3b82f6; color: white; border: none; outline: none; border-radius: 6px; padding: 10px 15px;"><i class="fa-solid fa-upload"></i> Restore Database File</button>
-                                <input type="file" id="restoreFileInput" style="display: none;" accept=".json" onchange="restoreDatabase(event)">
-                                <button type="button" class="btn btn-danger" onclick="resetSelectedData()"><i class="fa-solid fa-trash"></i> Reset Data yang Dipilih</button>
-                            </div>
+                            <div id="backup-module-root"></div>
                         </div>
 
+                        <div class="dz-section reset">
+                            <div class="dz-head">
+                                <div class="dz-ico red"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                                <div>
+                                    <h3 style="color:#ef4444;">Reset Data (Danger Zone)</h3>
+                                    <p>Pilih hanya halaman/data yang ingin direset. Master valuta, profil perusahaan, dan pengguna tidak dihapus dari sini.</p>
+                                </div>
+                            </div>
+                            <div id="resetTableRoot"></div>
+                            <div class="dz-actions">
+                                <button type="button" class="btn btn-success" onclick="backupDatabase()"><i class="fa-solid fa-download"></i> Unduh Backup JSON (Browser)</button>
+                                <button type="button" class="btn btn-info" onclick="triggerRestore()" style="background:#3b82f6;color:white;border:none;"><i class="fa-solid fa-rotate-left"></i> Restore Database</button>
+                                <input type="file" id="restoreFileInput" style="display:none;" accept=".json" onchange="restoreDatabase(event)">
+                                <button type="button" class="btn btn-danger" onclick="resetSelectedData()"><i class="fa-solid fa-trash"></i> Reset Data yang Dipilih</button>
+                                <button type="button" class="btn btn-danger" onclick="resetAllData()" style="background:#7f1d1d;border-color:#7f1d1d;"><i class="fa-solid fa-skull-crossbones"></i> Reset Total (Mulai dari Nol)</button>
+                            </div>
+                        </div>
+                    </div>
+
+
                     <div class="panel mt-4 settings-tab-content hidden" id="settings-tab-ai" style="display:none;">
-                        <h2>Konfigurasi Asisten AI</h2>
-                        <hr class="divider mb-4">
-                        <p class="text-muted mb-3">Aplikasi ini mendukung Asisten AI berbasis Google Gemini atau ChatGPT/OpenAI untuk mendeteksi mata uang/koin dari gambar dan tanya jawab cerdas secara instan.</p>
-                        <div class="form-group mb-3">
-                            <label>Provider AI Aktif</label>
-                            <select id="settingsAiProvider" class="form-control">
-                                <option value="gemini">Google Gemini</option>
-                                <option value="openai">ChatGPT / OpenAI</option>
-                            </select>
-                            <small class="text-muted" style="display: block; margin-top: 4px;">Pilih provider yang akan dipakai di halaman Tanya AI / Deteksi Valas.</small>
-                        </div>
-                        <div class="form-group mb-3">
-                            <label>Google Gemini API Key</label>
-                            <input type="password" id="settingsGeminiKey" class="form-control" placeholder="Masukkan Google Gemini API Key Anda (misal: AIzaSy...)">
-                            <small class="text-muted" style="display: block; margin-top: 4px;">Kunci API disimpan secara lokal di browser Anda untuk privasi penuh. Anda bisa mendapatkan Kunci API gratis dari Google AI Studio.</small>
-                        </div>
-                        <div class="form-group mb-3">
-                            <label>ChatGPT / OpenAI API Key</label>
-                            <input type="password" id="settingsOpenAiKey" class="form-control" placeholder="Masukkan OpenAI API Key Anda">
-                            <small class="text-muted" style="display: block; margin-top: 4px;">Digunakan saat provider aktif adalah ChatGPT / OpenAI.</small>
-                        </div>
-                        <div class="form-group mb-3">
-                            <label>Model ChatGPT</label>
-                            <input type="text" id="settingsOpenAiModel" class="form-control" placeholder="gpt-4o-mini">
-                        </div>
-                        <button class="btn btn-primary mt-2" onclick="saveAISettings()"><i class="fa-solid fa-save"></i> Simpan Pengaturan AI</button>
+                        <div id="aiCfgRoot"></div>
                     </div>
                 </section>
 
@@ -4906,22 +3348,26 @@
                 <!-- LAPORAN BI PLACEHOLDERS -->
                 <section id="laporan-lku-view" class="view-section hidden">
     <style>
-        #laporan-lku-view .lkbu-tabs{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid rgba(148,163,184,.35);margin-bottom:18px}
-        #laporan-lku-view .lkbu-tab{appearance:none;border:0;border-bottom:3px solid transparent;background:transparent;color:inherit;padding:13px 16px;cursor:pointer;font-weight:700;font-size:.92rem;text-align:left}
-        #laporan-lku-view .lkbu-tab:hover{background:rgba(59,130,246,.08)}
-        #laporan-lku-view .lkbu-tab.active{border-bottom-color:#10b981;color:#10b981;background:rgba(16,185,129,.08)}
+        #laporan-lku-view{--lk-accent:var(--mc-buy,#10b981);--lk-line:var(--mc-border,rgba(148,163,184,.35))}
+        #laporan-lku-view .lkbu-tabs{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--lk-line);margin-bottom:18px}
+        #laporan-lku-view .lkbu-tab{appearance:none;border:0;border-bottom:3px solid transparent;background:transparent;color:inherit;padding:13px 16px;cursor:pointer;font-weight:700;font-size:.92rem;text-align:left;transition:background .15s,color .15s}
+        #laporan-lku-view .lkbu-tab:hover{background:color-mix(in srgb,var(--mc-primary,#3b82f6) 10%,transparent)}
+        #laporan-lku-view .lkbu-tab:focus-visible{outline:2px solid var(--mc-primary,#3b82f6);outline-offset:-2px}
+        #laporan-lku-view .lkbu-tab.active{border-bottom-color:var(--lk-accent);color:var(--lk-accent);background:color-mix(in srgb,var(--lk-accent) 9%,transparent)}
         #laporan-lku-view .lkbu-code{font-size:.72rem;opacity:.7;margin-left:5px;font-weight:600}
         #laporan-lku-view .lkbu-panel{display:none}
         #laporan-lku-view .lkbu-panel.active{display:block}
-        #laporan-lku-view .lkbu-empty{min-height:220px;display:flex;align-items:center;justify-content:center;text-align:center;border:1px dashed rgba(148,163,184,.4);border-radius:12px;padding:30px}
+        #laporan-lku-view .lkbu-source-table td.text-end,#laporan-lku-view .lkbu-source-table th.text-end{font-variant-numeric:tabular-nums}
+        #laporan-lku-view .lkbu-source-table tr.lkbu-total td{font-weight:700;background:color-mix(in srgb,var(--lk-accent) 7%,transparent)}
+        #laporan-lku-view .lkbu-empty{min-height:220px;display:flex;align-items:center;justify-content:center;text-align:center;border:1px dashed var(--lk-line);border-radius:12px;padding:30px}
         @media(max-width:900px){#laporan-lku-view .lkbu-tab{flex:1 1 45%;font-size:.82rem}}
         @media(max-width:600px){#laporan-lku-view .lkbu-tab{flex:1 1 100%}}
     </style>
 
     <div class="panel" style="margin-bottom:18px;">
         <div style="margin-bottom:10px;">
-            <h2 style="margin:0;">LKBU Ã¢â‚¬â€ Laporan Keuangan &amp; Bisnis Umum</h2>
-            <p class="text-muted mt-2" style="margin-bottom:0;">Pusat pelaporan LKBU. Pilih tab B0001Ã¢â‚¬â€œB0006 untuk membuka masing-masing kelompok laporan.</p>
+            <h2 style="margin:0;">LKBU - Laporan Keuangan dan Bisnis Umum</h2>
+            <p class="text-muted mt-2" style="margin-bottom:0;">Pusat pelaporan LKBU. Pilih tab B0001 sampai B0006 untuk membuka masing-masing kelompok laporan.</p>
         </div>
         <div class="lkbu-tabs" role="tablist" aria-label="LKBU">
             <button type="button" class="lkbu-tab active" data-lkbu-tab="b0001">Kegiatan Usaha Bulanan <span class="lkbu-code">B0001</span></button>
@@ -5132,11 +3578,11 @@
 </div>
 <div id="lkbu-panel-b0003" class="lkbu-panel">
         <div class="panel header-panel">
-            <div class="flex-between"><div><h2>Keuangan Laba/Rugi <span class="lkbu-code">B0003</span></h2><p class="text-muted mt-2">Format akun mengikuti template sumber 20250003.xls.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-primary" type="button" onclick="window.exportLabaRugiExcel()"><i class="fa-solid fa-file-excel"></i> Ekspor Excel</button><button class="btn btn-secondary" type="button" onclick="window.print()">Cetak</button></div></div>
+            <div class="flex-between"><div><h2>Keuangan Laba/Rugi <span class="lkbu-code">B0003</span></h2><p class="text-muted mt-2">Format akun mengikuti template BI 20250003. Nilai terisi otomatis dari jurnal pengeluaran/pendapatan dan transaksi.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-primary" type="button" onclick="window.exportLabaRugiExcel()"><i class="fa-solid fa-file-excel"></i> Ekspor Excel</button><button class="btn btn-secondary" type="button" onclick="window.print()">Cetak</button></div></div>
             <div class="row mt-3">
                 <div class="col-md-3"><label for="lkbuB0003Month">Bulan Laporan</label><select id="lkbuB0003Month" class="form-control"><option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option><option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option><option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option></select></div>
                 <div class="col-md-3"><label for="lkbuB0003Year">Tahun Laporan</label><input type="number" id="lkbuB0003Year" class="form-control" min="2000" max="2100"></div>
-                <div class="col-md-3 d-flex align-items-end"><button class="btn btn-success" type="button" onclick="window.kalkulasiLabaRugiB0003()"><i class="fa-solid fa-calculator"></i> Kalkulasi</button></div>
+                <div class="col-md-3 d-flex align-items-end"><button class="btn btn-success" type="button" onclick="window.kalkulasiLabaRugiB0003()"><i class="fa-solid fa-rotate"></i> Hitung Ulang</button></div>
             </div>
         </div>
         <div class="panel mt-4 lkbu-source-table"><div class="table-responsive"><table class="table table-bordered table-sm"><thead><tr><th style="width:80px">Kode</th><th>Akun</th><th class="text-end">Nilai</th></tr></thead><tbody><tr class=""><td>01</td><td>Penjualan UKA</td><td class="text-end">0</td></tr><tr class=""><td>02</td><td>Pencairan TC</td><td class="text-end">0</td></tr><tr class=""><td>03</td><td>Saldo Awal UKA dan TC</td><td class="text-end">0</td></tr><tr class=""><td>04</td><td>Pembelian UKA dan TC</td><td class="text-end">0</td></tr><tr class=""><td>05</td><td>Saldo Akhir UKA dan TC</td><td class="text-end">0</td></tr><tr class="lkbu-total"><td></td><td>Pendapatan/(Rugi) Operasional Kotor UKA-TC</td><td class="text-end">0</td></tr><tr class=""><td>06</td><td>Pendapatan Pengiriman Uang</td><td class="text-end">0</td></tr><tr class="lkbu-total"><td></td><td>Pendapatan/(Rugi) Operasional Kotor</td><td class="text-end">0</td></tr><tr class=""><td>07</td><td>Beban Gaji, Upah dan Tunjangan</td><td class="text-end">0</td></tr><tr class=""><td>08</td><td>Beban Sewa</td><td class="text-end">0</td></tr><tr class=""><td>09</td><td>Beban Iklan dan promosi</td><td class="text-end">0</td></tr><tr class=""><td>10</td><td>Beban Air, Listrik dan Telepon</td><td class="text-end">0</td></tr><tr class=""><td>11</td><td>Beban Transportasi dan perjalanan</td><td class="text-end">0</td></tr><tr class=""><td>12</td><td>Beban Pemeliharaan kendaraan</td><td class="text-end">0</td></tr><tr class=""><td>13</td><td>Penyusutan Aset Tetap</td><td class="text-end">0</td></tr><tr class=""><td>14</td><td>Beban Asuransi</td><td class="text-end">0</td></tr><tr class=""><td>15</td><td>Beban Lain-Lain (Operasional)</td><td class="text-end">0</td></tr><tr class="lkbu-total"><td></td><td>Pendapatan/(Rugi) Operasional Bersih</td><td class="text-end">0</td></tr><tr class=""><td>16</td><td>Pendapatan Bunga bank</td><td class="text-end">0</td></tr><tr class=""><td>17</td><td>Beban Administrasi Bank</td><td class="text-end">0</td></tr><tr class=""><td>18</td><td>Beban Bunga Pinjaman</td><td class="text-end">0</td></tr><tr class=""><td>19</td><td>Laba Penjualan Aset Tetap</td><td class="text-end">0</td></tr><tr class=""><td>20</td><td>Rugi Penjualan Aset Tetap</td><td class="text-end">0</td></tr><tr class=""><td>21</td><td>Laba Selisih Kurs</td><td class="text-end">0</td></tr><tr class=""><td>22</td><td>Rugi Selisih Kurs</td><td class="text-end">0</td></tr><tr class=""><td>23</td><td>Pendapatan Lain-Lain</td><td class="text-end">0</td></tr><tr class=""><td>24</td><td>Beban Lain-Lain (Non Operasional)</td><td class="text-end">0</td></tr><tr class="lkbu-total"><td></td><td>Laba/(Rugi) Sebelum Pajak Penghasilan</td><td class="text-end">0</td></tr><tr class=""><td>25</td><td>Pajak Penghasilan</td><td class="text-end">0</td></tr><tr class="lkbu-total"><td></td><td>Laba/(Rugi) Bersih</td><td class="text-end">0</td></tr></tbody></table></div></div>
@@ -5413,213 +3859,20 @@
                         </div>
                     </div>
                 </section>
+                <section id="pt-rep-view" class="view-section hidden">
+                    <div id="ptRepRoot"></div>
+                </section>
                 <section id="laporan-sipesat-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between">
-                        <div>
-                            <h2>Laporan SIPESAT</h2>
-                            <p class="text-muted mt-2">Sistem Informasi Pengawasan Terpadu (Daftar Nasabah berdasarkan Tanggal Input).</p>
-                        </div>
-                        <div style="display:flex; gap:10px;">
-                            <button class="btn btn-primary" onclick="exportSipesatExcel()"><i class="fa-solid fa-file-excel"></i> Export Excel (SIPESAT)</button>
-                            <button class="btn btn-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> Cetak PDF</button>
-                        </div>
-                    </div>
-                    
-                    <div class="panel mt-4">
-                        <div class="filter-controls form-group row">
-                            <div class="col-md-5">
-                                <label>Dari Tanggal Input</label>
-                                <input type="date" id="sipesatStartDate" class="form-control">
-                            </div>
-                            <div class="col-md-5">
-                                <label>Sampai Tanggal Input</label>
-                                <input type="date" id="sipesatEndDate" class="form-control">
-                            </div>
-                            <div class="col-md-2">
-                                <label style="display:block; visibility:hidden; margin-bottom: 5px;">Filter Aksi</label>
-                                <button type="button" class="btn btn-secondary w-100" id="btnFilterSipesat" onclick="loadLaporanSipesat()" style="position: relative; z-index: 10;"><i class="fa-solid fa-search"></i> Filter</button>
-                            </div>
-                        </div>
-
-                        <div id="sipesatSummary" class="mt-3" style="padding: 10px 14px; background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3b82f6; border-radius: 6px; color: #cbd5e1;">
-                            Total data ditemukan: <strong id="sipesatTotalCount" style="color: #f8fafc;">0</strong>
-                        </div>
-
-                        <div class="table-responsive mt-3">
-                            <table class="table table-bordered table-striped" style="border: 1px solid #e2e8f0; font-size: 0.85rem;" id="tableSipesat">
-                                <thead class="text-center" style="background:#1e293b; color:#fff;">
-                                    <tr>
-                                        <th>No</th>
-                                        <th>Tanggal Input</th>
-                                        <th>ID Nasabah</th>
-                                        <th>IDPJK</th>
-                                        <th>Kode Nasabah</th>
-                                        <th>Nama</th>
-                                        <th>Tempat Lahir</th>
-                                        <th>Tanggal Lahir</th>
-                                        <th>Alamat</th>
-                                        <th>No KTP</th>
-                                        <th>No ID (Lainnya)</th>
-                                        <th>No CIF</th>
-                                        <th>NPWP</th>
-                                        <th>Local ID</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="sipesatTableBody">
-                                    <tr><td colspan="12" class="text-center text-muted">Pilih tanggal untuk memuat data SIPESAT...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <div id="sipesatRoot"></div>
                 </section>
                                 <section id="almara-regulatory-ai-view" class="view-section hidden">
-                    <div class="panel header-panel">
-                        <h2><i class="fa-solid fa-scale-balanced"></i> <span data-regulatory-ai-title>Almara Regulatory AI</span></h2>
-                        <p class="text-muted">Pusat dokumen regulasi perusahaan. Dokumen disimpan pada server dan memerlukan akses login.</p>
-                    </div>
-                    <div class="panel">
-                        <h3>Unggah Dokumen Regulasi</h3>
-                        <form id="regulatoryAiUploadForm">
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label for="regAiTitle">Nama dokumen</label>
-                                    <input id="regAiTitle" name="title" type="text" maxlength="255" placeholder="Contoh: Peraturan Bank Indonesia">
-                                </div>
-                                <div class="form-group">
-                                    <label for="regAiNumber">Nomor regulasi</label>
-                                    <input id="regAiNumber" name="regulation_number" type="text" maxlength="150" placeholder="Contoh: PBI Nomor ...">
-                                </div>
-                                <div class="form-group">
-                                    <label for="regAiDate">Tanggal berlaku</label>
-                                    <input id="regAiDate" name="effective_date" type="date">
-                                </div>
-                                <div class="form-group">
-                                    <label for="regAiFile">Pilih file (maks. 20 MB)</label>
-                                    <input id="regAiFile" name="file" type="file" required accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.zip,.xml,.json,.html">
-                                </div>
-                            </div>
-                            <p class="text-muted">Format yang diizinkan mengikuti validasi server. Ekstraksi teks dan analisis AI belum aktif.</p>
-                            <button class="btn btn-primary" id="regAiUploadButton" type="submit"><i class="fa-solid fa-upload"></i> Unggah Dokumen</button>
-                        </form>
-                        <div id="regAiMessage" role="status" aria-live="polite" style="margin-top:12px;"></div>
-                    </div>
-                    <div class="panel">
-                        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
-                            <h3>Perpustakaan Regulasi</h3>
-                            <button class="btn btn-secondary" id="regAiRefreshButton" type="button"><i class="fa-solid fa-rotate"></i> Muat Ulang</button>
-                        </div>
-                        <div class="form-group" style="margin:12px 0;">
-                            <label for="regAiSearch">Cari judul, nama file, atau nomor regulasi</label>
-                            <input id="regAiSearch" type="search" placeholder="Ketik kata pencarian...">
-                        </div>
-                        <div style="overflow-x:auto;">
-                            <table class="table">
-                                <thead><tr><th>Nama Dokumen</th><th>Nomor Regulasi</th><th>Tanggal Berlaku</th><th>Status</th><th>Ukuran</th><th>Aksi</th></tr></thead>
-                                <tbody id="regAiDocumentRows"><tr><td colspan="6">Memuat dokumen...</td></tr></tbody>
-                            </table>
-                        </div>
-                        <div id="regAiPagination" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px;"></div>
-                    </div>
-                    <div class="panel">
-                        <h3>Detail Dokumen</h3>
-                        <div id="regAiDocumentDetail" class="text-muted">Pilih Detail pada salah satu dokumen untuk melihat metadata.</div>
-                    </div>
+                    <div id="regAiRoot"></div>
                 </section>
-<style id="regulatory-chat-history-theme">
-#almara-regulatory-chat-view #regChatHistory {
-    color: #ffffff !important;
-}
-#almara-regulatory-chat-view #regChatHistory > p {
-    color: #d1fae5 !important;
-}
-#almara-regulatory-chat-view #regChatHistory button {
-    background: rgba(255,255,255,.10) !important;
-    color: #ffffff !important;
-    border: 1px solid rgba(255,255,255,.18) !important;
-    text-align: left;
-}
-#almara-regulatory-chat-view #regChatHistory button:hover,
-#almara-regulatory-chat-view #regChatHistory button:focus {
-    background: #16836c !important;
-    color: #ffffff !important;
-}
-#almara-regulatory-chat-view aside {
-    background: linear-gradient(160deg,#064e3b 0%,#003c30 100%) !important;
-    color: #ffffff !important;
-}
-#almara-regulatory-chat-view aside h3 {
-    color: #ffffff !important;
-    font-weight: 700;
-}
-#almara-regulatory-chat-view #regChatMessages .text-muted {
-    color: #64748b !important;
-}
-@media(max-width:700px) {
-    #almara-regulatory-chat-view .panel > div[style*="grid-template-columns"] {
-        grid-template-columns: 1fr !important;
-    }
-    #almara-regulatory-chat-view aside {
-        border-right: 0 !important;
-        border-bottom: 1px solid rgba(255,255,255,.2);
-    }
-}
-</style>
 <section id="almara-regulatory-chat-view" class="view-section hidden">
-    <div class="panel header-panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-            <div>
-                <h2><i class="fa-solid fa-scale-balanced"></i> Chat Regulatory AI</h2>
-                <p class="text-muted">Asisten pencarian regulasi dan kepatuhan perusahaan.</p>
-            </div>
-            <button type="button" class="btn btn-secondary" id="regChatNewButton">
-                <i class="fa-solid fa-plus"></i> Chat Baru
-            </button>
-        </div>
-    </div>
-    <div class="panel" style="padding:0;overflow:hidden;">
-        <div style="display:grid;grid-template-columns:minmax(190px,250px) minmax(0,1fr);min-height:calc(100vh - 250px);">
-            <aside style="padding:16px;border-right:1px solid var(--border-color,#ddd);">
-                <h3 style="font-size:15px;">Riwayat Percakapan</h3>
-                <div id="regChatHistory" style="display:flex;flex-direction:column;gap:6px;margin-top:12px;">
-                    <p class="text-muted">Belum ada percakapan.</p>
-                </div>
-            </aside>
-            <div style="display:flex;flex-direction:column;min-width:0;min-height:500px;">
-                <div id="regChatMessages" aria-live="polite" style="flex:1;padding:24px;overflow-y:auto;max-height:calc(100vh - 390px);min-height:320px;">
-                    <div style="max-width:720px;margin:35px auto;text-align:center;">
-                        <i class="fa-solid fa-scale-balanced" style="font-size:42px;color:var(--primary-color,#27836f);"></i>
-                        <h3 style="margin-top:16px;">Apa yang ingin Anda cari?</h3>
-                        <p class="text-muted">Tanyakan peraturan, pasal, kewajiban pelaporan, atau prosedur kepatuhan.</p>
-                    </div>
-                </div>
-                <form id="regChatForm" style="padding:16px 20px;border-top:1px solid var(--border-color,#ddd);">
-                    <label for="regChatPrompt">Pertanyaan Anda</label>
-                    <div style="display:flex;gap:10px;align-items:flex-end;">
-                        <textarea id="regChatPrompt" rows="2" maxlength="4000" required
-                            placeholder="Contoh: Apa saja kewajiban yang perlu diperiksa dalam regulasi ini?"
-                            style="flex:1;resize:vertical;min-height:58px;"></textarea>
-                        <button class="btn btn-primary" type="submit" id="regChatSendButton">
-                            <i class="fa-solid fa-paper-plane"></i> Kirim
-                        </button>
-                    </div>
-                    <p class="text-muted" style="font-size:12px;margin-top:8px;">
-                        Chat saat ini menyiapkan antarmuka percakapan. Mesin AI dan pencarian isi dokumen belum terhubung.
-                    </p>
-                </form>
-            </div>
-        </div>
-    </div>
+    <div id="regChatRoot"></div>
 </section>
                 <section id="laporan-goaml-view" class="view-section hidden">
-                    <div class="panel" style="padding:0; overflow:hidden; border-radius:14px;">
-                        <iframe
-                            id="goamlComplianceFrame"
-                            src="/goaml/compliance-rules"
-                            title="GoAML Compliance Rule Center"
-                            style="display:block; width:100%; min-height:calc(100vh - 150px); height:900px; border:0; background:#f4f6f8;"
-                            loading="eager">
-                        </iframe>
-                    </div>
+                    <div id="goamlRoot"></div>
                 </section>
                 <section id="laporan-sipendar-view" class="view-section hidden">
                     <div class="panel header-panel">
@@ -5628,310 +3881,8 @@
                     </div>
                 </section>
 
-                <!-- LAPORAN KEUANGAN PLACEHOLDERS -->
-                <section id="laporan-bukubesar-view" class="view-section hidden">
-                    <div class="panel header-panel">
-                        <h2>Buku Besar (General Ledger)</h2>
-                        <p class="text-muted mt-2">Detail perpindahan Debit dan Kredit per akun.</p>
-                    </div>
-                    
-                    <div class="panel mt-4">
-                        <div class="filter-controls form-group row">
-                            <div class="col-md-4">
-                                <label>Dari Tanggal</label>
-                                <input type="date" id="glStartDate" class="form-control">
-                            </div>
-                            <div class="col-md-4">
-                                <label>Sampai Tanggal</label>
-                                <input type="date" id="glEndDate" class="form-control">
-                            </div>
-                            <div class="col-md-3">
-                                <label>Pilih Akun Rekapitulasi</label>
-                                <select id="glAccountFilter" class="form-control bg-dark text-white border-secondary">
-                                    <option value="ALL">Semua Akun Kas/Bank</option>
-                                    <option value="CASH">Kas Tunai Rupiah Berjalan</option>
-                                    <option value="BANK">Rekening Bank</option>
-                                </select>
-                            </div>
-                            <div class="col-md-1" style="display: flex; align-items: flex-end;">
-                                <button class="btn btn-secondary w-100" id="btnFilterGL"><i class="fa-solid fa-search"></i></button>
-                            </div>
-                        </div>
-
-                        <div class="table-responsive mt-3">
-                            <table class="table table-bordered table-striped" style="border: 1px solid #e2e8f0; font-size: 0.85rem;">
-                                <thead class="text-center bg-dark text-white">
-                                    <tr>
-                                        <th>Waktu (Timestamp)</th>
-                                        <th>Kode Referensi</th>
-                                        <th>Keterangan Transaksi</th>
-                                        <th style="color: #10b981;">Debit (Masuk)</th>
-                                        <th style="color: #ef4444;">Kredit (Keluar)</th>
-                                        <th>Saldo Kumulatif</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="glTableBody">
-                                    <tr><td colspan="6" class="text-center text-muted">Data akan otomatis terhubung selagi Anda melakukan transaksi.</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-                
-                <section id="laporan-neraca-view" class="view-section hidden">
-                    <div class="panel header-panel">
-                        <h2>Neraca (Balance Sheet)</h2>
-                        <p class="text-muted mt-2">Laporan posisi keuangan Tanggal tersebut secara garis besar (Aktiva lancar, Kewajiban, Modal dipertahankan).</p>
-                    </div>
-                    <div class="panel mt-4">
-                        <div class="filter-controls form-group row">
-                            <div class="col-md-5">
-                                <label>Hitung Posisi Per Tanggal/Waktu Terkini</label>
-                                <input type="date" id="neracaDate" class="form-control">
-                            </div>
-                            <div class="col-md-2" style="display: flex; align-items: flex-end;">
-                                <button class="btn btn-secondary w-100" id="btnFilterNeraca" onclick="loadLaporanNeraca()"><i class="fa-solid fa-search"></i> Kalkulasi Ulang</button>
-                            </div>
-                        </div>
-                        
-                        <div class="row mt-4">
-                            <!-- AKTIVA -->
-                            <div class="col-md-6">
-                                <div class="p-3 rounded" style="background:#1e293b; border:1px solid #334155;">
-                                    <h4 class="text-center" style="color: #38bdf8; border-bottom: 2px solid #334155; padding-bottom:10px;">AKTIVA</h4>
-                                    <table class="table table-borderless table-sm mt-3" style="color:#f8fafc; font-size: 0.85rem;">
-                                        <tbody id="neracaAktivaBody">
-                                            <tr><td>101-Kas dalam Rupiah</td><td class="text-end" id="val_101">0</td></tr>
-                                            <tr><td>102-Bank dalam Rupiah</td><td class="text-end" id="val_102">0</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                            <tr><td>103-Kas dalam UKA</td><td class="text-end" id="val_103">0</td></tr>
-                                            <tr><td>104-Bank dalam UKA</td><td class="text-end" id="val_104">0</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                            <tr><td>105-Piutang TC</td><td class="text-end" id="val_105">0</td></tr>
-                                            <tr><td>106-Piutang Lain-Lain</td><td class="text-end" id="val_106">0</td></tr>
-                                            <tr><td>107-Sewa dibayar Di Muka</td><td class="text-end" id="val_107">0</td></tr>
-                                            <tr><td>108-Asuransi dibayar Di Muka</td><td class="text-end" id="val_108">0</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                            <tr><td>109-Aset Tetap-harga perolehan</td><td class="text-end" id="val_109">0</td></tr>
-                                            <tr><td>110-Akumulasi Penyusutan Aset Tetap (-/-)</td><td class="text-end" id="val_110">0</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                            <tr><td>111-Aset Lain-lain</td><td class="text-end" id="val_111">0</td></tr>
-                                        </tbody>
-                                        <tfoot>
-                                            <tr style="border-top:1px solid #475569;">
-                                                <th class="py-2">Jumlah Aset</th>
-                                                <th class="text-end py-2" id="neracaTotalAktiva">0</th>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <!-- PASIVA & EKUITAS -->
-                            <div class="col-md-6 mt-3 mt-md-0">
-                                <div class="p-3 rounded" style="background:#1e293b; border:1px solid #334155;">
-                                    <h4 class="text-center" style="color: #38bdf8; border-bottom: 2px solid #334155; padding-bottom:10px;">PASIVA</h4>
-                                    <table class="table table-borderless table-sm mt-3" style="color:#f8fafc; font-size: 0.85rem;">
-                                        <tbody id="neracaPasivaBody">
-                                            <tr><td>201-Pinjaman dalam Rupiah</td><td class="text-end" id="val_201">0</td></tr>
-                                            <tr><td>202-Pinjaman dalam UKA</td><td class="text-end" id="val_202">0</td></tr>
-                                            <tr><td>203-Hutang Sewa</td><td class="text-end" id="val_203">0</td></tr>
-                                            <tr><td>204-Kewajiban Pengiriman Uang</td><td class="text-end" id="val_204">0</td></tr>
-                                            <tr><td>205-Kewajiban Lain-lain</td><td class="text-end" id="val_205">0</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                            <tr><td>206-Modal Disetor</td><td class="text-end" id="val_206">0</td></tr>
-                                            <tr><td>207-Laba Ditahan</td><td class="text-end" id="val_207">0</td></tr>
-                                            <tr><td>290-Akumulasi Rugi (-/-)</td><td class="text-end" id="val_290">0</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                            <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-                                        </tbody>
-                                        <tfoot>
-                                            <tr style="border-top:1px solid #475569;">
-                                                <th class="py-2">Jumlah Kewajiban dan Ekuitas</th>
-                                                <th class="text-end py-2" id="neracaTotalPasiva">0</th>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-                
-                <section id="laporan-labarugi-view" class="view-section hidden">
-                    <div class="panel header-panel">
-                        <h2>Laba/Rugi (Profit & Loss)</h2>
-                        <p class="text-muted mt-2">Rekapitulasi total pendapatan penjualan valuta kotor dan margin bersih setelah dikurangi beban operasional.</p>
-                    </div>
-                    <div class="panel mt-4">
-                        <div class="filter-controls form-group row">
-                            <div class="col-md-5">
-                                <label>Dari Tanggal (Periode Awal)</label>
-                                <input type="date" id="plStartDate" class="form-control">
-                            </div>
-                            <div class="col-md-5">
-                                <label>Sampai Tanggal (Periode Akhir)</label>
-                                <input type="date" id="plEndDate" class="form-control">
-                            </div>
-                            <div class="col-md-2" style="display: flex; align-items: flex-end;">
-                                <button class="btn btn-secondary w-100" id="btnFilterPL" onclick="loadLaporanLabaRugi()"><i class="fa-solid fa-search"></i> Terapkan</button>
-                            </div>
-                        </div>
-
-                        <div class="table-responsive mt-4">
-                            <table class="table table-bordered table-sm" style="font-size:0.85rem; border: 1px solid #e2e8f0; border-collapse: collapse;">
-                                <thead style="background:#1e293b; color:#fff;">
-                                    <tr><th colspan="3" class="p-2 text-center">Akun</th></tr>
-                                </thead>
-                                <tbody id="plPendapatanBody">
-                                    <tr><td colspan="2" class="ps-3">01-Penjualan UKA</td><td class="text-end" id="pl_01">0</td></tr>
-                                    <tr><td colspan="2" class="ps-3">02-Pencairan TC</td><td class="text-end" id="pl_02">0</td></tr>
-                                    <tr><td colspan="3">&nbsp;</td></tr>
-                                    <tr><td class="ps-4">03-Saldo Awal UKA dan TC</td><td class="text-end" id="pl_03">0</td><td></td></tr>
-                                    <tr><td class="ps-4">04-Pembelian UKA dan TC</td><td class="text-end" id="pl_04">0</td><td></td></tr>
-                                    <tr><td class="ps-4">05-Saldo Akhir UKA dan TC</td><td class="text-end" id="pl_05">0</td><td></td></tr>
-                                </tbody>
-                                <tbody>
-                                    <tr style="background:#f8fafc;"><th colspan="2" class="ps-3 py-2">Pendapatan/(Rugi) Operasional Kotor UKA-TC</th><th class="text-end py-2" id="pl_kotor_ukatc">0</th></tr>
-                                    <tr><td colspan="2" class="ps-3">06-Pendapatan Pengiriman Uang</td><td class="text-end" id="pl_06">0</td></tr>
-                                    <tr style="background:#f1f5f9; border-top: 2px solid #cbd5e1;"><th colspan="2" class="ps-3 py-2">Pendapatan/(Rugi) Operasional Kotor</th><th class="text-end py-2" id="pl_kotor_op">0</th></tr>
-                                    
-                                    <tr><td class="ps-4">07-Beban Gaji, Upah dan Tunjangan</td><td class="text-end" id="pl_07">0</td><td></td></tr>
-                                    <tr><td class="ps-4">08-Beban Sewa</td><td class="text-end" id="pl_08">0</td><td></td></tr>
-                                    <tr><td class="ps-4">09-Beban Iklan dan promosi</td><td class="text-end" id="pl_09">0</td><td></td></tr>
-                                    <tr><td class="ps-4">10-Beban Air, Listrik dan Telepon</td><td class="text-end" id="pl_10">0</td><td></td></tr>
-                                    <tr><td class="ps-4">11-Beban Transportasi dan perjalanan</td><td class="text-end" id="pl_11">0</td><td></td></tr>
-                                    <tr><td class="ps-4">12-Beban Pemeliharaan kendaraan</td><td class="text-end" id="pl_12">0</td><td></td></tr>
-                                    <tr><td class="ps-4">13-Penyusutan Aset Tetap</td><td class="text-end" id="pl_13">0</td><td></td></tr>
-                                    <tr><td class="ps-4">14-Beban Asuransi</td><td class="text-end" id="pl_14">0</td><td></td></tr>
-                                    <tr><td class="ps-4">15-Beban Lain-Lain (Operasional)</td><td class="text-end" id="pl_15">0</td><td></td></tr>
-                                    
-                                    <tr style="background:#f1f5f9; border-top: 2px solid #cbd5e1;"><th colspan="2" class="ps-3 py-2">Pendapatan/(Rugi) Operasional Bersih</th><th class="text-end py-2" id="pl_bersih_op">0</th></tr>
-                                    
-                                    <tr><td class="ps-4">16-Pendapatan Bunga bank</td><td class="text-end" id="pl_16">0</td><td></td></tr>
-                                    <tr><td class="ps-4">17-Beban Administrasi Bank</td><td class="text-end" id="pl_17">0</td><td></td></tr>
-                                    <tr><td class="ps-4">18-Beban Bunga Pinjaman</td><td class="text-end" id="pl_18">0</td><td></td></tr>
-                                    <tr><td class="ps-4">19-Laba Penjualan Aset Tetap</td><td class="text-end" id="pl_19">0</td><td></td></tr>
-                                    <tr><td class="ps-4">20-Rugi Penjualan Aset Tetap</td><td class="text-end" id="pl_20">0</td><td></td></tr>
-                                    <tr><td class="ps-4">21-Laba Selisih Kurs</td><td class="text-end" id="pl_21">0</td><td></td></tr>
-                                    <tr><td class="ps-4">22-Rugi Selisih Kurs</td><td class="text-end" id="pl_22">0</td><td></td></tr>
-                                    <tr><td class="ps-4">23-Pendapatan Lain-Lain</td><td class="text-end" id="pl_23">0</td><td></td></tr>
-                                    <tr><td class="ps-4">24-Beban Lain-Lain (Non Operasional)</td><td class="text-end" id="pl_24">0</td><td></td></tr>
-                                    
-                                    <tr style="background:#f1f5f9; border-top: 2px solid #cbd5e1;"><th colspan="2" class="ps-3 py-2">Laba/(Rugi) Sebelum Pajak Penghasilan</th><th class="text-end py-2" id="pl_sblm_pajak">0</th></tr>
-                                    
-                                    <tr><td colspan="2" class="ps-3">25-Pajak Penghasilan</td><td class="text-end" id="pl_25">0</td></tr>
-                                </tbody>
-                                <tfoot style="background:#10b981; border-color: #059669; color:#fff;">
-                                    <tr>
-                                        <th colspan="2" class="py-3 px-3" style="font-size:1.1rem;">Laba/(Rugi) Bersih</th>
-                                        <th class="py-3 px-3 text-end fw-bold" style="font-size:1.1rem;" id="plLabaBersih">0</th>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-                
-                <section id="laporan-ekuitas-view" class="view-section hidden">
-                    <div class="panel header-panel">
-                        <h2>Laporan Perubahan Ekuitas</h2>
-                        <p class="text-muted mt-2">Monitoring penambahan atau penarikan Modal pemilik / investasi pemodal utama untuk rekap deviden.</p>
-                    </div>
-                    <div class="panel mt-4">
-                        <div class="filter-controls form-group row">
-                            <div class="col-md-5">
-                                <label>Dari Tanggal (Periode)</label>
-                                <input type="date" id="eqStartDate" class="form-control">
-                            </div>
-                            <div class="col-md-5">
-                                <label>Sampai Tanggal (Periode)</label>
-                                <input type="date" id="eqEndDate" class="form-control">
-                            </div>
-                            <div class="col-md-2" style="display: flex; align-items: flex-end;">
-                                <button class="btn btn-secondary w-100" id="btnFilterEq" onclick="loadLaporanEkuitas()"><i class="fa-solid fa-search"></i> Terapkan</button>
-                            </div>
-                        </div>
-
-                        <div class="table-responsive mt-4">
-                            <table class="table table-bordered table-striped text-center" style="font-size:0.85rem; border: 1px solid #e2e8f0; border-collapse: collapse;">
-                                <thead style="background:#1e293b; color:#fff;">
-                                    <tr>
-                                        <th class="p-2">Keterangan</th>
-                                        <th class="p-2">Modal Disetor</th>
-                                        <th class="p-2">Laba Ditahan/Akumulasi Rugi</th>
-                                        <th class="p-2">Jumlah</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="eqBody">
-                                    <tr><td class="text-start">01-Saldo Positif</td><td class="text-end" id="eq_01_m">0</td><td class="text-end" id="eq_01_l">0</td><td class="text-end" id="eq_01_j">0</td></tr>
-                                    <tr><td class="text-start">02-Saldo Negatif</td><td></td><td class="text-end" id="eq_02_l">0</td><td></td></tr>
-                                    <tr><td class="text-start">03-Laba periode berjalan (net)</td><td></td><td class="text-end" id="eq_03_l">0</td><td class="text-end" id="eq_03_j">0</td></tr>
-                                    <tr><td class="text-start">04-Rugi periode berjalan (-/-)</td><td></td><td class="text-end" id="eq_04_l">0</td><td></td></tr>
-                                    <tr><td class="text-start">05-Pembagian Dividen(-/-)</td><td></td><td class="text-end" id="eq_05_l">0</td><td class="text-end" id="eq_05_j">0</td></tr>
-                                    <tr><td class="text-start">06-Menambah ekuitas (net)</td><td class="text-end" id="eq_06_m">0</td><td></td><td class="text-end" id="eq_06_j">0</td></tr>
-                                    <tr><td class="text-start">07-Mengurangi ekuitas (-/-)</td><td class="text-end" id="eq_07_m">0</td><td></td><td></td></tr>
-                                </tbody>
-                                <tfoot>
-                                    <tr style="background:#f1f5f9; font-weight:bold;">
-                                        <td class="text-start py-2">TOTAL</td>
-                                        <td class="text-end" id="eq_tot_m">0</td>
-                                        <td class="text-end" id="eq_tot_l">0</td>
-                                        <td class="text-end" id="eq_tot_j">0</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-
                 <section id="laporan-aset-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between">
-                        <div>
-                            <h2>Laporan Aset & Penyusutan</h2>
-                            <p class="text-muted mt-2">Daftar aset tetap perusahaan dan kalkulasi penyusutan secara garis lurus (Straight-line method).</p>
-                        </div>
-                        <div style="display:flex; gap:10px;">
-                            <button class="btn btn-primary" onclick="exportTableToExcel('assetTable', 'Aset_Penyusutan')"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
-                            <button class="btn btn-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> Cetak PDF</button>
-                            <button class="btn btn-success" onclick="openAssetModal()"><i class="fa-solid fa-plus"></i> Tambah Aset</button>
-                        </div>
-                    </div>
-
-                    <div class="panel mt-4">
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-striped" style="border: 1px solid #e2e8f0; font-size: 0.9rem;" id="assetTable">
-                                <thead style="background:#1e293b; color:#fff;">
-                                    <tr>
-                                        <th>Nama Aset</th>
-                                        <th>Tgl Perolehan</th>
-                                        <th>Harga Perolehan</th>
-                                        <th>Masa Manfaat (Thn)</th>
-                                        <th>Akumulasi Penyusutan</th>
-                                        <th>Nilai Buku (Sisa)</th>
-                                        <th>Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="assetTableBody">
-                                    <!-- Injected by JS -->
-                                </tbody>
-                                <tfoot style="background:#0f172a; color:#fff;">
-                                    <tr>
-                                        <th colspan="2" class="text-end">TOTAL KESELURUHAN:</th>
-                                        <th id="totalAssetPrice" class="text-success">Rp 0</th>
-                                        <th></th>
-                                        <th id="totalAssetDepreciation" class="text-danger">Rp 0</th>
-                                        <th id="totalAssetBookValue" class="text-info">Rp 0</th>
-                                        <th></th>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    </div>
+                    <div id="assetRoot"></div>
                 </section>
 
                 <!-- BUKU BESAR VIEW -->
@@ -6071,7 +4022,6 @@
                         </div>
                         <div style="display:flex; gap:10px;">
                             <button class="btn btn-primary" onclick="exportNeracaExcel()"><i class="fa-solid fa-file-excel"></i> Export Neraca (BI Format)</button>
-                            <button class="btn btn-primary" style="background: #10B981; border: none;" onclick="exportEkuitasExcel()"><i class="fa-solid fa-file-excel"></i> Export Ekuitas (BI Format)</button>
                             <button class="btn btn-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> Cetak PDF</button>
                         </div>
                     </div>
@@ -6107,153 +4057,11 @@
                     </div>
                 </section>
 
-                <!-- EKUITAS VIEW (BI FORMAT) -->
-                <section id="laporan-ekuitas-view" class="view-section hidden">
-                    <div class="panel header-panel flex-between">
-                        <div>
-                            <h2>Laporan Ekuitas (Format BI)</h2>
-                            <p class="text-muted mt-2">Disesuaikan dengan format template resmi Bank Indonesia.</p>
-                        </div>
-                        <div style="display:flex; gap:10px;">
-                            <button class="btn btn-primary" style="background: #10B981; border: none;" onclick="exportEkuitasExcel()"><i class="fa-solid fa-file-excel"></i> Export Ekuitas (BI Format)</button>
-                            <button class="btn btn-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> Cetak PDF</button>
-                        </div>
-                    </div>
-                    <div class="panel mt-4">
-                        <div class="filter-controls form-group row">
-                            <div class="col-md-10">
-                                <label>Posisi per Tanggal</label>
-                                <input type="date" id="eqDate" class="form-control" onchange="loadEkuitasUi()">
-                            </div>
-                        </div>
-                        <div class="row mt-4">
-                            <div class="col-md-12">
-                                <table class="table table-bordered table-striped mt-3">
-                                    <thead class="bg-dark text-white">
-                                        <tr>
-                                            <th>Keterangan</th>
-                                            <th class="text-end">Modal Disetor</th>
-                                            <th class="text-end">Laba Ditahan/Akumulasi Rugi</th>
-                                            <th class="text-end">Jumlah</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td>01-Saldo Positif</td>
-                                            <td class="text-end" id="ui_e_01">0</td>
-                                            <td class="text-end">0</td>
-                                            <td class="text-end" id="ui_e_01_total">0</td>
-                                        </tr>
-                                        <tr>
-                                            <td>02-Saldo Negatif</td>
-                                            <td class="text-end"></td>
-                                            <td class="text-end" id="ui_e_02">0</td>
-                                            <td class="text-end"></td>
-                                        </tr>
-                                        <tr>
-                                            <td>03-Laba periode berjalan (net)</td>
-                                            <td class="text-end"></td>
-                                            <td class="text-end" id="ui_e_03">0</td>
-                                            <td class="text-end" id="ui_e_03_total">0</td>
-                                        </tr>
-                                        <tr>
-                                            <td>04-Rugi periode berjalan (-/-)</td>
-                                            <td class="text-end"></td>
-                                            <td class="text-end" id="ui_e_04">0</td>
-                                            <td class="text-end"></td>
-                                        </tr>
-                                        <tr>
-                                            <td>05-Pembagian Dividen(-/-)</td>
-                                            <td class="text-end"></td>
-                                            <td class="text-end" id="ui_e_05">0</td>
-                                            <td class="text-end text-danger" id="ui_e_05_total">(0)</td>
-                                        </tr>
-                                        <tr>
-                                            <td>06-Menambah ekuitas (net)</td>
-                                            <td class="text-end"></td>
-                                            <td class="text-end">0</td>
-                                            <td class="text-end">0</td>
-                                        </tr>
-                                        <tr>
-                                            <td>07-Mengurangi ekuitas (-/-)</td>
-                                            <td class="text-end"></td>
-                                            <td class="text-end">0</td>
-                                            <td class="text-end"></td>
-                                        </tr>
-                                    </tbody>
-                                    <tfoot>
-                                        <tr style="background:#f1f5f9; border-top:2px solid #334155; font-size:1.1rem; margin-top:10px;">
-                                            <th>TOTAL</th>
-                                            <th class="text-end" id="ui_e_t1">0</th>
-                                            <th class="text-end" id="ui_e_t2">0</th>
-                                            <th class="text-end" id="ui_e_total">0</th>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </section>
 
             </div> <!-- END CONTENT WRAPPER -->
         </main>
     </div>
 
-    <!-- Currency Modal -->
-    <div id="currencyModal" class="modal">
-        <div class="modal-content panel">
-            <div class="modal-header flex-between mb-4">
-                <h2>Edit/Tambah Valuta</h2>
-                <span class="close-modal" onclick="closeCurrencyModal()">&times;</span>
-            </div>
-            <div class="form-group">
-                <label>Kode Valuta (Misal: USD)</label>
-                <div style="display:flex; justify-content: space-between; align-items: center; gap: 8px; margin: 6px 0;">
-                    <small class="text-muted">Untuk kurs pecahan kecil, boleh buat kode turunan seperti USDK atau USD-K.</small>
-                    <button type="button" class="btn btn-sm btn-outline" onclick="openIso4217Modal('currency')" style="white-space: nowrap;"><i class="fa-solid fa-book-open"></i> Buka ISO 4217</button>
-                </div>
-                <input type="text" id="modalCurCode" list="masterCurList" class="form-control" oninput="handleCurrencyCodeInput()" onblur="handleCurrencyCodeInput()">
-                <datalist id="masterCurList"></datalist>
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Base Rate Beli (Web/Master)</label>
-                    <input type="number" id="modalCurBuy" class="form-control" oninput="calculateCurrencyHasil()">
-                </div>
-                <div class="col">
-                    <label>Base Rate Jual (Web/Master)</label>
-                    <input type="number" id="modalCurSell" class="form-control" oninput="calculateCurrencyHasil()">
-                </div>
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Stok Awal</label>
-                    <input type="number" id="modalCurStock" class="form-control">
-                </div>
-                <div class="col">
-                    <label>Batas Aman (Alert)</label>
-                    <input type="number" id="modalCurAlert" class="form-control">
-                </div>
-            </div>
-            <div class="form-group row mt-2">
-                <div class="col">
-                    <label>Selisih Beli (<small>Misal: -50</small>)</label>
-                    <input type="number" id="modalMarginBuy" class="form-control" placeholder="-50" oninput="calculateCurrencyHasil()">
-                    <div style="margin-top: 5px; font-size: 0.85rem; padding: 5px; background: rgba(16,185,137,0.1); border-left: 3px solid #10B981;">
-                        Hasil Beli: <strong id="modalHasilBuy" class="text-green">0</strong>
-                    </div>
-                </div>
-                <div class="col">
-                    <label>Selisih Jual (<small>Misal: +50</small>)</label>
-                    <input type="number" id="modalMarginSell" class="form-control" placeholder="50" oninput="calculateCurrencyHasil()">
-                    <div style="margin-top: 5px; font-size: 0.85rem; padding: 5px; background: rgba(239,68,68,0.1); border-left: 3px solid #ef4444;">
-                        Hasil Jual: <strong id="modalHasilSell" class="text-red">0</strong>
-                    </div>
-                </div>
-            </div>
-            <button class="btn btn-primary mt-4 btn-block" onclick="saveCurrency()">Simpan</button>
-        </div>
-    </div>
 
     <!-- Blast WA Modal -->
     <div id="blastWaModal" class="modal">
@@ -6904,7 +4712,72 @@
                             </select>
                     </div>
 
-                    <!-- Bidang Usaha: hanya tampil jika KN = Perusahaan -->
+                    <!-- Row 2: Nama & No Tlp -->
+                    <div class="form-group">
+                            <label id="modalCustNameLabel">Nama Lengkap <span class="required-mark">*</span></label>
+                            <input type="text" id="modalCustName" class="form-control" placeholder="Sesuai Identitas">
+                    </div>
+                    <div class="form-group">
+                            <label>No. TLP <span class="required-mark">*</span></label>
+                            <input type="text" id="modalCustPhone" class="form-control" placeholder="08xx...">
+                    </div>
+
+                    <!-- Row 3: Tempat & Tgl Lahir -->
+                    <div class="form-group">
+                            <label id="modalCustBirthPlaceLabel">Tempat Lahir <span class="required-mark">*</span></label>
+                            <input type="text" id="modalCustBirthPlace" class="form-control" placeholder="Kota/Kab">
+                    </div>
+                    <div class="form-group">
+                            <label id="modalCustBirthDateLabel">Tanggal Lahir <span class="required-mark">*</span></label>
+                            <input type="text" id="modalCustBirthDate" class="form-control" placeholder="Pilih Tanggal..">
+                    </div>
+
+                    <!-- Row 4: Alamat & Jenis ID -->
+                    <div class="form-group">
+                            <label>Alamat (Sesuai ID) <span class="required-mark">*</span></label>
+                            <textarea id="modalCustAddress" class="form-control" rows="2" placeholder="Alamat lengkap sesuai identitas"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                            <label>Jenis Identitas <span class="required-mark">*</span></label>
+                            <select id="modalCustIdType" class="form-control" onchange="toggleCustPassportPlaceholder()">
+                                <option value="KTP">KTP (Indonesia)</option>
+                                <option value="PASSPORT">Passport (Asing)</option>
+                                <option value="SIM">SIM / Lainnya</option>
+                            </select>
+                    </div>
+
+                    <!-- Row 5: KTP & ID Lain -->
+                    <div class="form-group" id="modalCustNikGroup">
+                            <label>Nomor KTP (NIK) <span class="required-mark">*</span></label>
+                            <input type="text" id="modalCustNik" class="form-control" placeholder="Ketik NIK secara manual atau gunakan Auto-Fill" inputmode="numeric" autocomplete="off">
+                    </div>
+                    <div class="form-group" id="modalCustIdNoGroup" style="display:none;">
+                            <label>Nomor ID (Lainnya) <span class="required-mark">*</span></label>
+                            <input type="text" id="modalCustIdNo" class="form-control" placeholder="Ketik nomor ID secara manual (opsional)" autocomplete="off">
+                    </div>
+
+                    <!-- Row 6: Gender, WN, Pekerjaan -->
+                    <div class="form-group" id="modalCustGenderGroup">
+                            <label>Jenis Kelamin</label>
+                            <select id="modalCustGender" class="form-control">
+                                <option value="Pria">Pria</option>
+                                <option value="Wanita">Wanita</option>
+                            </select>
+                    </div>
+                    <div class="form-group">
+                            <label>Warga Negara</label>
+                            <select id="modalCustCitizen" class="form-control select2-modal">
+                                <!-- Populated by master -->
+                            </select>
+                    </div>
+                    <div class="form-group field-full" id="modalCustJobGroup">
+                            <label>Pekerjaan</label>
+                            <select id="modalCustJob" class="form-control select2-modal">
+                                <!-- Populated by master -->
+                            </select>
+                    </div>
+                    <!-- Bidang Usaha: menggantikan Pekerjaan jika KN = Perusahaan -->
                     <div class="form-group field-full" id="modalCustBusinessFieldGroup" style="display: none;">
                             <label>Bidang Usaha <span class="required-mark">*</span></label>
                             <select id="modalCustBusinessField" class="form-control">
@@ -6946,72 +4819,6 @@
                                 <option value="TRAVEL / PARIWISATA">Travel / Pariwisata</option>
                                 <option value="PENDUKUNG USAHA">Pendukung Usaha</option>
                                 <option value="LAINNYA">Lainnya</option>
-                            </select>
-                    </div>
-
-                    <!-- Row 2: Nama & No Tlp -->
-                    <div class="form-group">
-                            <label id="modalCustNameLabel">Nama Lengkap <span class="required-mark">*</span></label>
-                            <input type="text" id="modalCustName" class="form-control" placeholder="Sesuai Identitas">
-                    </div>
-                    <div class="form-group">
-                            <label>No. TLP <span class="required-mark">*</span></label>
-                            <input type="text" id="modalCustPhone" class="form-control" placeholder="08xx...">
-                    </div>
-
-                    <!-- Row 3: Tempat & Tgl Lahir -->
-                    <div class="form-group">
-                            <label>Tempat Lahir <span class="required-mark">*</span></label>
-                            <input type="text" id="modalCustBirthPlace" class="form-control" placeholder="Kota/Kab">
-                    </div>
-                    <div class="form-group">
-                            <label>Tanggal Lahir <span class="required-mark">*</span></label>
-                            <input type="text" id="modalCustBirthDate" class="form-control" placeholder="Pilih Tanggal..">
-                    </div>
-
-                    <!-- Row 4: Alamat & Jenis ID -->
-                    <div class="form-group">
-                            <label>Alamat (Sesuai ID) <span class="required-mark">*</span></label>
-                            <textarea id="modalCustAddress" class="form-control" rows="2" placeholder="Alamat lengkap sesuai identitas"></textarea>
-                    </div>
-                    
-                    <div class="form-group">
-                            <label>Jenis Identitas <span class="required-mark">*</span></label>
-                            <select id="modalCustIdType" class="form-control" onchange="toggleCustPassportPlaceholder()">
-                                <option value="KTP">KTP (Indonesia)</option>
-                                <option value="PASSPORT">Passport (Asing)</option>
-                                <option value="SIM">SIM / Lainnya</option>
-                            </select>
-                    </div>
-
-                    <!-- Row 5: KTP & ID Lain -->
-                    <div class="form-group" id="modalCustNikGroup">
-                            <label>Nomor KTP (NIK) <span class="required-mark">*</span></label>
-                            <input type="text" id="modalCustNik" class="form-control" placeholder="Ketik NIK secara manual atau gunakan Auto-Fill" inputmode="numeric" autocomplete="off">
-                    </div>
-                    <div class="form-group" id="modalCustIdNoGroup" style="display:none;">
-                            <label>Nomor ID (Lainnya) <span class="required-mark">*</span></label>
-                            <input type="text" id="modalCustIdNo" class="form-control" placeholder="Ketik nomor ID secara manual (opsional)" autocomplete="off">
-                    </div>
-
-                    <!-- Row 6: Gender, WN, Pekerjaan -->
-                    <div class="form-group">
-                            <label>Jenis Kelamin</label>
-                            <select id="modalCustGender" class="form-control">
-                                <option value="Pria">Pria</option>
-                                <option value="Wanita">Wanita</option>
-                            </select>
-                    </div>
-                    <div class="form-group">
-                            <label>Warga Negara</label>
-                            <select id="modalCustCitizen" class="form-control select2-modal">
-                                <!-- Populated by master -->
-                            </select>
-                    </div>
-                    <div class="form-group field-full">
-                            <label>Pekerjaan</label>
-                            <select id="modalCustJob" class="form-control select2-modal">
-                                <!-- Populated by master -->
                             </select>
                     </div>
 
@@ -7058,18 +4865,44 @@
         </div>
     </div>
     <div id="customerUpdateModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 1200px; max-height: 90vh; overflow-y: auto; border-top: 5px solid #f59e0b;">
-            <div class="modal-header flex-between mb-4">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <i class="fa-solid fa-user-pen" style="color: #f59e0b; font-size: 1.5rem;"></i>
-                    <h2 style="margin: 0;">Update Data Nasabah</h2>
+        <style>
+            #customerUpdateModal .upd-shell{width:95%;max-width:1200px;max-height:92vh;overflow-y:auto;border-top:0;padding:0;border-radius:18px;overflow-x:hidden}
+            #customerUpdateModal .upd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;background:linear-gradient(135deg,rgba(245,158,11,.22),rgba(245,158,11,.04));border-bottom:1px solid rgba(245,158,11,.35)}
+            #customerUpdateModal .upd-head .upd-title{display:flex;align-items:center;gap:14px;min-width:0}
+            #customerUpdateModal .upd-avatar{width:46px;height:46px;border-radius:14px;background:#f59e0b;color:#1f1300;display:flex;align-items:center;justify-content:center;font-size:1.25rem;flex:0 0 auto}
+            #customerUpdateModal .upd-head h2{margin:0;font-size:1.25rem;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            #customerUpdateModal .upd-badge{display:inline-block;margin-top:4px;padding:2px 10px;border-radius:999px;font-size:.72rem;font-weight:700;letter-spacing:.4px;background:rgba(245,158,11,.18);color:#f59e0b;border:1px solid rgba(245,158,11,.4)}
+            #customerUpdateModal .upd-body{display:flex;flex-wrap:wrap;gap:22px;padding:22px 24px 24px}
+            #customerUpdateModal .upd-photo{flex:1 1 300px;min-width:280px}
+            #customerUpdateModal .upd-main{flex:1.6 1 380px;min-width:0}
+            #customerUpdateModal .upd-card{border:1px solid rgba(148,163,184,.28);background:rgba(148,163,184,.06);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+            #customerUpdateModal .upd-card-title{display:flex;align-items:center;gap:8px;margin:0 0 14px;font-size:.78rem;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#f59e0b}
+            #customerUpdateModal .upd-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+            #customerUpdateModal .upd-full{grid-column:1/-1}
+            #customerUpdateModal .upd-grid label{display:block;margin-bottom:6px;font-size:.8rem;font-weight:600;opacity:.85}
+            #customerUpdateModal .upd-grid .form-control{width:100%}
+            #customerUpdateModal .upd-types{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+            #customerUpdateModal .upd-types .radio-card{margin:0;cursor:pointer;border-radius:12px;border:2px solid rgba(148,163,184,.35);overflow:hidden}
+            #customerUpdateModal .upd-types .radio-card:has(input:checked){border-color:#f59e0b;background:rgba(245,158,11,.14)}
+            #customerUpdateModal .upd-system{border:1px dashed #f59e0b;background:rgba(245,158,11,.06)}
+            #customerUpdateModal .upd-actions{position:sticky;bottom:0;display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap;padding:14px 24px;background:inherit;border-top:1px solid rgba(148,163,184,.28)}
+            @media(max-width:640px){#customerUpdateModal .upd-grid{grid-template-columns:1fr}#customerUpdateModal .upd-body{padding:16px}}
+        </style>
+        <div class="modal-content panel upd-shell">
+            <div class="upd-head">
+                <div class="upd-title">
+                    <div class="upd-avatar"><i class="fa-solid fa-user-pen"></i></div>
+                    <div style="min-width:0;">
+                        <h2>Update Data Nasabah</h2>
+                        <span class="upd-badge" id="update_entityBadge">PERORANGAN</span>
+                    </div>
                 </div>
                 <span class="close-modal" onclick="const m = document.getElementById('customerUpdateModal'); m.style.display='none'; m.classList.remove('show');">&times;</span>
             </div>
 
-            <div class="row" style="display: flex; flex-wrap: wrap; gap: 20px;">
-                <!-- Left Column: Photo & Scanner -->
-                <div class="col-md-5" style="flex: 1; min-width: 300px; border-right: 1px dashed #334155; padding-right: 20px;">
+            <div class="upd-body">
+                <!-- Kolom kiri: foto identitas -->
+                <div class="upd-photo">
                     <div class="form-group mb-3">
                         <label>Foto Identitas (KTP/Passport)</label>
                         <div class="d-flex gap-2 mb-2">
@@ -7086,196 +4919,200 @@
                     </div>
                 </div>
 
-                <!-- Right Column: Form Fields -->
-                <div class="col-md-7" style="flex: 1.5; min-width: 350px;">
-                    <!-- Hidden State -->
+                <!-- Kolom kanan: form -->
+                <div class="upd-main">
                     <input type="hidden" id="update_modalCustId">
-                    
-                    <div class="form-group row">
-                        <div class="col">
-                            <label>Tipe Entitas / KN(tipe) <span class="text-danger">*Wajib Pilih</span></label>
-                            <div class="d-flex gap-2">
-                                <label class="radio-card flex-fill text-center">
-                                    <input type="radio" name="update_custType" value="1" id="update_typePerorangan"> 
-                                    <div class="card-body p-2">
-                                        <i class="fa-solid fa-user mb-1"></i><br><small>Perorangan (1)</small>
-                                    </div>
-                                </label>
-                                <label class="radio-card flex-fill text-center">
-                                    <input type="radio" name="update_custType" value="2" id="update_typePerusahaan">
-                                    <div class="card-body p-2">
-                                        <i class="fa-solid fa-building mb-1"></i><br><small>Perusahaan (2)</small>
-                                    </div>
-                                </label>
+
+                    <div class="upd-card">
+                        <div class="upd-card-title"><i class="fa-solid fa-id-badge"></i> Tipe Entitas</div>
+                        <div class="upd-grid">
+                            <div class="upd-full">
+                                <div class="upd-types">
+                                    <label class="radio-card text-center">
+                                        <input type="radio" name="update_custType" value="1" id="update_typePerorangan" onchange="window.updateCustomerUpdateUI()">
+                                        <div class="card-body p-2"><i class="fa-solid fa-user mb-1"></i><br><small>Perorangan (1)</small></div>
+                                    </label>
+                                    <label class="radio-card text-center">
+                                        <input type="radio" name="update_custType" value="2" id="update_typePerusahaan" onchange="window.updateCustomerUpdateUI()">
+                                        <div class="card-body p-2"><i class="fa-solid fa-building mb-1"></i><br><small>Perusahaan (2)</small></div>
+                                    </label>
+                                </div>
+                            </div>
+                            <div id="update_businessTypeGroup" style="display:none;">
+                                <label>Jenis Badan Usaha</label>
+                                <select id="update_modalCustBusinessType" class="form-control" onchange="window.updateCustomerUpdateUI()">
+                                <option value="">Pilih Jenis Badan Usaha</option>
+                                <option value="KUPVA">KUPVA</option>
+                                <option value="BANK">BANK</option>
+                                <option value="YAYASAN">YAYASAN</option>
+                                <option value="BADAN USAHA PT">BADAN USAHA PT</option>
+                                <option value="BADAN USAHA CV">BADAN USAHA CV</option>
+                            
+                                </select>
+                            </div>
+                            <div id="update_nibGroup" style="display:none;">
+                                <label>NIB <span style="font-weight:normal;opacity:.7;">(opsional)</span></label>
+                                <input type="text" id="update_modalCustNib" class="form-control" placeholder="Nomor Induk Berusaha">
+                            </div>
+                            <div>
+                                <label>IDPJK</label>
+                                <input type="text" id="update_modalCustIdpjk" class="form-control" placeholder="IDPJK Lengkap">
                             </div>
                         </div>
-                        <div class="col">
-                            <label>IDPJK</label>
-                            <input type="text" id="update_modalCustIdpjk" class="form-control" placeholder="IDPJK Lengkap">
+                    </div>
+
+                    <div class="upd-card">
+                        <div class="upd-card-title"><i class="fa-solid fa-address-card"></i> <span id="update_sectionDataTitle">Data Diri</span></div>
+                        <div class="upd-grid">
+                            <div>
+                                <label id="update_nameLabel">Nama Lengkap</label>
+                                <input type="text" id="update_modalCustName" class="form-control" placeholder="Sesuai Identitas">
+                            </div>
+                            <div>
+                                <label>No. Telepon</label>
+                                <input type="text" id="update_modalCustPhone" class="form-control" placeholder="08xx....">
+                            </div>
+                            <div>
+                                <label id="update_birthPlaceLabel">Tempat Lahir</label>
+                                <input type="text" id="update_modalCustBirthPlace" class="form-control" placeholder="Kota/Kab">
+                            </div>
+                            <div>
+                                <label id="update_birthDateLabel">Tanggal Lahir</label>
+                                <input type="text" id="update_modalCustBirthDate" class="form-control flatpickr" placeholder="Pilih Tanggal..">
+                            </div>
+                            <div class="upd-full">
+                                <label>Alamat (Sesuai ID)</label>
+                                <textarea id="update_modalCustAddress" class="form-control" rows="2" placeholder="Alamat lengkap..."></textarea>
+                            </div>
+                            <div id="update_genderGroup">
+                                <label>Jenis Kelamin</label>
+                                <select id="update_modalCustGender" class="form-control">
+                                    <option value="Pria">Pria</option>
+                                    <option value="Wanita">Wanita</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>Warga Negara</label>
+                                <select id="update_modalCustCitizen" class="form-control select2-modal">
+                                    <!-- Populated via JS -->
+                                </select>
+                            </div>
+                            <div class="upd-full" id="update_jobGroup">
+                                <label>Pekerjaan</label>
+                                <select id="update_modalCustJob" class="form-control select2-modal">
+                                    <!-- Populated via JS -->
+                                </select>
+                            </div>
+                            <div class="upd-full" id="update_businessFieldGroup" style="display:none;">
+                                <label>Bidang Usaha</label>
+                                <select id="update_modalCustBusinessField" class="form-control">
+                                <option value="">Pilih Bidang Usaha</option>
+                                <option value="KUPVA / MONEY CHANGER">KUPVA / Money Changer</option>
+                                <option value="PERBANKAN">Perbankan</option>
+                                <option value="JASA KEUANGAN">Jasa Keuangan</option>
+                                <option value="ASURANSI">Asuransi</option>
+                                <option value="KOPERASI">Koperasi</option>
+                                <option value="PERDAGANGAN">Perdagangan</option>
+                                <option value="PERDAGANGAN ECERAN">Perdagangan Eceran</option>
+                                <option value="PERDAGANGAN BESAR">Perdagangan Besar</option>
+                                <option value="JASA">Jasa</option>
+                                <option value="JASA PROFESIONAL">Jasa Profesional</option>
+                                <option value="TEKNOLOGI INFORMASI">Teknologi Informasi</option>
+                                <option value="TELEKOMUNIKASI">Telekomunikasi</option>
+                                <option value="MANUFAKTUR / INDUSTRI">Manufaktur / Industri</option>
+                                <option value="KONSTRUKSI">Konstruksi</option>
+                                <option value="PROPERTI / REAL ESTATE">Properti / Real Estate</option>
+                                <option value="PERHOTELAN">Perhotelan</option>
+                                <option value="RESTORAN / KULINER">Restoran / Kuliner</option>
+                                <option value="TRANSPORTASI">Transportasi</option>
+                                <option value="LOGISTIK / PERGUDANGAN">Logistik / Pergudangan</option>
+                                <option value="PENDIDIKAN">Pendidikan</option>
+                                <option value="KESEHATAN">Kesehatan</option>
+                                <option value="FARMASI">Farmasi</option>
+                                <option value="PERTANIAN">Pertanian</option>
+                                <option value="PERKEBUNAN">Perkebunan</option>
+                                <option value="PETERNAKAN">Peternakan</option>
+                                <option value="PERIKANAN">Perikanan</option>
+                                <option value="KEHUTANAN">Kehutanan</option>
+                                <option value="PERTAMBANGAN">Pertambangan</option>
+                                <option value="ENERGI / MIGAS">Energi / Migas</option>
+                                <option value="UTILITAS">Utilitas</option>
+                                <option value="YAYASAN / SOSIAL">Yayasan / Sosial</option>
+                                <option value="ORGANISASI / NIRLABA">Organisasi / Nirlaba</option>
+                                <option value="MEDIA / PENERBITAN">Media / Penerbitan</option>
+                                <option value="PERIKLANAN / KREATIF">Periklanan / Kreatif</option>
+                                <option value="TRAVEL / PARIWISATA">Travel / Pariwisata</option>
+                                <option value="PENDUKUNG USAHA">Pendukung Usaha</option>
+                                <option value="LAINNYA">Lainnya</option>
+                            
+                                </select>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="form-group row">
-                        <div class="col">
-                            <label>Nama Lengkap</label>
-                            <input type="text" id="update_modalCustName" class="form-control" placeholder="Sesuai Identitas">
-                        </div>
-                        <div class="col">
-                            <label>NO TLP</label>
-                            <input type="text" id="update_modalCustPhone" class="form-control" placeholder="08xx....">
-                        </div>
-                    </div>
-
-                    <div class="form-group row">
-                        <div class="col">
-                            <label>Tempat Lahir</label>
-                            <input type="text" id="update_modalCustBirthPlace" class="form-control" placeholder="Kota/Kab">
-                        </div>
-                        <div class="col">
-                            <label>Tanggal Lahir</label>
-                            <input type="text" id="update_modalCustBirthDate" class="form-control flatpickr" placeholder="Pilih Tanggal..">
-                        </div>
-                    </div>
-
-                    <div class="form-group row">
-                        <div class="col">
-                            <label>Alamat (Sesuai ID)</label>
-                            <textarea id="update_modalCustAddress" class="form-control" rows="2" placeholder="Alamat lengkap..."></textarea>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group row">
-                        <div class="col">
-                            <label>Jenis Identitas</label>
-                            <select id="update_modalCustIdType" class="form-control">
-                                <option value="KTP">KTP (Indonesia)</option>
-                                <option value="PASSPORT">Passport (Asing)</option>
-                                <option value="SIM">SIM / Lainnya</option>
-                            </select>
+                    <div class="upd-card">
+                        <div class="upd-card-title"><i class="fa-solid fa-passport"></i> Dokumen Identitas</div>
+                        <div class="upd-grid">
+                            <div class="upd-full">
+                                <label>Jenis Identitas</label>
+                                <select id="update_modalCustIdType" class="form-control">
+                                    <option value="KTP">KTP (Indonesia)</option>
+                                    <option value="PASSPORT">Passport (Asing)</option>
+                                    <option value="SIM">SIM / Lainnya</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>Nomor KTP (NIK)</label>
+                                <input type="text" id="update_modalCustNik" class="form-control" placeholder="16 Digit NIK">
+                            </div>
+                            <div>
+                                <label>Nomor ID (Lainnya)</label>
+                                <input type="text" id="update_modalCustIdNo" class="form-control" placeholder="No Passport/SIM">
+                            </div>
+                            <div>
+                                <label>NPWP (Jika ada)</label>
+                                <input type="text" id="update_modalCustNpwp" class="form-control" placeholder="No NPWP">
+                            </div>
+                            <div>
+                                <label>Local ID (Ref External)</label>
+                                <input type="text" id="update_modalCustLocalId" class="form-control" placeholder="Ref id bank/lainnya">
+                            </div>
+                            <div class="upd-full">
+                                <label>Nomor Rekening / Virtual Account (Refund)</label>
+                                <input type="text" id="update_modalCustBankAcc" class="form-control" placeholder="No Rekening / OVO / Dana..">
+                            </div>
                         </div>
                     </div>
 
-                    <div class="form-group row">
-                        <div class="col">
-                            <label>Nomor KTP (NIK)</label>
-                            <input type="text" id="update_modalCustNik" class="form-control" placeholder="16 Digit NIK">
-                        </div>
-                        <div class="col">
-                            <label>Nomor ID (Lainnya)</label>
-                            <input type="text" id="update_modalCustIdNo" class="form-control" placeholder="No Passport/SIM">
-                        </div>
-                    </div>
-
-                    <div class="form-group row">
-                        <div class="col">
-                            <label>Jenis Kelamin</label>
-                            <select id="update_modalCustGender" class="form-control">
-                                <option value="Pria">Pria</option>
-                                <option value="Wanita">Wanita</option>
-                            </select>
-                        </div>
-                        <div class="col">
-                            <label>Warga Negara</label>
-                            <select id="update_modalCustCitizen" class="form-control select2-modal">
-                                <!-- Populated via JS -->
-                            </select>
-                        </div>
-                        <div class="col">
-                            <label>Pekerjaan</label>
-                            <select id="update_modalCustJob" class="form-control select2-modal">
-                                <!-- Populated via JS -->
-                            </select>
+                    <div class="upd-card upd-system">
+                        <div class="upd-card-title"><i class="fa-solid fa-lock"></i> Data Sistem</div>
+                        <div class="upd-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+                            <div>
+                                <label>ID Nasabah (Sistem)</label>
+                                <input type="text" id="update_modalCustInternalId" class="form-control" readonly style="background-color:#1e293b;color:#94a3b8;">
+                            </div>
+                            <div>
+                                <label>No. CIF (Reporting)</label>
+                                <input type="text" id="update_modalCustCif" class="form-control" style="background-color:#1e293b;color:#fff;">
+                            </div>
+                            <div>
+                                <label>Tanggal Update</label>
+                                <input type="text" id="update_modalCustUpdateDate" class="form-control" readonly style="background-color:#1e293b;color:#F59E0B;">
+                            </div>
                         </div>
                     </div>
-
-                    <!-- Readonly IDs and Update Date -->
-                    <div class="form-group row" style="background: rgba(245, 158, 11, 0.05); padding: 10px; border-radius: 8px; border: 1px dashed #f59e0b;">
-                        <div class="col">
-                            <label style="color: #f59e0b; font-weight: bold;">ID Nasabah (Sistem)</label>
-                            <input type="text" id="update_modalCustInternalId" class="form-control" readonly style="background-color: #1e293b; color: #94a3b8;">
-                        </div>
-                        <div class="col">
-                            <label style="color: #f59e0b; font-weight: bold;">No. CIF (Reporting)</label>
-                            <input type="text" id="update_modalCustCif" class="form-control" style="background-color: #1e293b; color: #fff;">
-                        </div>
-                        <div class="col">
-                            <label style="color: #f59e0b; font-weight: bold;">Tanggal Update</label>
-                            <input type="text" id="update_modalCustUpdateDate" class="form-control" readonly style="background-color: #1e293b; color: #F59E0B;">
-                        </div>
-                    </div>
-
-                    <div class="form-group row mt-3">
-                        <div class="col">
-                            <label>NPWP (Jika ada)</label>
-                            <input type="text" id="update_modalCustNpwp" class="form-control" placeholder="No NPWP">
-                        </div>
-                        <div class="col">
-                            <label>Local ID (Ref External)</label>
-                            <input type="text" id="update_modalCustLocalId" class="form-control" placeholder="Ref id bank/lainnya">
-                        </div>
-                    </div>                    <div class="form-group row">
-                        <div class="col">
-                            <label>Nomor Rekening / Virtual Account (Refund)</label>
-                            <input type="text" id="update_modalCustBankAcc" class="form-control" placeholder="No Rekening / OVO / Dana..">
-                        </div>
-                    </div>
-
-                    <button class="btn btn-warning mt-4 btn-block btn-lg" style="background: #f59e0b; border:none; color:#000; font-weight:bold;" onclick="updateCustomer()">
-                        <i class="fa-solid fa-save"></i> UPDATE DATA NASABAH
-                    </button>
-                    <small class="text-muted d-block text-center mt-2">Pastikan data sudah diperiksa kembali sebelum melakukan Update.</small>
                 </div>
+            </div>
+
+            <div class="upd-actions">
+                <small class="text-muted" style="margin-right:auto;">Pastikan data sudah diperiksa kembali sebelum melakukan Update.</small>
+                <button type="button" class="btn btn-secondary" onclick="const m = document.getElementById('customerUpdateModal'); m.style.display='none'; m.classList.remove('show');"><i class="fa-solid fa-xmark"></i> Batal</button>
+                <button type="button" class="btn btn-warning" style="background:#f59e0b;border:none;color:#000;font-weight:bold;padding:10px 22px;" onclick="updateCustomer()"><i class="fa-solid fa-floppy-disk"></i> UPDATE DATA NASABAH</button>
             </div>
         </div>
     </div>
 
     <!-- Expense Modal -->
-    <div id="expenseModal" class="modal">
-        <div class="modal-content panel">
-            <div class="modal-header flex-between mb-4">
-                <h2 id="modalExpTitle">Input Jurnal Pendapatan/Beban</h2>
-                <span class="close-modal" onclick="closeExpenseModal()">&times;</span>
-            </div>
-            <input type="hidden" id="modalExpId">
-            <div class="form-group">
-                <label>Tanggal Jurnal</label>
-                <input type="date" id="modalExpDate" class="form-control">
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Tipe Jurnal</label>
-                    <select id="modalExpType" class="form-control" onchange="updateExpCategoryOptions()">
-                        <option value="PENGELUARAN">Beban / Pengeluaran</option>
-                        <option value="PENDAPATAN">Pendapatan Lain-lain</option>
-                    </select>
-                </div>
-                <div class="col">
-                    <label>Sumber / Tujuan Dana</label>
-                    <select id="modalExpSource" class="form-control">
-                        <option value="CASH">Kas Tunai</option>
-                        <option value="BCA">Bank BCA</option>
-                        <option value="MANDIRI">Bank Mandiri</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Kategori Akun (Standar BI)</label>
-                <select id="modalExpCategory" class="form-control">
-                    <!-- Populated by JS -->
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Catatan / Keterangan</label>
-                <input type="text" id="modalExpDesc" class="form-control" placeholder="Contoh: Beli Kertas HVS">
-            </div>
-            <div class="form-group">
-                <label>Nominal (Rp)</label>
-                <input type="number" id="modalExpAmount" class="form-control" placeholder="0">
-            </div>
-            <button class="btn btn-primary mt-4 btn-block" onclick="saveExpense()">Simpan Jurnal</button>
-        </div>
-    </div>
-
     <!-- Bank Mutation Modal -->
     <div id="mutationModal" class="modal">
         <div class="modal-content panel" style="width: 90%; max-width: 500px; border-top: 5px solid #10b981;">
@@ -7315,34 +5152,6 @@
             <button class="btn btn-success mt-4 btn-block" onclick="saveMutation()">
                 <i class="fa-solid fa-save"></i> Simpan Mutasi
             </button>
-        </div>
-    </div>
-
-    <!-- Asset Modal -->
-    <div id="assetModal" class="modal">
-        <div class="modal-content panel">
-            <div class="modal-header flex-between mb-4">
-                <h2 id="modalAssetTitle">Tambah Aset Baru</h2>
-                <span class="close-modal" onclick="closeAssetModal()">&times;</span>
-            </div>
-            <input type="hidden" id="modalAssetId">
-            <div class="form-group">
-                <label>Nama Aset</label>
-                <input type="text" id="modalAssetName" class="form-control" placeholder="Contoh: Komputer Kasir, Brankas...">
-            </div>
-            <div class="form-group">
-                <label>Tanggal Perolehan (Pembelian)</label>
-                <input type="date" id="modalAssetDate" class="form-control">
-            </div>
-            <div class="form-group">
-                <label>Harga Perolehan (Rp)</label>
-                <input type="number" id="modalAssetPrice" class="form-control" placeholder="0">
-            </div>
-            <div class="form-group">
-                <label>Masa Manfaat (Tahun)</label>
-                <input type="number" id="modalAssetLife" class="form-control" placeholder="Contoh: 4">
-            </div>
-            <button class="btn btn-primary mt-4 btn-block" onclick="saveAsset()">Simpan Aset</button>
         </div>
     </div>
 
@@ -7407,833 +5216,12 @@
         </div>
     </div>
 
-    <!-- Old Money Supplier Modal -->
-    <div id="oldMoneySupplierModal" class="modal">
-        <div class="modal-content panel" style="width: 96%; max-width: 1160px; max-height: 90vh; overflow-y: auto; padding:18px;">
-            <div class="modal-header flex-between mb-3" style="padding-bottom:10px; border-bottom:1px solid rgba(148,163,184,.18);">
-                <h2 id="modalOldSupplierTitle">Tambah Suplayer / Pengepul Baru</h2>
-                <span class="close-modal" onclick="window.closeOldMoneySupplierModal()">&times;</span>
-            </div>
-            <input type="hidden" id="modalOldSupplierId">
-            <div style="display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;">
-                <div style="flex:1 1 310px; min-width:0;">
-                    <div class="form-group mb-2">
-                        <label>Nama Suplayer / Pihak Pengepul</label>
-                        <input type="text" id="modalOldSupplierName" list="oldMoneySupplierNameList" class="form-control" placeholder="Pilih atau ketik nama suplayer/pengepul">
-                        <datalist id="oldMoneySupplierNameList"></datalist>
-                    </div>
-                    <div class="form-group mb-2">
-                        <label>Kategori Acuan</label>
-                        <select id="modalOldSupplierCategory" class="form-control">
-                            <option value="KOIN">Koin</option>
-                            <option value="UANG_LAMA">Uang Kertas Lama</option>
-                        </select>
-                    </div>
-                    <div class="form-group row mb-2" style="gap:8px; margin-left:0; margin-right:0;">
-                        <div class="col" style="padding-left:0;">
-                            <label>Mata Uang / Koin</label>
-                            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                                <small class="text-muted" style="flex:1; font-size:.74rem;">Kode ISO 4217</small>
-                                <button type="button" class="btn btn-sm btn-outline" onclick="openIso4217Modal('old-money-supplier')" style="white-space:nowrap; padding:3px 7px;"><i class="fa-solid fa-book-open"></i></button>
-                            </div>
-                            <input type="text" id="modalOldSupplierCurrency" list="oldMoneySupplierCurrencyList" class="form-control" placeholder="USD" style="text-transform:uppercase;">
-                            <datalist id="oldMoneySupplierCurrencyList"></datalist>
-                        </div>
-                        <div class="col" style="padding-left:0; padding-right:0;">
-                            <label>Harga Beli Rp</label>
-                            <input type="number" id="modalOldSupplierBuy" class="form-control" placeholder="0">
-                        </div>
-                        <div class="col" style="padding-right:0;">
-                            <label>Harga Jual Rp</label>
-                            <input type="number" id="modalOldSupplierSell" class="form-control" placeholder="0">
-                        </div>
-                    </div>
-                    <div class="form-group mb-2">
-                        <label>Catatan</label>
-                        <textarea id="modalOldSupplierNotes" class="form-control" rows="2" placeholder="Keterangan suplayer atau acuan harga."></textarea>
-                    </div>
-                    <div class="form-group mb-2">
-                        <label>Foto Suplayer / Pengepul</label>
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <div style="flex:1; min-width:0;">
-                                <input type="file" id="modalOldSupplierPhoto" class="form-control" accept="image/*" onchange="window.previewOldMoneySupplierPhoto(this)">
-                                <small class="text-muted" style="font-size:.74rem;">Opsional</small>
-                            </div>
-                            <img id="modalOldSupplierPhotoPreview" src="" alt="Preview Suplayer" style="width:58px; height:58px; object-fit:cover; border-radius:6px; border:1px solid rgba(148,163,184,.25); display:none;">
-                            <div id="modalOldSupplierPhotoPlaceholder" style="width:58px; height:58px; border-radius:6px; border:1px dashed rgba(148,163,184,.35); display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:.68rem; text-align:center; padding:5px;">Belum ada foto</div>
-                        </div>
-                    </div>
-                    <button class="btn btn-primary btn-block mt-2" onclick="window.saveOldMoneySupplier()"><i class="fa-solid fa-floppy-disk"></i> Simpan Data</button>
-                </div>
-                <div style="flex:1.65 1 580px; min-width:0; border-left:1px solid rgba(148,163,184,.18); padding-left:18px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
-                        <h4 class="mb-0" style="margin:0; font-size:1rem;">Daftar Suplayer & Acuan Harga</h4>
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <button type="button" id="oldMoneySupplierTabKoin" class="btn btn-sm" onclick="window.setOldMoneySupplierTab('KOIN')" style="padding:4px 9px; background:#f59e0b; color:#0f172a; border:none;">Koin</button>
-                            <button type="button" id="oldMoneySupplierTabUangLama" class="btn btn-sm btn-outline" onclick="window.setOldMoneySupplierTab('UANG_LAMA')" style="padding:4px 9px;">Uang Lama</button>
-                            <input type="text" id="modalOldSupplierFilter" class="form-control" style="width:190px; height:30px; font-size:.78rem;" placeholder="Cari nama / negara / ISO..." onkeyup="window.filterOldMoneySupplierTable()">
-                        </div>
-                    </div>
-                    <div class="table-responsive" style="max-height:430px; overflow-y:auto; border:1px solid rgba(148,163,184,.16);">
-                        <table class="table table-sm table-bordered" style="margin:0; font-size:.79rem;">
-                            <thead style="position:sticky; top:0; background:#1e293b; z-index:1;">
-                                <tr>
-                                    <th>Suplayer</th>
-                                    <th>ISO</th>
-                                    <th>Catatan</th>
-                                    <th style="text-align:right;">Beli</th>
-                                    <th style="text-align:right;">Jual</th>
-                                    <th style="text-align:center;">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody id="oldMoneySupplierTableBody">
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Old Money Item Modal -->
-    <div id="oldMoneyItemModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 760px; max-height: 90vh; overflow-y: auto;">
-            <div class="modal-header flex-between mb-4" style="position: sticky; top: 0; z-index: 3; background: #1e293b; padding: 12px 0 14px; border-bottom: 1px solid rgba(148, 163, 184, 0.18);">
-                <h2 id="modalOldItemTitle">Definisi Uang/Koin Baru</h2>
-                <span class="close-modal" onclick="window.closeOldMoneyItemModal()">&times;</span>
-            </div>
-            <input type="hidden" id="modalOldItemId">
-            <div class="form-group">
-                <label>Kategori Jenis Barang</label>
-                <select id="modalOldItemCategory" class="form-control">
-                    <option value="KOIN">Koin</option>
-                    <option value="UANG_LAMA">Uang Lama</option>
-                </select>
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Mata Uang (Valas)</label>
-                    <div style="display:flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px;">
-                        <small class="text-muted">Gunakan kode ISO 4217 bila item mengacu ke mata uang resmi.</small>
-                        <button type="button" class="btn btn-sm btn-outline" onclick="openIso4217Modal('old-money')" style="white-space: nowrap;"><i class="fa-solid fa-book-open"></i> Cari Kode ISO</button>
-                    </div>
-                    <input type="text" id="modalOldItemCode" class="form-control" placeholder="Contoh: USD, EUR">
-                </div>
-                <div class="col">
-                    <label>Nama Spesifik</label>
-                    <input type="text" id="modalOldItemDesc" class="form-control" placeholder="Contoh: Koin 1 Euro">
-                </div>
-            </div>
-              <div class="form-group">
-                  <label>Saran Kurs Modal Beli (Rp / Valas)</label>
-                  <input type="number" id="modalOldItemBuyPrice" class="form-control" placeholder="Contoh: 15000">
-                  <small class="text-muted">Ini digunakan sebagai otomatisasi Kurs Beli dari Nasabah.</small>
-              </div>
-              <div class="form-group">
-                  <label>Foto Referensi Item</label>
-                  <input type="file" id="modalOldItemPhoto" class="form-control" accept="image/*" onchange="window.previewOldMoneyItemPhoto(this)">
-                  <small class="text-muted">Opsional, tapi bagus untuk acuan visual saat menerima atau menjual item serupa.</small>
-                  <div style="margin-top: 12px; display:flex; align-items:center; gap:12px;">
-                      <img id="modalOldItemPhotoPreview" src="" alt="Preview Item" style="width: 110px; height: 110px; object-fit: cover; border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.25); display:none;">
-                      <div id="modalOldItemPhotoPlaceholder" style="width: 110px; height: 110px; border-radius: 10px; border: 1px dashed rgba(148, 163, 184, 0.35); display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.8rem; text-align:center; padding:10px;">
-                          Belum ada foto referensi
-                      </div>
-                  </div>
-              </div>
-              <div style="position: sticky; bottom: 0; z-index: 3; background: linear-gradient(180deg, rgba(30, 41, 59, 0) 0%, rgba(30, 41, 59, 0.92) 18%, rgba(30, 41, 59, 1) 100%); padding-top: 18px; margin-top: 16px;">
-                  <button class="btn btn-primary btn-block" onclick="window.saveOldMoneyItem()">Simpan Item Master</button>
-              </div>
-          </div>
-      </div>
-
-    <!-- Valas Gallery Add/Edit Modal -->
-    <div id="valasGalleryModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 680px; max-height: 90vh; overflow-y: auto;">
-            <div class="modal-header flex-between mb-4" style="position: sticky; top: 0; z-index: 3; background: #1e293b; padding: 12px 0 14px; border-bottom: 1px solid rgba(148, 163, 184, 0.18);">
-                <h2 id="modalValasTitle">Tambah Referensi Acuan Valas</h2>
-                <span class="close-modal" onclick="window.closeValasGalleryModal()">&times;</span>
-            </div>
-            <input type="hidden" id="modalValasId">
-            <div class="form-group row">
-                <div class="col">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <label style="margin-bottom:0;">Kode Valas (Mata Uang)</label>
-                        <button type="button" class="btn btn-sm btn-outline" onclick="window.openIso4217Modal('valas-gallery')" style="white-space: nowrap; font-size: 0.75rem; padding: 2px 8px;"><i class="fa-solid fa-book-open"></i> Cari Kode ISO</button>
-                    </div>
-                    <input type="text" id="modalValasCode" class="form-control" placeholder="Contoh: USD, SGD, EUR" style="text-transform: uppercase;">
-                </div>
-                <div class="col">
-                    <label>Status Penerimaan</label>
-                    <select id="modalValasStatus" class="form-control">
-                        <option value="DITERIMA">DITERIMA (Accepted)</option>
-                        <option value="TIDAK_DITERIMA">TIDAK DITERIMA (Rejected/Expired)</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Judul / Nama Spesifik Acuan</label>
-                <input type="text" id="modalValasDesc" class="form-control" placeholder="Contoh: USD 100 Kepala Kecil / Lembar Robek">
-            </div>
-            <div class="form-group">
-                <label>Kriteria & Catatan Penjelasan</label>
-                <textarea id="modalValasNotes" class="form-control" rows="3" placeholder="Jelaskan secara detail ciri-ciri, nomor seri, atau kondisi yang diterima/ditolak..."></textarea>
-            </div>
-            <div class="form-group">
-                <label>Foto Acuan Banknote</label>
-                <input type="file" id="modalValasPhoto" class="form-control" accept="image/*" onchange="window.previewValasGalleryPhoto(this)">
-                <small class="text-muted">Masukkan foto depan/belakang banknote sebagai acuan visual staf.</small>
-                <div style="margin-top: 12px; display:flex; align-items:center; gap:12px;">
-                    <img id="modalValasPhotoPreview" src="" alt="Preview Banknote" style="width: 150px; height: 90px; object-fit: contain; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.25); display:none;">
-                    <div id="modalValasPhotoPlaceholder" style="width: 150px; height: 90px; border-radius: 6px; border: 1px dashed rgba(148, 163, 184, 0.35); display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.8rem; text-align:center; padding:10px;">
-                        Belum ada foto referensi
-                    </div>
-                </div>
-            </div>
-            <div style="position: sticky; bottom: 0; z-index: 3; background: linear-gradient(180deg, rgba(30, 41, 59, 0) 0%, rgba(30, 41, 59, 0.92) 18%, rgba(30, 41, 59, 1) 100%); padding-top: 18px; margin-top: 16px;">
-                <button id="saveValasGalleryButton" class="btn btn-primary btn-block" onclick="window.saveValasGalleryItem()">Simpan Data Acuan</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 1. Modal Buat Permintaan Pickup -->
-    <div id="createPickupModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 600px; max-height: 90vh; overflow-y: auto;">
-            <div class="modal-header flex-between mb-4" style="position: sticky; top: 0; z-index: 3; background: #1e293b; padding: 12px 0 14px; border-bottom: 1px solid rgba(148, 163, 184, 0.18);">
-                <h2>Buat Permintaan Pickup Valas</h2>
-                <span class="close-modal" onclick="window.closeCreatePickupModal()">&times;</span>
-            </div>
-            <form id="createPickupForm" onsubmit="event.preventDefault(); window.saveNewPickup();">
-                <div class="form-group row">
-                    <div class="col">
-                        <label>Pilih Kurir / Driver</label>
-                        <select id="createPickupCourier" class="form-control" style="background:#0f172a; color:#fff;" required></select>
-                    </div>
-                </div>
-                <div class="form-group row">
-                    <div class="col">
-                        <label>Jenis Kendaraan</label>
-                        <select id="createPickupVehicleType" class="form-control" style="background:#0f172a; color:#fff;">
-                            <option value="Motor">Sepeda Motor</option>
-                            <option value="Mobil">Mobil</option>
-                            <option value="Lainnya">Lainnya / Umum</option>
-                        </select>
-                    </div>
-                    <div class="col">
-                        <label>Plat Nomor Kendaraan</label>
-                        <input type="text" id="createPickupVehiclePlate" class="form-control" placeholder="Contoh: B 1234 ABC" style="text-transform: uppercase;">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Lokasi Tujuan Penjualan / Penyerahan</label>
-                    <input type="text" id="createPickupDestination" class="form-control" placeholder="Contoh: Smartdeal Kantor Pusat, Bank BCA, Cabang Roxy" required>
-                </div>
-
-                <div class="form-group">
-                    <label style="font-weight: 600; color:#38bdf8; display:flex; justify-content:space-between; align-items:center;">
-                        <span>Daftar Valas Yang Dibawa</span>
-                    </label>
-                    <div id="createPickupCurrenciesContainer" style="background: rgba(15, 23, 42, 0.4); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.04);">
-                        <!-- Injected dynamic rows -->
-                    </div>
-                </div>
-
-                <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <strong style="color: #38bdf8; font-size: 0.9rem;">Total Estimasi Nilai Rupiah:</strong>
-                    <strong style="color: #fff; font-size: 1.15rem;" id="createPickupTotalEstIdr">Rp 0</strong>
-                </div>
-
-                <div class="form-group">
-                    <label>Memo / Catatan Tambahan</label>
-                    <textarea id="createPickupNotes" class="form-control" rows="2" placeholder="Masukkan catatan opsional..."></textarea>
-                </div>
-
-                <div style="position: sticky; bottom: 0; z-index: 3; background: linear-gradient(180deg, rgba(30, 41, 59, 0) 0%, rgba(30, 41, 59, 0.92) 18%, rgba(30, 41, 59, 1) 100%); padding-top: 18px; margin-top: 16px;">
-                    <button type="submit" class="btn btn-primary btn-block" style="background:#F97316; border-color:#F97316; font-weight:bold;"><i class="fa-solid fa-paper-plane"></i> Kirim Tugas Pickup</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- 2. Modal Kurir Pickup (Start Trip) -->
-    <div id="pickupStartModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 500px;">
-            <div class="modal-header flex-between mb-4">
-                <h2>Konfirmasi Pickup Valas oleh Kurir</h2>
-                <span class="close-modal" onclick="window.closePickupStartModal()">&times;</span>
-            </div>
-            <input type="hidden" id="startPickupId">
-            <div style="background: rgba(245, 158, 11, 0.1); border-left: 4px solid #f59e0b; border-radius: 6px; padding: 12px; margin-bottom: 15px;">
-                <span style="font-size: 0.75rem; color:#f59e0b; text-transform: uppercase; font-weight: bold;">NOMOR PICKUP</span>
-                <div style="font-size: 1rem; font-weight: bold; color: #f8fafc;" id="startPickupNo">ALM-PKP-...</div>
-                <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 8px;" id="startPickupValasText">Detail valas</div>
-            </div>
-
-            <div class="form-group row">
-                <div class="col">
-                    <label>Jenis Kendaraan Kurir</label>
-                    <select id="startPickupType" class="form-control" style="background:#0f172a; color:#fff;">
-                        <option value="Motor">Sepeda Motor</option>
-                        <option value="Mobil">Mobil</option>
-                        <option value="Lainnya">Lainnya / Umum</option>
-                    </select>
-                </div>
-                <div class="col">
-                    <label>Plat Nomor</label>
-                    <input type="text" id="startPickupPlate" class="form-control" placeholder="Contoh: B 1234 ABC" style="text-transform: uppercase;">
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label>Foto Bukti Serah Terima Awal (Opsional)</label>
-                <button type="button" class="btn btn-outline btn-block" onclick="window.triggerStartPickupPhotoUpload()"><i class="fa-solid fa-camera"></i> Ambil Foto / File Foto</button>
-                <input type="hidden" id="startPickupPhotoData">
-                <div style="margin-top: 12px; text-align: center;">
-                    <img id="startPickupPhotoPreview" src="" alt="Bukti serah terima" style="width: 100%; max-height: 200px; object-fit: contain; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); display:none;">
-                </div>
-            </div>
-
-            <div class="mt-4">
-                <button type="button" class="btn btn-warning btn-block" style="background:#f59e0b; border-color:#f59e0b; font-weight: bold;" onclick="window.confirmPickupStart()"><i class="fa-solid fa-motorcycle"></i> Konfirmasi Mulai Perjalanan</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 3. Modal Konfirmasi Jual / Serah Terima di Tujuan (Deliver & OTP) -->
-    <div id="pickupDeliverModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 580px; max-height: 90vh; overflow-y: auto;">
-            <div class="modal-header flex-between mb-4" style="position: sticky; top: 0; z-index: 3; background: #1e293b; padding: 12px 0 14px; border-bottom: 1px solid rgba(148, 163, 184, 0.18);">
-                <h2>Konfirmasi Penjualan / Tiba di Tujuan</h2>
-                <span class="close-modal" onclick="window.closePickupDeliverModal()">&times;</span>
-            </div>
-            <input type="hidden" id="deliverPickupId">
-            
-            <div style="background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; border-radius: 6px; padding: 12px; margin-bottom: 15px;">
-                <span style="font-size: 0.75rem; color:#10b981; text-transform: uppercase; font-weight: bold;">NOMOR PICKUP</span>
-                <div style="font-size: 1rem; font-weight: bold; color: #f8fafc;" id="deliverPickupNo">ALM-PKP-...</div>
-            </div>
-
-            <div class="form-group">
-                <label>Nama Penerima / Kasir Counter Tujuan</label>
-                <input type="text" id="deliverRecipient" class="form-control" placeholder="Contoh: Kasir Smartdeal Budi" required>
-            </div>
-
-            <div class="form-group">
-                <label style="font-weight:600; color:#38bdf8;">Kurs Realisasi Penjualan (Kurs Asli)</label>
-                <div id="deliverPickupCurrenciesRealization" style="background: rgba(15, 23, 42, 0.4); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.04);">
-                    <!-- Dynamic currency rows for inputting actual rate -->
-                </div>
-            </div>
-
-            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <strong style="color: #10b981; font-size: 0.9rem;">Total Rupiah Hasil Jual:</strong>
-                <strong style="color: #fff; font-size: 1.15rem;" id="deliverPickupTotalRealIdr">Rp 0</strong>
-            </div>
-
-            <div class="form-group">
-                <label>Upload Foto Struk / Bukti Transaksi Jual</label>
-                <button type="button" class="btn btn-outline btn-block" onclick="window.triggerDeliverPickupPhotoUpload()"><i class="fa-solid fa-camera"></i> Foto Struk Nota / Kwitansi</button>
-                <input type="hidden" id="deliverPickupPhotoData">
-                <div style="margin-top: 12px; text-align: center;">
-                    <img id="deliverPickupPhotoPreview" src="" alt="Bukti struk" style="width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); display:none;">
-                </div>
-            </div>
-
-            <!-- PIN OTP BOX (Ojol-style!) -->
-            <div class="form-group" style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px; padding: 15px; margin-top: 20px;">
-                <label style="color: #f59e0b; font-weight: bold;"><i class="fa-solid fa-key"></i> PIN OTP Verifikasi Serah Terima</label>
-                <input type="text" id="deliverPin" class="form-control" placeholder="Masukkan 4-digit PIN OTP dari Kasir/Teller" style="text-align: center; font-size: 1.3rem; letter-spacing: 4px; font-weight: bold; background: #0f172a; color:#f59e0b; border-color: rgba(245, 158, 11, 0.4);" required maxlength="4">
-                <small class="text-muted d-block mt-2">PIN ini di-generate oleh pembuat permintaan di kantor. Tanyakan PIN kepada kasir/teller utama untuk menyelesaikan tugas ojol ini.</small>
-            </div>
-
-            <div style="position: sticky; bottom: 0; z-index: 3; background: linear-gradient(180deg, rgba(30, 41, 59, 0) 0%, rgba(30, 41, 59, 0.92) 18%, rgba(30, 41, 59, 1) 100%); padding-top: 18px; margin-top: 16px;">
-                <button type="button" class="btn btn-success btn-block" style="background:#10b981; border-color:#10b981; font-weight: bold;" onclick="window.confirmPickupDelivered()"><i class="fa-solid fa-check-double"></i> Verifikasi & Selesaikan Handover</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 4. Modal Konfirmasi Selesai Uang Masuk Brankas (Kasir Kantor) -->
-    <div id="pickupCompleteModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 500px;">
-            <div class="modal-header flex-between mb-4">
-                <h2>Konfirmasi Terima Setoran Rupiah</h2>
-                <span class="close-modal" onclick="window.closePickupCompleteModal()">&times;</span>
-            </div>
-            <input type="hidden" id="completePickupId">
-            
-            <p style="color: #cbd5e1; font-size: 0.9rem; line-height: 1.4;">Kurir telah menyelesaikan penjualan valas. Konfirmasi bahwa uang Rupiah hasil penjualan fisik telah masuk brankas kasir / rekening bank kantor.</p>
-
-            <div style="background: rgba(56, 189, 248, 0.1); border-radius: 8px; padding: 15px; margin: 15px 0; border: 1px solid rgba(56, 189, 248, 0.2);">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size:0.85rem;"><span style="color:#94a3b8;">No. Pickup:</span> <strong id="completePickupNo">ALM-PKP-...</strong></div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size:0.85rem;"><span style="color:#94a3b8;">Kurir:</span> <strong id="completePickupCourier">Nama Kurir</strong></div>
-                <div style="display: flex; justify-content: space-between; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;"><span style="color:#f8fafc; font-weight:600;">Jumlah Setoran Rupiah:</span> <strong style="color:#10b981; font-size: 1.15rem;" id="completePickupAmountText">Rp 0</strong></div>
-            </div>
-
-            <div class="form-group">
-                <label>Lokasi Uang Masuk (Mutasi Otomatis)</label>
-                <select id="completePickupTargetBox" class="form-control" style="background:#0f172a; color:#fff;">
-                    <option value="CASH">Tunai (Laci Brankas Kasir)</option>
-                    <option value="BCA">Transfer Bank BCA</option>
-                    <option value="MANDIRI">Transfer Bank Mandiri</option>
-                </select>
-                <small class="text-muted d-block mt-2">Sistem akan otomatis menambah saldo kas/bank brankas kasir di dashboard & mencatat jurnal mutasi masuk.</small>
-            </div>
-
-            <div class="mt-4">
-                <button type="button" class="btn btn-primary btn-block" style="background:#38bdf8; border-color:#38bdf8; color: #0f172a; font-weight: bold;" onclick="window.confirmPickupComplete()"><i class="fa-solid fa-square-check"></i> Konfirmasi Selesai & Terima Uang</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Gantungan Add Modal -->
-    <div id="gantunganModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 500px;">
-            <div class="modal-header flex-between mb-4">
-                <h2>Tambah Pinjaman / Gantungan Baru</h2>
-                <span class="close-modal" onclick="window.closeGantunganModal()">&times;</span>
-            </div>
-            <form id="gantunganModalForm" onsubmit="event.preventDefault(); window.saveGantungan();">
-                <div class="form-group">
-                    <label>Nama Peminjam</label>
-                    <input type="text" id="mGantunganNama" class="form-control" placeholder="Contoh: Yayan" required>
-                </div>
-                <div class="form-group row">
-                    <div class="col">
-                    <label>Jenis Catatan</label>
-                    <select id="mGantunganTipe" class="form-control">
-                            <option value="PIUTANG">Keluar / Pinjaman</option>
-                            <option value="UTANG">Masuk Lainnya / Kembalian</option>
-                        </select>
-                    </div>
-                    <div class="col">
-                        <label>Nominal (Rp)</label>
-                        <input type="text" id="mGantunganNominal" class="form-control" placeholder="Contoh: 5.000" required>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Keterangan</label>
-                    <textarea id="mGantunganKeterangan" class="form-control" rows="3" placeholder="Contoh: Pinjaman sementara Yayan" required></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary btn-block mt-4"><i class="fa-solid fa-save"></i> Simpan Pinjaman</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Gantungan Cicil Modal -->
-    <div id="gantunganCicilModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 480px;">
-            <div class="modal-header flex-between mb-4">
-                <h2>Catat Cicilan / Pembayaran</h2>
-                <span class="close-modal" onclick="window.closeGantunganCicilModal()">&times;</span>
-            </div>
-            <form id="gantunganCicilForm" onsubmit="event.preventDefault(); window.saveGantunganCicil();">
-                <input type="hidden" id="mCicilId">
-                <div class="form-group">
-                    <label>Nama Nasabah / Staf</label>
-                    <input type="text" id="mCicilNama" class="form-control" readonly style="opacity: 0.7;">
-                </div>
-                <div class="form-group row">
-                    <div class="col">
-                        <label>Utang Awal (Nominal)</label>
-                        <input type="text" id="mCicilNominalAwal" class="form-control" readonly style="opacity: 0.7;">
-                    </div>
-                    <div class="col">
-                        <label>Sisa Saldo Saat Ini</label>
-                        <input type="text" id="mCicilSisaSaldo" class="form-control" readonly style="opacity: 0.7; font-weight: bold; color: #EF4444;">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Jumlah Pembayaran Cicilan (Rp)</label>
-                    <input type="text" id="mCicilJumlah" class="form-control" placeholder="Masukkan jumlah yang dibayar" required>
-                </div>
-                <div class="form-group">
-                    <label>Keterangan Pembayaran</label>
-                    <input type="text" id="mCicilKeterangan" class="form-control" placeholder="Contoh: Pembayaran tahap 1 / Dicicil tunai" required>
-                </div>
-                <button type="submit" class="btn btn-success btn-block mt-4"><i class="fa-solid fa-receipt"></i> Simpan Pembayaran</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Old Money Topup Modal -->
-    <div id="oldMoneyTopupModal" class="modal">
-        <div class="modal-content panel">
-            <div class="modal-header flex-between mb-4">
-                <h2>Kelola Laci Kas Koin Rupiah</h2>
-                <span class="close-modal" onclick="window.closeOldMoneyTopupModal()">&times;</span>
-            </div>
-            <div class="form-group">
-                <label>Aksi / Tindakan</label>
-                <select id="modalOldTopupType" class="form-control">
-                    <option value="IN">TAMBAH Kas (Suntik Modal Koin)</option>
-                    <option value="OUT">TARIK Kas (Pindahkan Kas Koin Keluar)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Nominal Rupiah (Rp)</label>
-                <input type="number" id="modalOldTopupAmount" class="form-control" placeholder="0">
-            </div>
-            <div class="form-group">
-                <label>Tulis Catatan / Alasan</label>
-                <input type="text" id="modalOldTopupDesc" class="form-control" placeholder="Contoh: Modal Awal Kotak Koin">
-            </div>
-            <button class="btn btn-primary mt-4 btn-block" onclick="window.saveOldMoneyTopup()">Proses Mutasi Kas Koin</button>
-        </div>
-    </div>
-
-      <div id="iso4217Modal" class="modal">
-          <div class="modal-content panel" style="max-width: 920px;">
-              <div class="modal-header flex-between mb-4">
-                  <div>
-                      <h2 style="margin: 0;">Sumber Mata Uang ISO 4217</h2>
-                      <small class="text-muted">Referensi global untuk aplikasi utama, master data, dan modul koin.</small>
-                  </div>
-                  <span class="close-modal" onclick="window.closeIso4217Modal()">&times;</span>
-              </div>
-              <div class="form-group">
-                  <input type="text" id="iso4217FilterModal" class="form-control" placeholder="Cari kode, negara, atau nama mata uang..." oninput="window.loadIso4217ModalTable()">
-              </div>
-              <div class="table-responsive" style="max-height: 460px; overflow-y: auto;">
-                  <table class="table table-sm table-bordered">
-                      <thead style="position: sticky; top: 0; background: #1e293b; z-index: 1;">
-                          <tr>
-                              <th>Kode</th>
-                              <th>Negara / Entitas</th>
-                              <th>Nama Mata Uang</th>
-                              <th>Simbol</th>
-                              <th style="text-align: center;">Aksi</th>
-                          </tr>
-                      </thead>
-                      <tbody id="iso4217ModalTableBody">
-                          <tr>
-                              <td colspan="5" class="text-center text-muted">Memuat referensi ISO 4217...</td>
-                          </tr>
-                      </tbody>
-                  </table>
-              </div>
-              <small class="text-muted mt-3 d-block">Acuan umum berdasarkan kode alfabetik ISO 4217. Tombol <strong>Pakai ke Form</strong> akan mengisi form yang sedang meminta referensi.</small>
-          </div>
-      </div>
 
 
 
-    <!-- Closing History Modal -->
-    <div id="closingHistoryModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 1000px; max-height: 90vh; overflow-y: auto;">
-            <div class="modal-header flex-between mb-4">
-                <h2 id="modalClosingHistTitle">Riwayat Closing Harian Rupiah</h2>
-                <span class="close-modal" onclick="closeClosingHistoryModal()">&times;</span>
-            </div>
-            
-            <div class="mb-3" style="display: flex; gap: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap;">
-                <div style="font-size: 0.9em; color: #94A3B8;">Riwayat diurutkan dari yang terbaru hingga terlama.</div>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                    <input type="file" id="historicalClosingInput" class="form-control" accept=".xlsx, .xls, .csv" style="max-width: 200px; padding: 2px 10px;" title="Gunakan file hasil Export Excel">
-                    <button class="btn btn-success" style="padding: 2px 10px;" onclick="uploadHistoricalClosings()"><i class="fa-solid fa-upload"></i> Upload Histori</button>
-                    <button class="btn btn-secondary" style="padding: 2px 10px;" onclick="printClosingHistory()"><i class="fa-solid fa-print"></i> Cetak Tampilan</button>
-                    <button class="btn btn-danger" data-role-special="closingHistoryReset" style="padding: 2px 10px;" onclick="window.resetClosingHistory()"><i class="fa-solid fa-trash-can"></i> Reset Riwayat</button>
-                </div>
-            </div>
-            
-            <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
-                <table class="table" id="closingHistoryTable">
-                    <thead>
-                        <tr>
-                            <th>Waktu Closing</th>
-                            <th>ID Referensi</th>
-                            <th>Jenis</th>
-                            <th>Kas Sistem</th>
-                            <th>Bank Sistem</th>
-                            <th>Total Sistem</th>
-                            <th>Kas Fisik</th>
-                            <th>Gantungan</th>
-                            <th>Selisih</th>
-                            <th>Catatan</th>
-                            <th>Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody id="closingHistoryTableBody">
-                        <!-- Injected by JS -->
-                    </tbody>
-                </table>
-            </div>
-            <button class="btn btn-primary btn-block mt-4" onclick="closeClosingHistoryModal()">Tutup</button>
-        </div>
-    </div>
 
-    <!-- Edit Closing Modal -->
-    <div id="editClosingModal" class="modal">
-        <div class="modal-content panel" style="width: 95%; max-width: 500px;">
-            <div class="modal-header flex-between mb-4">
-                <h2>Edit Riwayat Closing</h2>
-                <span class="close-modal" onclick="closeEditClosingModal()">&times;</span>
-            </div>
-            <input type="hidden" id="editClosingId">
-            <input type="hidden" id="editClosingKasSistem">
-            
-            <div class="form-group mb-3">
-                <label>Tanggal & Waktu</label>
-                <input type="datetime-local" id="editClosingDate" class="form-control">
-            </div>
-            <div class="form-group mb-3">
-                <label>Kas Fisik Real (Rp)</label>
-                <input type="text" id="editClosingFisik" class="form-control" onkeyup="formatCurrency(this)">
-            </div>
-            <div class="form-group mb-3">
-                <label>Jenis Closing</label>
-                <select id="editClosingType" class="form-control">
-                    <option value="temporary">Cek Sementara</option>
-                    <option value="final">Closing Final</option>
-                </select>
-            </div>
-            <div class="form-group mb-3">
-                <label>Catatan</label>
-                <textarea id="editClosingNote" class="form-control" rows="3"></textarea>
-            </div>
-            
-            <button class="btn btn-warning btn-block mt-4" onclick="saveEditClosing()"><i class="fa-solid fa-save"></i> Ubah & Abaikan Saldo Hari Ini</button>
-        </div>
-    </div>
 
-    <!-- HRIS Employee Modal -->
-    <div id="hrisEmployeeModal" class="modal">
-        <div class="modal-content panel" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-            <div class="modal-header flex-between mb-4">
-                <h2 id="modalHrisEmpTitle">Tambah Akun Karyawan</h2>
-                <span class="close-modal" onclick="closeHrisEmployeeModal()">&times;</span>
-            </div>
-            <input type="hidden" id="modalHrisEmpId">
-            <div class="form-group row">
-                <div class="col">
-                    <label>User</label>
-                    <input type="text" id="modalHrisEmpNik" class="form-control" placeholder="Contoh: yayan">
-                </div>
-                <div class="col">
-                    <label>Nama Lengkap</label>
-                    <input type="text" id="modalHrisEmpName" class="form-control" placeholder="Nama Karyawan..">
-                </div>
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>No. Tlp / WA</label>
-                    <input type="text" id="modalHrisEmpPhone" class="form-control" placeholder="Contoh: 08123456789">
-                </div>
-                <div class="col">
-                    <label>Link Maps (Opsional)</label>
-                    <input type="url" id="modalHrisEmpMaps" class="form-control" placeholder="URL Google Maps tempat tinggal">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Alamat Lengkap</label>
-                <textarea id="modalHrisEmpAddress" class="form-control" rows="2" placeholder="Nama Jalan, RT/RW, Kelurahan, Kec..."></textarea>
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Jabatan</label>
-                    <select id="modalHrisEmpRole" class="form-control">
-                        <option value="Kasir">Kasir</option>
-                        <option value="Teller">Teller</option>
-                        <option value="Admin">Admin</option>
-                        <option value="Supervisor">Supervisor</option>
-                        <option value="Kurir">Kurir</option>
-                        <option value="Keamanan">Keamanan / Satpam</option>
-                        <option value="Lainnya">Lainnya</option>
-                    </select>
-                </div>
-                <div class="col">
-                    <label>Status Kerja</label>
-                    <select id="modalHrisEmpStatus" class="form-control">
-                        <option value="Aktif">Aktif</option>
-                        <option value="Non-Aktif (Resign)">Non-Aktif (Resign)</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Gaji Pokok (Bulanan)</label>
-                    <input type="number" id="modalHrisEmpSalary" class="form-control" placeholder="Rp ">
-                </div>
-                <div class="col">
-                    <label>Uang Makan (Harian)</label>
-                    <input type="number" id="modalHrisEmpFood" class="form-control" placeholder="Rp / Hari Masuk">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>PIN Absensi Khusus (Hanya 4 Angka)</label>
-                <input type="password" id="modalHrisEmpPin" class="form-control" maxlength="4" placeholder="Misal: 1234">
-                <small class="text-muted">Username login memakai NIK, password awal memakai PIN ini. PIN tetap dipakai untuk Clock IN / OUT.</small>
-            </div>
-            <div class="form-group">
-                <label>Catatan</label>
-                <textarea id="modalHrisEmpNotes" class="form-control" rows="3" placeholder="Catatan tambahan tentang karyawan..."></textarea>
-            </div>
-            <hr class="divider mt-4 mb-4">
-            <h3 style="color: #60A5FA;"><i class="fa-solid fa-folder-open"></i> Upload Dokumen Karyawan</h3>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Foto Close-Up</label>
-                    <input type="file" id="modalHrisEmpPhoto" class="form-control" accept="image/*">
-                    <div id="previewEmpPhoto" style="margin-top:5px; max-height:100px; overflow:hidden;"></div>
-                </div>
-                <div class="col">
-                    <label>Foto Full Body</label>
-                    <input type="file" id="modalHrisEmpPhotoFull" class="form-control" accept="image/*">
-                    <div id="previewEmpPhotoFull" style="margin-top:5px; max-height:100px; overflow:hidden;"></div>
-                </div>
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Scan / Foto KTP</label>
-                    <input type="file" id="modalHrisEmpKtp" class="form-control" accept="image/*,application/pdf">
-                    <div id="previewEmpKtp" style="margin-top:5px; max-height:100px; overflow:hidden;"></div>
-                </div>
-                <div class="col">
-                    <label>Scan / Foto SIM (Opsional)</label>
-                    <input type="file" id="modalHrisEmpSim" class="form-control" accept="image/*,application/pdf">
-                    <div id="previewEmpSim" style="margin-top:5px; max-height:100px; overflow:hidden;"></div>
-                </div>
-                <div class="col">
-                    <label>Scan Ijazah (Opsional)</label>
-                    <input type="file" id="modalHrisEmpIjazah" class="form-control" accept="image/*,application/pdf">
-                    <div id="previewEmpIjazah" style="margin-top:5px; max-height:100px; overflow:hidden;"></div>
-                </div>
-            </div>
 
-            <button class="btn btn-primary mt-4 btn-block" onclick="saveHrisEmployee()"><i class="fa-solid fa-save"></i> Simpan Data Karyawan</button>
-        </div>
-    </div>
-
-    <!-- HRIS Leave Modal -->
-    <div id="hrisLeaveModal" class="modal">
-        <div class="modal-content panel" style="max-width: 620px;">
-            <div class="modal-header flex-between mb-4">
-                <h2 id="modalHrisLeaveTitle">Tambah Schedule / Cuti</h2>
-                <span class="close-modal" onclick="closeHrisLeaveModal()">&times;</span>
-            </div>
-            <input type="hidden" id="modalHrisLeaveId">
-            <div class="form-group">
-                <label>Nama Karyawan</label>
-                <select id="modalHrisLeaveEmp" class="form-control"></select>
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Jenis Tipe Pengajuan</label>
-                    <select id="modalHrisLeaveType" class="form-control" onchange="toggleHrisLeaveScheduleFields()">
-                        <option value="JADWAL_SHIFT">Schedule / Jadwal Kerja</option>
-                        <option value="CUTI">Cuti Tahunan</option>
-                        <option value="IZIN">Izin Keperluan</option>
-                        <option value="SAKIT">Sakit</option>
-                        <option value="LIBUR_SHIFT">Libur / Off Shift</option>
-                    </select>
-                </div>
-            </div>
-            <div id="modalHrisScheduleFields">
-                <div class="form-group row">
-                    <div class="col">
-                        <label>Nama Shift</label>
-                        <select id="modalHrisLeaveShiftName" class="form-control">
-                            <option value="Shift Pagi">Shift Pagi</option>
-                            <option value="Shift Siang">Shift Siang</option>
-                            <option value="Shift Midle">Shift Midle</option>
-                        </select>
-                    </div>
-                    <div class="col">
-                        <label>Jam Masuk</label>
-                        <input type="time" id="modalHrisLeaveStartTime" class="form-control">
-                    </div>
-                    <div class="col">
-                        <label>Jam Pulang</label>
-                        <input type="time" id="modalHrisLeaveEndTime" class="form-control">
-                    </div>
-                </div>
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Tanggal Mulai</label>
-                    <input type="date" id="modalHrisLeaveStartDate" class="form-control">
-                </div>
-                <div class="col">
-                    <label>Tanggal Selesai</label>
-                    <input type="date" id="modalHrisLeaveEndDate" class="form-control">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Keterangan / Alasan Tambahan</label>
-                <textarea id="modalHrisLeaveRemarks" class="form-control" rows="2" placeholder="Contoh: Jadwal kasir pagi, Keperluan keluarga, Surat dokter terlampir..."></textarea>
-            </div>
-            <button class="btn btn-primary mt-4 btn-block" onclick="saveHrisLeave()"><i class="fa-solid fa-save"></i> Simpan Schedule / Cuti</button>
-        </div>
-    </div>
-
-    <!-- HRIS Kasbon Modal -->
-    <div id="hrisKasbonModal" class="modal">
-        <div class="modal-content panel" style="max-width: 500px;">
-            <div class="modal-header flex-between mb-4">
-                <h2 id="modalHrisKasbonTitle">Input Mutasi Kasbon</h2>
-                <span class="close-modal" onclick="closeHrisKasbonModal()">&times;</span>
-            </div>
-            <div class="form-group">
-                <label>Nama Karyawan (Sisa Hutang)</label>
-                <select id="modalHrisKasbonEmp" class="form-control" onchange="updateHrisKasbonSisa()"></select>
-                <small class="text-muted" id="lblHrisKasbonSisa">Sisa Hutang: Rp 0</small>
-            </div>
-            <div class="form-group row">
-                <div class="col">
-                    <label>Tipe Mutasi</label>
-                    <select id="modalHrisKasbonType" class="form-control" onchange="toggleHrisKasbonSource()">
-                        <option value="PINJAM">Pemberian Kasbon (Uang Keluar)</option>
-                        <option value="CICIL">Cicilan Bayar (Uang Masuk/Potong Gaji)</option>
-                    </select>
-                </div>
-                <div class="col">
-                    <label>Sumber Dana / Metode</label>
-                    <select id="modalHrisKasbonSource" class="form-control">
-                        <option value="TUNAI">Kas Laci (Tunai Rupiah)</option>
-                        <option value="BCA">Rekening BCA</option>
-                        <option value="MANDIRI">Rekening Mandiri</option>
-                        <option value="POTONG_GAJI" id="optKasbonPotongGaji" style="display:none;">Potong Gaji (Tak Ubah Saldo)</option>
-                    </select>
-                </div>
-                <div class="col">
-                    <label>Tanggal</label>
-                    <input type="date" id="modalHrisKasbonDate" class="form-control">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Nominal (Rp)</label>
-                <input type="number" id="modalHrisKasbonAmount" class="form-control" placeholder="0">
-            </div>
-            <div class="form-group">
-                <label>Keterangan</label>
-                <input type="text" id="modalHrisKasbonDesc" class="form-control" placeholder="Contoh: Keperluan darurat / Potong gaji bln x">
-            </div>
-            <button class="btn btn-primary mt-4 btn-block" onclick="submitHrisKasbon()">Rekam Transaksi & Update Saldo</button>
-        </div>
-    </div>
-
-    <!-- HRIS BPJS Modal -->
-    <div id="hrisBpjsModal" class="modal">
-        <div class="modal-content panel" style="max-width: 500px;">
-            <div class="modal-header flex-between mb-4">
-                <h2 id="modalHrisBpjsTitle">Update Potongan BPJS</h2>
-                <span class="close-modal" onclick="closeHrisBpjsModal()">&times;</span>
-            </div>
-            <div class="form-group">
-                <label>Pilih Karyawan</label>
-                <select id="modalHrisBpjsEmp" class="form-control" onchange="autoFillHrisBpjs()"></select>
-            </div>
-            <div class="form-group">
-                <label>Potongan BPJS Kesehatan (bln)</label>
-                <input type="number" id="modalHrisBpjsKes" class="form-control" placeholder="0">
-                <small class="text-muted">Umumnya 1% ditanggung karyawan dari UMK / Gaji Pokok.</small>
-            </div>
-            <div class="form-group">
-                <label>Potongan BPJS Ketenagakerjaan (bln)</label>
-                <input type="number" id="modalHrisBpjsTk" class="form-control" placeholder="0">
-                <small class="text-muted">Umumnya 2% untuk JHT ditanggung karyawan.</small>
-            </div>
-            <button class="btn btn-primary mt-4 btn-block" onclick="processHrisBpjs()">Simpan Data BPJS</button>
-        </div>
-    </div>
     <!-- Global Image Lightbox -->
     <div id="globalImageLightbox" class="modal" onclick="this.classList.remove('show')" style="z-index: 9999; cursor: zoom-out; align-items: center; justify-content: center; background-color: rgba(0,0,0,0.85); padding: 1vmin;">
         <img id="globalLightboxImg" src="" style="width: 95vw; height: 95vh; object-fit: contain;">
@@ -8474,7 +5462,7 @@
                 <div class="form-group mb-3">
                     <label style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 6px; display: block;">Simpan Nomor ke Kontak Favorit</label>
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <input type="text" id="mSendKursWaName" class="form-control" placeholder="Masukkan nama (misal: Agen Budi)" style="flex: 1; background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px;">
+                        <input type="text" id="mSendKursWaName" class="form-control" placeholder="Masukkan nama (misal: Nama agen)" style="flex: 1; background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px;">
                         <button type="button" class="btn btn-outline" onclick="window.saveWaFavorite()" style="border-color: #38bdf8; color: #38bdf8; height: 38px; padding: 0 12px; font-size: 0.85rem; white-space: nowrap; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
                             <i class="fa-solid fa-star"></i> Simpan
                         </button>
@@ -8486,89 +5474,8 @@
         </div>
     </div>
 
-    <!-- Document Add Folder Modal -->
-    <div id="documentFolderModal" class="modal" style="display: none; z-index: 10050;">
-        <div class="modal-content panel" style="width: 95%; max-width: 450px;">
-            <div class="modal-header flex-between mb-4">
-                <h2 id="documentFolderModalTitle">Tambah Folder Baru</h2>
-                <span class="close-modal" onclick="window.closeDocumentFolderModal()">&times;</span>
-            </div>
-            <form id="documentFolderModalForm" onsubmit="event.preventDefault(); window.saveDocumentFolder();">
-                <input type="hidden" id="mFolderEditId">
-                <div class="form-group">
-                    <label>Lokasi Folder</label>
-                    <select id="mFolderParent" class="form-control">
-                        <!-- Pilihan folder induk diisi via JS -->
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Nama Folder</label>
-                    <input type="text" id="mFolderNama" class="form-control" placeholder="Masukkan nama folder kustom..." required>
-                </div>
-                <button type="submit" id="documentFolderSubmitBtn" class="btn btn-primary btn-block mt-4"><i class="fa-solid fa-save"></i> Tambah Folder</button>
-            </form>
-        </div>
-    </div>
 
-    <!-- Document Upload Modal -->
-    <div id="documentUploadModal" class="modal" style="display: none; z-index: 10050;">
-        <div class="modal-content panel" style="width: 95%; max-width: 500px;">
-            <div class="modal-header flex-between mb-4">
-                <h2>Unggah Berkas Baru</h2>
-                <span class="close-modal" onclick="window.closeDocumentUploadModal()">&times;</span>
-            </div>
-            <form id="documentUploadModalForm" onsubmit="event.preventDefault(); window.saveDocumentUpload();">
-                <div class="form-group">
-                    <label>Pilih File</label>
-                    <input type="file" id="mDocFile" class="form-control" accept=".jpg,.jpeg,.png,.gif,.pdf,.rar,.zip,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx" required style="padding: 8px 12px; height: auto;">
-                    <small class="text-muted" style="display: block; margin-top: 4px;">Format didukung: JPG, JPEG, PNG, GIF, PDF, RAR, ZIP, TXT, Word (DOC, DOCX), Excel (XLS, XLSX), PowerPoint (PPT, PPTX). Maksimal 10 MB.</small>
-                </div>
-                <div class="form-group">
-                    <label>Nama Berkas</label>
-                    <input type="text" id="mDocNama" class="form-control" placeholder="Biarkan kosong untuk menggunakan nama file asli...">
-                </div>
-                <div class="form-group">
-                    <label>Pilih Folder Tujuan</label>
-                    <select id="mDocFolder" class="form-control" required>
-                        <!-- Pilihan folder diisi via JS -->
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Keterangan / Catatan Berkas</label>
-                    <textarea id="mDocKeterangan" class="form-control" rows="3" placeholder="Masukkan keterangan tambahan jika ada..."></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary btn-block mt-4"><i class="fa-solid fa-upload"></i> Unggah Berkas</button>
-            </form>
-        </div>
-    </div>
 
-    <!-- Document Edit Modal -->
-    <div id="documentEditModal" class="modal" style="display: none; z-index: 10050;">
-        <div class="modal-content panel" style="width: 95%; max-width: 500px;">
-            <div class="modal-header flex-between mb-4">
-                <h2>Ubah Informasi Berkas</h2>
-                <span class="close-modal" onclick="window.closeDocumentEditModal()">&times;</span>
-            </div>
-            <form id="documentEditModalForm" onsubmit="event.preventDefault(); window.saveDocumentEdit();">
-                <input type="hidden" id="mEditDocId">
-                <div class="form-group">
-                    <label>Nama Berkas</label>
-                    <input type="text" id="mEditDocNama" class="form-control" placeholder="Nama berkas..." required>
-                </div>
-                <div class="form-group">
-                    <label>Pindah Ke Folder</label>
-                    <select id="mEditDocFolder" class="form-control" required>
-                        <!-- Pilihan folder diisi via JS -->
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Keterangan / Catatan Berkas</label>
-                    <textarea id="mEditDocKeterangan" class="form-control" rows="3" placeholder="Masukkan keterangan tambahan jika ada..."></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary btn-block mt-4"><i class="fa-solid fa-save"></i> Simpan Perubahan</button>
-            </form>
-        </div>
-    </div>
 
     <!-- Valas Waiting List Modal -->
     <div id="valasWaitingListModal" class="modal" style="display: none; z-index: 10050;">
@@ -8691,18 +5598,26 @@
             '10-accounting.js',
             '11-gallery.js',
             '12-gantungan.js',
-            '13-pickup.js',
-            '14-documents.js',
+            
             '15-calculator.js',
-            '16-aichat.js',
             '17-waiting-list.js',
-            '18-translator.js',
             '19-userchat.js',
             '20-mobilemode.js',
             '21-demo-pos.js',
             '22-backup.js',
             '23-regulatory-ai.js',
             '24-regulatory-chat.js',
+            '31-data-reset.js',
+            '32-customer-tools.js',
+            '33-user-access.js',
+            '34-closing-daily.js',
+            '35-investors.js',
+            '36-lkbu.js',
+            '37-expenses.js',
+            '38-pos-queue.js',
+            '39-pos-payment.js',
+            '40-pickup.js',
+            '41-kurs-hari-ini.js','42-booking.js','43-koin-uang-lama.js','44-iso-picker.js','45-currency-form.js','46-kurs-sync.js','47-kurs-page.js','48-session-guard.js','49-popup-style.js','50-vision-key.js','51-wa-gateway.js','52-wa-template.js','53-profile-form.js','54-login-page-settings.js','55-sidebar-brand.js','56-coretax.js','57-goaml.js','58-ai-settings.js','59-hris.js','60-documents.js','61-ai-assistant.js','62-translator.js','63-assets.js','64-mobile-focus.js','65-dashboard-ui.js','66-sidebar-ui.js','67-sipesat.js','68-pt-reps.js',
         ];
     ?>
     <script src="<?php echo e(asset('js/sync.js')); ?>?v=<?php echo e(time()); ?>"></script>
@@ -8831,19 +5746,6 @@ window.resetReportFilter = function() {
     if(tipeS) tipeS.selectedIndex = 0;
     
     window.loadReportsTable();
-};
-
-window.resetAuditFilter = function() {
-    ['filterAuditInvoice', 'filterAuditNama', 'filterAuditHp', 'auditStartDate', 'auditEndDate'].forEach(id => {
-        const el = document.getElementById(id);
-        if(el) el.value = '';
-    });
-    const valutaS = document.getElementById('filterAuditValuta');
-    if(valutaS) valutaS.selectedIndex = 0;
-    const tipeS = document.getElementById('filterAuditTipe');
-    if(tipeS) tipeS.selectedIndex = 0;
-    
-    window.filterAuditTable();
 };
     </script>
     <!-- Global Toast Container for User Chat Notifications -->
@@ -9019,34 +5921,7 @@ window.resetAuditFilter = function() {
         body:not(.apv-theme) #themeSwitcherPanel .mc-sidebar-group-colors label{color:#cbd5e1;}
         body:not(.apv-theme) #themeSwitcherPanel .mc-sidebar-group-reset{background:#0f172a;color:#cbd5e1;border-color:rgba(255,255,255,.14);}
     </style>
-    <style id="sidebar-grouped-menu-style">
-        .sidebar-nav-grouped{padding:8px 8px 14px;}
-        .sidebar-menu-group{margin:4px 0 8px;border:1px solid rgba(148,163,184,.10);border-radius:10px;overflow:hidden;background:rgba(15,23,42,.10);}
-        .sidebar-group-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px;background:transparent;border:0;color:#94a3b8;cursor:pointer;text-align:left;font-size:.70rem;font-weight:800;letter-spacing:.65px;text-transform:uppercase;}
-        .sidebar-group-toggle:hover{background:rgba(148,163,184,.08);color:#e2e8f0;}
-        .sidebar-group-label{display:flex;align-items:center;gap:8px;min-width:0;}
-        .sidebar-group-label>i{width:17px;text-align:center;color:#64748b;}
-        .sidebar-group-chevron{font-size:.65rem;transition:transform .18s ease;color:#64748b;}
-        .sidebar-menu-group.is-collapsed .sidebar-group-chevron{transform:rotate(-90deg);}
-        .sidebar-menu-group.is-collapsed .sidebar-group-items{display:none;}
-        .sidebar-group-items{padding:2px 4px 5px;}
-        .sidebar-group-items .nav-item{margin:2px 0;}
-        .sidebar-nav-grouped .nav-item{font-size:.82rem;}
-        /* Sidebar typography standard: seluruh teks menu +2px */
-        .sidebar-nav-grouped .nav-item{font-size:calc(.82rem + 2px) !important;}
-        .sidebar-nav-grouped .sidebar-group-toggle{font-size:calc(.70rem + 2px) !important;}
-        body.apv-theme .sidebar-nav-grouped .nav-item{font-size:16.5px !important;}
-        body.apv-theme .sidebar-nav-grouped .sidebar-group-toggle{font-size:13.5px !important;}
-        body.apv-theme .sidebar-nav-grouped .nav-item small{font-size:inherit !important;}
-        body:not(.apv-theme) .sidebar-nav-grouped .nav-item{font-size:14.5px !important;}
-        body:not(.apv-theme) .sidebar-nav-grouped .sidebar-group-toggle{font-size:11.5px !important;}
-        .sidebar-nav-grouped .sidebar-group-toggle{font-size:calc(.70rem + 2px);}
-        .sidebar-nav-grouped .sidebar-group-label{font-size:inherit;}
-        .sidebar-nav-grouped .nav-item small{font-size:calc(0.75em + 2px);}
-        .sidebar-nav-grouped .nav-item i:first-child{width:19px;text-align:center;}
-        @media (max-width:700px){.sidebar-menu-group{margin-bottom:6px}.sidebar-group-toggle{padding:9px 10px}.sidebar-group-items .nav-item{padding-top:9px;padding-bottom:9px;}}
-    </style>
-    <script>
+        <script>
     (function(){
         var STORAGE='mc_sidebar_groups_v1';
         var defaults={dashboard:true,transaksi:true,nasabah:true,master:true,keuangan:true,laporan:true,bi:true,tools:true,administrasi:true,pengaturan:true};
@@ -9119,7 +5994,7 @@ window.resetAuditFilter = function() {
     })();
     </script>
     <script src="<?php echo e(asset('js/modules/29-letter-archive.js?v=20261005-2')); ?>"></script>
-    <script src="<?php echo e(asset('js/modules/28-letter-number.js?v=20261005-3')); ?>"></script>
+    <script src="<?php echo e(asset('js/modules/28-letter-number.js?v=20261015-1')); ?>"></script>
     <script src="<?php echo e(asset('js/pwa.js?v=1.0.0')); ?>"></script>
 <script src="<?php echo e(asset('js/modules/30-dashboard-analytics.js?v=20261008-1')); ?>"></script>
 </body>

@@ -4,7 +4,7 @@
 // DTTOT MANAGEMENT
 // ==============================
 const dtottUtils = window.AlmaraApp.utils;
-const DTTOT_STORAGE_KEYS = ['mc_dttot', 'mc_dtott', 'mc_investors'];
+const DTTOT_STORAGE_KEYS = ['mc_dttot', 'mc_dtott'];
 
 function readDttotFromStorage() {
     for (const key of DTTOT_STORAGE_KEYS) {
@@ -22,7 +22,7 @@ function readDttotFromStorage() {
         if (Array.isArray(safe) && safe.length) return safe;
         const legacy = dtottUtils.safeArrayGet('mc_dtott');
         if (Array.isArray(legacy) && legacy.length) return legacy;
-        return dtottUtils.safeArrayGet('mc_investors');
+        return legacy;
     }
     return [];
 }
@@ -222,151 +222,6 @@ window.loadDttotTable = window.loadDtottTable;
 window.uploadDttotFile = window.uploadDtottFile;
 window.clearDttotList = window.clearDtottList;
 window.filterDttotTable = window.filterDtottTable;
-
-window.uploadBatchRates = function() {
-    const fileInput = document.getElementById('batchRateInput');
-    if(!fileInput || !fileInput.files || fileInput.files.length === 0) {
-        alert("Silakan pilih file Excel/CSV terlebih dahulu!");
-        return;
-    }
-    
-    const file = fileInput.files[0];
-    const reader = new FileReader();
-    
-    reader.onload = function(e) {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, {type: 'array'});
-            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-            
-            // Expected format (or similar):
-            // Row 0: [Kode, Beli, Jual] <- Header
-            // Row 1: ['USD', 15000, 15500]
-            let jsonData = XLSX.utils.sheet_to_json(firstSheet, {header: 1, raw: false});
-            
-            jsonData = jsonData.map(row => {
-                if(row && row.length === 1 && typeof row[0] === 'string') {
-                    if(row[0].includes(';')) return row[0].split(';');
-                    if(row[0].includes(',')) return row[0].split(',');
-                }
-                return row;
-            });
-            
-            const currencies = getCurrencies();
-            let updatedCount = 0;
-
-            let cleanNum = (val) => {
-                if(typeof val === 'number') return val;
-                if(!val) return 0;
-                let s = String(val).replace(/Rp|\s+/gi, '').trim();
-                
-                if(s.includes('.') && s.includes(',')) {
-                    const lastDot = s.lastIndexOf('.');
-                    const lastComma = s.lastIndexOf(',');
-                    if(lastComma > lastDot) {
-                        s = s.replace(/\./g, '').replace(/,/g, '.'); 
-                    } else {
-                        s = s.replace(/,/g, ''); 
-                    }
-                } else if(s.includes(',')) {
-                    const parts = s.split(',');
-                    if(parts.length === 2 && parts[1].length === 3) {
-                        s = s.replace(/,/g, ''); 
-                    } else if(parts.length > 2) {
-                        s = s.replace(/,/g, '');
-                    } else {
-                        s = s.replace(/,/g, '.'); 
-                    }
-                } else if (s.includes('.')) {
-                    const parts = s.split('.');
-                    if(parts.length > 2) {
-                        s = s.replace(/\./g, ''); 
-                    } else if(parts.length === 2 && parts[1].length === 3) {
-                        s = s.replace(/\./g, ''); 
-                    }
-                }
-                
-                return parseFloat(s) || 0;
-            };
-
-            jsonData.forEach((row, index) => {
-                if(!row || row.length < 2) return;
-                
-                // Smart auto-detect code column
-                let codeIdx = -1;
-                let actualCode = '';
-                for(let i=0; i<row.length; i++) {
-                    const rawVal = String(row[i] || '').trim().toUpperCase();
-                    if (!rawVal) continue;
-                    let matches = rawVal.match(/[A-Z]{3}/g);
-                    let parsedVal = matches ? matches[matches.length - 1] : rawVal;
-                    
-                    if(parsedVal && currencies.find(c => c.code.toUpperCase() === parsedVal)) {
-                        codeIdx = i; 
-                        actualCode = parsedVal;
-                        break;
-                    }
-                }
-                
-                if(codeIdx === -1) return; // No recognized currency code in this row
-                
-                const code = actualCode;
-                
-                // Get all valid numbers to the right of the currency code
-                let numbers = [];
-                for(let i = codeIdx + 1; i < row.length; i++) {
-                    let num = cleanNum(row[i]);
-                    // Ignore very small numbers which might be margin artifacts if they copied the HTML table natively
-                    if(num > 100) {
-                        numbers.push(num);
-                    } else if (num > 0 && num <= 100 && numbers.length === 0) {
-                        // Exception for certain currencies that might genuinely be less than 100? None practically, but just in case.
-                        numbers.push(num); 
-                    }
-                }
-
-                if(code && numbers.length >= 2) {
-                    let baseBuy = numbers[0];
-                    // Find the next number that represents the sell rate.
-                    // If they copied from HTML, array is [15000, 15000, 15500, 15500] (Buy, SistemBuy, Sell, SistemSell)
-                    let baseSell = numbers.find(n => n !== baseBuy) || numbers[1];
-
-                    // Safely ensure Buy is <= Sell to avoid inverted mistakes
-                    const finalBuy = Math.min(baseBuy, baseSell);
-                    const finalSell = Math.max(baseBuy, baseSell);
-                    
-                    const targets = currencies.filter(c => {
-                        const curCode = String(c.code || '').trim().toUpperCase();
-                        return curCode === code || curCode.substring(0, 3) === code;
-                    });
-
-                    targets.forEach(currency => {
-                        const mb = currency.margin_buy || 0;
-                        const ms = currency.margin_sell || 0;
-                        currency.base_buy = finalBuy;
-                        currency.base_sell = finalSell;
-                        currency.buy = finalBuy + mb;
-                        currency.sell = finalSell + ms;
-                        updatedCount++;
-                    });
-                }
-            });
-
-            if(updatedCount > 0) {
-                saveCurrencies(currencies);
-                loadCurrencyTable();
-                alert(`Berhasil memperbarui kurs untuk ${updatedCount} mata uang.`);
-                fileInput.value = ''; // Reset form
-            } else {
-                alert("Tidak ada kurs yang diperbarui. Pastikan format kolom: Kode | Beli | Jual dan kode mata uang sudah terdaftar.");
-            }
-        } catch(error) {
-            console.error("Error parsing Rate file:", error);
-            alert("Terjadi kesalahan membaca file. Pastikan formatnya benar (Excel/CSV).");
-        }
-    };
-    reader.readAsArrayBuffer(file);
-};
 
 window.uploadHistoricalTransactions = function() {
     const fileInput = document.getElementById('historicalTrxInput');
@@ -760,24 +615,6 @@ window.uploadHistoricalClosings = function() {
     reader.readAsArrayBuffer(file);
 };
 
-window.handleCustomerExcelSelected = function() {
-    const fileInput = document.getElementById('customerExcelInput');
-    const btn = document.getElementById('btnCustomerExcelUpload');
-    const fileNameLabel = document.getElementById('customerExcelFileName');
-    if (!fileInput || !btn) return;
-
-    if (fileInput.files && fileInput.files.length > 0) {
-        btn.innerHTML = '<i class="fa-solid fa-file-import"></i> Proses Import';
-        btn.disabled = false;
-        btn.classList.remove('disabled');
-        if (fileNameLabel) fileNameLabel.textContent = fileInput.files[0].name;
-    } else {
-        btn.innerHTML = '<i class="fa-solid fa-file-import"></i> Proses Import';
-        btn.disabled = false;
-        btn.classList.remove('disabled');
-        if (fileNameLabel) fileNameLabel.textContent = 'Belum ada file dipilih';
-    }
-};
 
 window.openCustomerExcelPicker = function() {
     const fileInput = document.getElementById('customerExcelInput');

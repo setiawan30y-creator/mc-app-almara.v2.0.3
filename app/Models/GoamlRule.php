@@ -11,7 +11,7 @@ class GoamlRule extends Model
     protected $fillable = [
         'name','code','rule_type','regulation_source','regulation_no','regulation_article',
         'effective_from','effective_until','target','classification','severity','action','result_type',
-        'min_transactions','period_days','total_amount_idr','amount_operator',
+        'min_transactions','period_days','period_unit','total_amount_idr','amount_unit','amount_usd','amount_operator',
         'payment_method','conditions','internal_note','is_active','priority','version',
     ];
 
@@ -19,6 +19,7 @@ class GoamlRule extends Model
         'conditions' => 'array',
         'is_active' => 'boolean',
         'total_amount_idr' => 'decimal:2',
+        'amount_usd' => 'decimal:2',
         'effective_from' => 'date',
         'effective_until' => 'date',
     ];

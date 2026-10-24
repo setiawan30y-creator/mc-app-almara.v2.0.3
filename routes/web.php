@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ErpCashClosingController;
 use App\Http\Controllers\ErpPaymentController;
+use App\Http\Controllers\UploadFileController;
 use App\Http\Middleware\DevelopmentBypassAuth;
 use App\Http\Middleware\InjectClosingBridge;
 use App\Models\Datastore;
@@ -24,6 +25,12 @@ function decodeDatastorePayload($payload)
     }
     return is_array($decoded) ? $decoded : null;
 }
+
+// Berkas unggahan (foto nasabah, dokumen, bukti): disimpan privat, hanya untuk pengguna yang sudah login.
+Route::get('/uploads/{path}', [UploadFileController::class, 'show'])
+    ->where('path', '.*')
+    ->middleware($erpAuth)
+    ->name('uploads.show');
 
 Route::get('/', function () {
     $devBypass = app()->environment('local') && (bool) config('app.dev_bypass_auth', false);
@@ -122,7 +129,7 @@ Route::get('/goaml/compliance-rules', function () {
 
 Route::get('/settings/theme', function () {
     return view('theme-settings');
-})->middleware([DevelopmentBypassAuth::class])->name('settings.theme');
+})->middleware($erpAuth)->name('settings.theme');
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login.form');
 Route::post('/login', [AuthController::class, 'login'])->name('login');

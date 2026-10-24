@@ -62,7 +62,7 @@ class ErpCashClosingController extends Controller
     public function gantungan(Request $request)
     {
         $items = ErpGantungan::orderByDesc('occurred_at')->limit(100)->get();
-        $outstanding = (float) ErpGantungan::where('status', 'OUTSTANDING')->sum('amount_rp');
+        $outstanding = (float) ErpGantungan::openAt()->sum('remaining_calc');
         $returned = (float) ErpGantungan::where('status', 'RETURNED')->sum('amount_rp');
 
         return view('erp.gantungan', compact('items', 'outstanding', 'returned'));
@@ -80,8 +80,8 @@ class ErpCashClosingController extends Controller
 
         $data['reference_no'] = 'GNT-' . now()->format('YmdHis') . '-' . Str::upper(Str::random(4));
         $data['status'] = 'OUTSTANDING';
-        $data['created_by'] = auth()->id();
-        $data['updated_by'] = auth()->id();
+        $data['created_by'] = $this->actorId();
+        $data['updated_by'] = $this->actorId();
 
         ErpGantungan::create($data);
 
@@ -95,8 +95,8 @@ class ErpCashClosingController extends Controller
         $gantungan->update([
             'status' => 'RETURNED',
             'returned_at' => now(),
-            'returned_by' => auth()->id(),
-            'updated_by' => auth()->id(),
+            'returned_by' => $this->actorId(),
+            'updated_by' => $this->actorId(),
         ]);
 
         return back()->with('success', 'Gantungan ditandai RETURNED.');
@@ -148,11 +148,11 @@ class ErpCashClosingController extends Controller
                 'difference' => $difference,
                 'status' => $status,
                 'notes' => $data['notes'] ?? null,
-                'closed_by' => $status === 'CLOSED' ? auth()->id() : null,
+                'closed_by' => $status === 'CLOSED' ? $this->actorId() : null,
                 'closed_at' => $status === 'CLOSED' ? now() : null,
             ]);
-            $closing->created_by = $closing->created_by ?: auth()->id();
-            $closing->updated_by = auth()->id();
+            $closing->created_by = $closing->created_by ?: $this->actorId();
+            $closing->updated_by = $this->actorId();
             $closing->save();
 
             $this->saveDenominations($closing, $data['denominations'] ?? null);
@@ -271,12 +271,14 @@ class ErpCashClosingController extends Controller
 
     private function hangingAt(string $cutoff): float
     {
-        return (float) ErpGantungan::query()
-            ->where('occurred_at', '<=', $cutoff)
-            ->where(function ($query) use ($cutoff) {
-                $query->whereNull('returned_at')
-                    ->orWhere('returned_at', '>', $cutoff);
-            })
-            ->sum('amount_rp');
+        return ErpGantungan::netAt($cutoff);
+    }
+
+    /** users.id berupa string (mis. 'u1'), sedangkan kolom audit ERP berupa angka. */
+    private function actorId(): ?int
+    {
+        $id = auth()->id();
+
+        return is_numeric($id) ? (int) $id : null;
     }
 }

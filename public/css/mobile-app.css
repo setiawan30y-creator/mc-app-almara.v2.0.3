@@ -1,0 +1,222 @@
+/* @2026-Alifiandra
+ * =====================================================================
+ * mobile-app.css  —  Tampilan HP bergaya aplikasi (Material / Flutter)
+ *
+ * Satu-satunya tempat aturan mode HP (body.mobile-mode). Dimuat paling akhir
+ * setelah styles.css, apv-theme.css dan business-ui.css.
+ * Warna memakai variabel tema (--mc-*), jadi ikut tema terang maupun gelap.
+ * Markup dibuat oleh js/modules/20-mobilemode.js.
+ * ===================================================================== */
+
+body.mobile-mode {
+    --m-bar-h: 56px;
+    --m-nav-h: 64px;
+    --m-safe-b: env(safe-area-inset-bottom, 0px);
+    --m-safe-t: env(safe-area-inset-top, 0px);
+    --m-primary: var(--mc-primary, #1D6C5D);
+    --m-surface: var(--mc-card-bg, var(--panel-bg, #fff));
+    --m-bg: var(--mc-page-bg, var(--bg-dark, #F0F4F8));
+    --m-text: var(--mc-text, var(--text-primary, #18221F));
+    --m-muted: var(--mc-text-muted, var(--text-muted, #64748B));
+    --m-line: var(--mc-border, var(--panel-border, #E2E8F0));
+    --m-ease: cubic-bezier(.2, .8, .2, 1);
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+}
+
+/* ---------- Kerangka: konten penuh lebar, ruang untuk menu bawah ---------- */
+html body.mobile-mode .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    padding-bottom: calc(var(--m-nav-h) + var(--m-safe-b) + 12px) !important;
+}
+body.mobile-mode .view-container { padding: 12px !important; }
+body.mobile-mode .view-section { padding-bottom: 4px; }
+
+/* ---------- App bar ---------- */
+body.mobile-mode .top-header {
+    height: calc(var(--m-bar-h) + var(--m-safe-t)) !important;
+    min-height: calc(var(--m-bar-h) + var(--m-safe-t)) !important;
+    padding: var(--m-safe-t) 8px 0 4px !important;
+    background: var(--m-surface) !important;
+    border-bottom: 1px solid var(--m-line) !important;
+    box-shadow: 0 1px 6px rgba(15, 23, 42, .06) !important;
+}
+body.mobile-mode .top-header .header-left { gap: 2px; min-width: 0; flex: 1; display: flex; align-items: center; }
+body.mobile-mode .menu-toggle {
+    display: inline-flex !important;
+    align-items: center; justify-content: center;
+    width: 48px; height: 48px; border-radius: 50%;
+    color: var(--m-text) !important;
+    font-size: 1.25rem !important;
+}
+body.mobile-mode #pageTitle {
+    font-size: 1.1rem !important; font-weight: 600 !important;
+    margin: 0 !important; color: var(--m-text) !important;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+body.mobile-mode .top-header .header-right { gap: 2px; flex: 0 0 auto; }
+/* Elemen dekoratif header disembunyikan agar app bar tetap lega */
+body.mobile-mode .header-time-row,
+body.mobile-mode #liveDate,
+body.mobile-mode #liveClock,
+body.mobile-mode .header-environment,
+body.mobile-mode #themeSwitcherWrap,
+body.mobile-mode #connectionStatusIndicator span { display: none !important; }
+body.mobile-mode #headerMobileToggleBtn {
+    width: 44px; height: 44px; border-radius: 50%; border: 0; background: transparent;
+    color: var(--m-muted); font-size: 1.05rem; display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* ---------- Drawer (menu samping) + scrim ---------- */
+html body.mobile-mode .sidebar {
+    width: min(84vw, 320px) !important;
+    min-width: 0 !important;
+    max-width: 320px !important;
+    flex: 0 0 auto !important;
+    height: 100dvh;
+    transform: translateX(-100%);
+    visibility: hidden;
+    z-index: 10010;
+    border-radius: 0 20px 20px 0;
+    transition: transform .28s var(--m-ease), visibility 0s linear .28s;
+}
+html body.mobile-mode .sidebar.open {
+    transform: none;
+    visibility: visible;
+    box-shadow: 0 0 40px rgba(0, 0, 0, .35);
+    transition: transform .28s var(--m-ease), visibility 0s;
+}
+body.mobile-mode .close-sidebar { display: inline-flex !important; width: 44px; height: 44px; align-items: center; justify-content: center; }
+body.mobile-mode .sidebar .nav-item { min-height: 48px; border-radius: 12px; }
+.m-scrim {
+    position: fixed; inset: 0; z-index: 10005;
+    background: rgba(2, 6, 23, .5);
+    opacity: 0; pointer-events: none;
+    transition: opacity .25s ease;
+}
+.m-scrim.show { opacity: 1; pointer-events: auto; }
+
+/* ---------- Menu bawah (Navigation Bar) ---------- */
+.mobile-bottom-nav { display: none; }
+body.mobile-mode .mobile-bottom-nav {
+    display: flex;
+    position: fixed; left: 0; right: 0; bottom: 0;
+    height: calc(var(--m-nav-h) + var(--m-safe-b));
+    padding: 0 6px var(--m-safe-b);
+    align-items: stretch; justify-content: space-around;
+    background: var(--m-surface);
+    border-top: 1px solid var(--m-line);
+    box-shadow: 0 -2px 12px rgba(15, 23, 42, .08);
+    z-index: 1000;
+}
+body.mobile-mode .mobile-bottom-nav-item {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    padding: 8px 0; min-height: 48px;
+    color: var(--m-muted); text-decoration: none; cursor: pointer;
+    font-size: .68rem; font-weight: 500; letter-spacing: .01em;
+    touch-action: manipulation;
+}
+body.mobile-mode .mobile-bottom-nav-item i {
+    width: 56px; height: 28px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem;
+    transition: background-color .2s ease, color .2s ease;
+}
+body.mobile-mode .mobile-bottom-nav-item:active i { background: color-mix(in srgb, var(--m-primary) 12%, transparent); }
+body.mobile-mode .mobile-bottom-nav-item.active { color: var(--m-primary); font-weight: 600; }
+body.mobile-mode .mobile-bottom-nav-item.active i {
+    background: color-mix(in srgb, var(--m-primary) 16%, transparent);
+    color: var(--m-primary);
+}
+
+/* ---------- Kartu & panel ---------- */
+body.mobile-mode .panel,
+body.mobile-mode .pos-card-modern {
+    padding: 14px !important;
+    border-radius: 16px !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .08), 0 4px 12px rgba(15, 23, 42, .05) !important;
+}
+body.mobile-mode .panel-header,
+body.mobile-mode .header-panel { padding: 0 0 10px !important; margin-bottom: 10px !important; }
+body.mobile-mode .panel-header h3,
+body.mobile-mode .header-panel h2 { font-size: 1rem !important; }
+body.mobile-mode .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+body.mobile-mode .stat-card { padding: 12px !important; border-radius: 16px !important; }
+body.mobile-mode .stat-card h3 { font-size: .7rem !important; line-height: 1.25 !important; }
+body.mobile-mode .stat-card .stat-value { font-size: 1.05rem !important; line-height: 1.2 !important; }
+body.mobile-mode .stat-icon { width: 34px !important; height: 34px !important; font-size: .95rem !important; border-radius: 10px !important; }
+body.mobile-mode .grid-2,
+body.mobile-mode .grid-3,
+body.mobile-mode .grid-4,
+body.mobile-mode .pos-layout-modern { grid-template-columns: 1fr !important; gap: 12px !important; }
+body.mobile-mode .table-responsive { border-radius: 12px !important; -webkit-overflow-scrolling: touch; }
+body.mobile-mode .table th,
+body.mobile-mode .table td { padding: 8px !important; font-size: .78rem !important; }
+
+/* ---------- Isian (outlined field) ---------- */
+body.mobile-mode .form-group { margin-bottom: 12px !important; }
+body.mobile-mode .form-group label,
+body.mobile-mode label { font-size: .75rem !important; margin-bottom: 4px !important; }
+body.mobile-mode .form-control,
+body.mobile-mode .input-group-text {
+    min-height: 48px !important;
+    padding: 10px 14px !important;
+    border-radius: 12px !important;
+    font-size: 16px !important; /* mencegah browser zoom sendiri saat mengetik */
+    line-height: 1.35 !important;
+}
+body.mobile-mode .form-control:not(textarea) { height: 48px !important; }
+body.mobile-mode textarea.form-control { height: auto !important; min-height: 96px !important; }
+body.mobile-mode .form-control:focus,
+body.mobile-mode .form-control:focus-visible {
+    border-color: var(--m-primary) !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--m-primary) 24%, transparent) !important;
+    outline: none !important;
+}
+body.mobile-mode .form-group:focus-within > label { color: var(--m-primary) !important; }
+
+/* ---------- Tombol ---------- */
+body.mobile-mode .btn {
+    min-height: 46px !important;
+    padding: 10px 16px !important;
+    border-radius: 12px !important;
+    font-size: .9rem !important;
+    touch-action: manipulation;
+    transition: transform .12s ease, filter .12s ease;
+}
+body.mobile-mode .btn:active { transform: scale(.97); filter: brightness(.94); }
+body.mobile-mode .btn-sm,
+body.mobile-mode .btn-xs { min-height: 38px !important; padding: 6px 12px !important; border-radius: 10px !important; }
+
+/* ---------- Dialog = bottom sheet ---------- */
+body.mobile-mode .modal { align-items: flex-end !important; padding: 0 !important; }
+body.mobile-mode .modal.show .modal-content,
+body.mobile-mode .modal .modal-content {
+    width: 100% !important; max-width: 100% !important;
+    max-height: 92dvh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    margin: 0 !important;
+    border-radius: 24px 24px 0 0 !important;
+    padding-bottom: calc(16px + var(--m-safe-b)) !important;
+    animation: m-sheet-up .28s var(--m-ease);
+}
+@keyframes m-sheet-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------- Kalkulator mengambang: layar penuh ---------- */
+body.mobile-mode #floating-multi-calculator {
+    inset: 0 !important; width: 100% !important; height: 100% !important; max-width: 100% !important;
+    margin: 0 !important; border-radius: 0 !important; z-index: 10020 !important;
+}
+body.mobile-mode #floating-multi-calculator .panel-header { border-radius: 0 !important; min-height: 55px; font-size: 1rem; }
+body.mobile-mode #calc-sheet-content { max-height: calc(100dvh - 220px) !important; }
+
+@media (max-width: 340px) {
+    body.mobile-mode .stats-grid { grid-template-columns: 1fr !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+    body.mobile-mode .sidebar, .m-scrim, body.mobile-mode .btn, body.mobile-mode .modal-content { transition: none !important; animation: none !important; }
+}

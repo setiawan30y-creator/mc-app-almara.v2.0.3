@@ -1,4 +1,5 @@
 <?php
+// @2026-Alifiandra
 
 namespace App\Http\Controllers;
 
@@ -28,15 +29,18 @@ class GoamlComplianceController extends Controller
             'regulation_no' => ['nullable','string','max:120'],
             'regulation_article' => ['nullable','string','max:120'],
             'effective_from' => ['nullable','date'],
-            'effective_until' => ['nullable','date','after_or_equal:effective_from'],
+            'effective_until' => ['nullable','date'],
             'target' => ['required','string','max:40'],
             'classification' => ['nullable','string','max:20'],
             'severity' => ['required','string','max:20'],
             'action' => ['required','string','max:30'],
             'result_type' => ['required','string','max:40'],
             'min_transactions' => ['nullable','integer','min:1'],
-            'period_days' => ['nullable','integer','min:1'],
+            'period_days' => ['nullable','integer','min:1','max:366'],
+            'period_unit' => ['nullable','in:DAY,MONTH'],
             'total_amount_idr' => ['nullable','numeric','min:0'],
+            'amount_unit' => ['nullable','in:IDR,USD'],
+            'amount_usd' => ['nullable','numeric','min:0'],
             'amount_operator' => ['nullable','in:>,>=,=,<,<='],
             'payment_method' => ['nullable','string','max:50'],
             'conditions' => ['nullable','array'],
@@ -45,10 +49,14 @@ class GoamlComplianceController extends Controller
             'priority' => ['nullable','integer','min:1'],
         ]);
 
+        $this->assertValidWindow($data['effective_from'] ?? null, $data['effective_until'] ?? null);
+
         $data['code'] = strtoupper($data['code']);
         $data['version'] = 1;
         $data['is_active'] = $data['is_active'] ?? true;
         $data['priority'] = $data['priority'] ?? 100;
+        $data['amount_unit'] = $data['amount_unit'] ?? 'IDR';
+        $data['period_unit'] = $data['period_unit'] ?? 'DAY';
 
         return response()->json([
             'status' => 'success',
@@ -66,15 +74,18 @@ class GoamlComplianceController extends Controller
             'regulation_no' => ['nullable','string','max:120'],
             'regulation_article' => ['nullable','string','max:120'],
             'effective_from' => ['nullable','date'],
-            'effective_until' => ['nullable','date','after_or_equal:effective_from'],
+            'effective_until' => ['nullable','date'],
             'target' => ['sometimes','string','max:40'],
             'classification' => ['nullable','string','max:20'],
             'severity' => ['sometimes','string','max:20'],
             'action' => ['sometimes','string','max:30'],
             'result_type' => ['sometimes','string','max:40'],
             'min_transactions' => ['nullable','integer','min:1'],
-            'period_days' => ['nullable','integer','min:1'],
+            'period_days' => ['nullable','integer','min:1','max:366'],
+            'period_unit' => ['nullable','in:DAY,MONTH'],
             'total_amount_idr' => ['nullable','numeric','min:0'],
+            'amount_unit' => ['nullable','in:IDR,USD'],
+            'amount_usd' => ['nullable','numeric','min:0'],
             'amount_operator' => ['nullable','in:>,>=,=,<,<='],
             'payment_method' => ['nullable','string','max:50'],
             'conditions' => ['nullable','array'],
@@ -82,6 +93,11 @@ class GoamlComplianceController extends Controller
             'is_active' => ['nullable','boolean'],
             'priority' => ['nullable','integer','min:1'],
         ]);
+
+        $this->assertValidWindow(
+            array_key_exists('effective_from', $data) ? $data['effective_from'] : $rule->effective_from?->toDateString(),
+            array_key_exists('effective_until', $data) ? $data['effective_until'] : $rule->effective_until?->toDateString()
+        );
 
         if (isset($data['code'])) {
             $data['code'] = strtoupper($data['code']);
@@ -91,6 +107,18 @@ class GoamlComplianceController extends Controller
         $rule->update($data);
 
         return response()->json(['status' => 'success', 'rule' => $rule->fresh()]);
+    }
+
+    /**
+     * Tanggal berlaku sampai tidak boleh lebih awal dari tanggal berlaku mulai.
+     */
+    private function assertValidWindow(?string $from, ?string $until): void
+    {
+        if ($from && $until && $until < $from) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'effective_until' => 'Tanggal berlaku sampai harus sama atau setelah tanggal berlaku mulai.',
+            ]);
+        }
     }
 
     public function alerts(Request $request)

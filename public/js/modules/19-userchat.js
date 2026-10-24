@@ -718,6 +718,11 @@
             return;
         }
 
+        // 4b. Mobile bottom navigation and drawer scrim (HP mode)
+        if (event.target.closest('.mobile-bottom-nav') || event.target.closest('#mScrim')) {
+            return;
+        }
+
         // 5. Theme switcher
         const themeWrap = document.getElementById('themeSwitcherWrap');
         if (themeWrap && themeWrap.contains(event.target)) {

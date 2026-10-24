@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use App\Support\SessionPolicy;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureSingleSession
@@ -16,6 +17,10 @@ class EnsureSingleSession
         $user = $request->user();
         if (!$user) {
             return $next($request);
+        }
+
+        if ($expired = $this->rejectIfIdle($request, $user)) {
+            return $expired;
         }
 
         if (!Schema::hasColumn('users', 'active_session_token')) {
@@ -61,5 +66,49 @@ class EnsureSingleSession
         }
 
         return $next($request);
+    }
+
+    /**
+     * Logout otomatis bila tidak ada aktivitas pengguna melebihi batas kebijakan.
+     * Aktivitas dicatat lewat POST /api/session/ping (bukan polling sinkronisasi).
+     */
+    private function rejectIfIdle(Request $request, $user): ?Response
+    {
+        $limit = SessionPolicy::idleSecondsFor($user->role ?? '');
+        $now = time();
+        $last = (int) $request->session()->get('mc_last_activity', 0);
+
+        if ($last === 0) {
+            $request->session()->put('mc_last_activity', $now);
+            return null;
+        }
+
+        if ($limit === 0 || ($now - $last) <= $limit + SessionPolicy::GRACE_SECONDS) {
+            return null;
+        }
+
+        $sessionKeyName = 'mc_active_session_token';
+        if (Schema::hasColumn('users', 'active_session_token')) {
+            $sessionToken = (string) $request->session()->get($sessionKeyName, '');
+            if ($sessionToken !== '' && hash_equals((string) ($user->active_session_token ?? ''), $sessionToken)) {
+                $user->forceFill(['active_session_token' => null])->save();
+            }
+        }
+
+        Auth::guard('web')->logout();
+        $request->session()->forget([$sessionKeyName, 'mc_last_activity']);
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        $isApiRequest = $request->expectsJson() || $request->ajax() || $request->is('api/*');
+        if (!$isApiRequest) {
+            return redirect()->route('login.form');
+        }
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Sesi berakhir karena tidak ada aktivitas. Silakan login kembali.',
+            'code' => 'session_idle_timeout',
+        ], 401);
     }
 }

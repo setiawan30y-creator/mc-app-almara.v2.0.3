@@ -87,241 +87,9 @@ function repairDerivedCurrencyRates(currencies) {
     return changed;
 }
 
-function loadCurrencyTable() {
-    const currencies = getCurrencies();
-    if (repairDerivedCurrencyRates(currencies)) {
-        saveCurrencies(currencies);
-    }
-    if (typeof window.renderSmartdealSyncStatus === 'function') {
-        window.renderSmartdealSyncStatus();
-    }
-    const masterCurrencies = getMasterCurrencies();
-    const tbody = document.getElementById('currenciesTableBody');
-    const currentUserRole = getCurrentUser() ? getCurrentUser().role : 'kasir';
-    tbody.innerHTML = '';
+// Tabel Manajemen Kurs (loadCurrencyTable) dipindah ke 47-kurs-page.js.
 
-    currencies.forEach(c => {
-        const currencyCode = String(c.code || '').toUpperCase();
-        const baseCurrencyCode = getCurrencyBaseCode(currencyCode);
-        const mc = masterCurrencies.find(m => m.code === currencyCode) || masterCurrencies.find(m => m.code === baseCurrencyCode) || { flag: '', country: '', countryCode: '' };
-        const countryCode = String(mc.countryCode || '').toLowerCase();
-        const flagUrl = countryCode ? `https://flagcdn.com/w80/${countryCode}.png` : '';
-        const tr = document.createElement('tr');
-        const isAlert = (c.stock || 0) <= (c.alert || 0);
-        const codeNote = currencyCode.length > 3 && mc.code === baseCurrencyCode ? `Turunan ${baseCurrencyCode}` : (mc.country || 'Unknown');
-        
-        const trendIcon = c.trend === 'up' 
-            ? `<span style="color: #10B981; font-size: 1.2rem; font-weight: bold; display: inline-flex; align-items: center; justify-content: center; width: 100%;">▲</span>` 
-            : (c.trend === 'down' 
-                ? `<span style="color: #ef4444; font-size: 1.2rem; font-weight: bold; display: inline-flex; align-items: center; justify-content: center; width: 100%;">▼</span>` 
-                : `<span style="color: #64748b; font-size: 1rem; opacity: 0.6; display: inline-flex; align-items: center; justify-content: center; width: 100%;">─</span>`);
-
-        tr.innerHTML = `
-            <td>
-                <div class="currency-table-identity">
-                    <span class="stock-flag currency-table-flag" title="${codeNote}">
-                        ${flagUrl ? `<img src="${flagUrl}" alt="${currencyCode}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">` : ''}
-                        <span class="stock-flag-fallback">${(mc.countryCode || currencyCode).slice(0, 2).toUpperCase()}</span>
-                    </span>
-                    <div>
-                        <strong class="currency-table-code">${c.code || ''}</strong><br>
-                        <small class="currency-table-country">${codeNote}</small>
-                    </div>
-                </div>
-            </td>
-            <td style="text-align: center; vertical-align: middle;">
-                ${trendIcon}
-            </td>
-            <td><strong>${formatRate(c.buy)}</strong></td>
-            <td><strong>${formatRate(c.sell)}</strong></td>
-            <td class="${isAlert ? 'text-red' : ''}"><strong>${(c.stock || 0).toLocaleString()}</strong></td>
-            <td>${(c.alert || 0).toLocaleString()}</td>
-            <td>
-                <span style="font-size: 0.8rem; color: #94A3B8;">B: <strong style="color: #10B981;">${c.margin_buy || 0}</strong></span><br>
-                <span style="font-size: 0.8rem; color: #94A3B8;">J: <strong style="color: #ef4444;">${c.margin_sell || 0}</strong></span>
-                ${(currentUserRole === 'admin' || currentUserRole === 'owner') && (c.inputBy || c.editBy) ? `
-                    <div style="margin-top:5px; font-size:0.7rem; color:#64748b; line-height:1.1;">
-                        ${c.inputBy ? `Input: ${c.inputBy}<br>` : ''}
-                        ${c.editBy ? `Edit: ${c.editBy}` : ''}
-                    </div>
-                ` : ''}
-            </td>
-            <td>
-                <div style="display: flex; gap: 5px;">
-                    <button class="btn btn-sm btn-outline" onclick="openCurrencyModal('${c.code}')"><i class="fa-solid fa-pen"></i> Edit</button>
-                    <button class="btn btn-sm btn-danger" style="background-color: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);" onclick="window.deleteCurrency('${c.code}')"><i class="fa-solid fa-trash"></i> Hapus</button>
-                </div>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-
-    // Populate Datalist for new currency if exists
-    const dl = document.getElementById('masterCurList');
-    if(dl) {
-        dl.innerHTML = masterCurrencies.map(m => `<option value="${m.code}">${m.country} ${m.flag}</option>`).join('');
-    }
-}
-
-function openCurrencyModal(code = null) {
-    document.getElementById('currencyModal').classList.add('show');
-    const inputCode = document.getElementById('modalCurCode');
-    
-    if(code) {
-        const c = getCurrencies().find(x => x.code === code);
-        inputCode.value = c.code;
-        inputCode.disabled = true;
-        document.getElementById('modalCurBuy').value = c.base_buy !== undefined ? c.base_buy : c.buy;
-        document.getElementById('modalCurSell').value = c.base_sell !== undefined ? c.base_sell : c.sell;
-        document.getElementById('modalCurStock').value = c.stock;
-        document.getElementById('modalCurAlert').value = c.alert || 0;
-        document.getElementById('modalMarginBuy').value = c.margin_buy || 0;
-        document.getElementById('modalMarginSell').value = c.margin_sell || 0;
-        if(window.calculateCurrencyHasil) window.calculateCurrencyHasil();
-    } else {
-        inputCode.value = '';
-        inputCode.disabled = false;
-        document.getElementById('modalCurBuy').value = '';
-        document.getElementById('modalCurSell').value = '';
-        document.getElementById('modalCurStock').value = '';
-        document.getElementById('modalCurAlert').value = '';
-        document.getElementById('modalMarginBuy').value = '';
-        document.getElementById('modalMarginSell').value = '';
-        if(window.calculateCurrencyHasil) window.calculateCurrencyHasil();
-    }
-}
-
-function handleCurrencyCodeInput() {
-    const inputCode = document.getElementById('modalCurCode');
-    const buyInput = document.getElementById('modalCurBuy');
-    const sellInput = document.getElementById('modalCurSell');
-    if (!inputCode || !buyInput || !sellInput) return;
-
-    inputCode.value = String(inputCode.value || '');
-    const parentRates = getInheritedBaseRates(inputCode.value);
-    const currentBuy = parseFloat(buyInput.value) || 0;
-    const currentSell = parseFloat(sellInput.value) || 0;
-
-    if (parentRates.buy > 0 && currentBuy <= 0) buyInput.value = parentRates.buy;
-    if (parentRates.sell > 0 && currentSell <= 0) sellInput.value = parentRates.sell;
-    if (window.calculateCurrencyHasil) window.calculateCurrencyHasil();
-}
-
-window.handleCurrencyCodeInput = handleCurrencyCodeInput;
-
-function closeCurrencyModal() {
-    document.getElementById('currencyModal').classList.remove('show');
-}
-
-window.calculateCurrencyHasil = function() {
-    const baseBuy = parseFloat(document.getElementById('modalCurBuy').value) || 0;
-    const mb = parseFloat(document.getElementById('modalMarginBuy').value) || 0;
-    const finalBuy = baseBuy + mb;
-    const elBuy = document.getElementById('modalHasilBuy');
-    if (elBuy) elBuy.innerText = finalBuy.toLocaleString('id-ID');
-    
-    const baseSell = parseFloat(document.getElementById('modalCurSell').value) || 0;
-    const ms = parseFloat(document.getElementById('modalMarginSell').value) || 0;
-    const finalSell = baseSell + ms;
-    const elSell = document.getElementById('modalHasilSell');
-    if (elSell) elSell.innerText = finalSell.toLocaleString('id-ID');
-};
-
-
-async function saveCurrency() {
-    const code = document.getElementById('modalCurCode').value.trim();
-    let baseBuy = parseFloat(document.getElementById('modalCurBuy').value);
-    let baseSell = parseFloat(document.getElementById('modalCurSell').value);
-    const stock = parseFloat(document.getElementById('modalCurStock').value);
-    const alertValue = parseFloat(document.getElementById('modalCurAlert').value);
-    const mb = parseFloat(document.getElementById('modalMarginBuy').value) || 0;
-    const ms = parseFloat(document.getElementById('modalMarginSell').value) || 0;
-
-    const currencies = getCurrencies();
-    const parentRates = getInheritedBaseRates(code, currencies);
-
-    if ((!Number.isFinite(baseBuy) || baseBuy <= 0) && parentRates.buy > 0) {
-        baseBuy = parentRates.buy;
-    }
-    if ((!Number.isFinite(baseSell) || baseSell <= 0) && parentRates.sell > 0) {
-        baseSell = parentRates.sell;
-    }
-
-    if (!code || !Number.isFinite(baseBuy) || !Number.isFinite(baseSell)) {
-        alert('Kode, Base Rate Beli, dan Jual harus diisi!');
-        return;
-    }
-
-    const buy = baseBuy + mb;
-    const sell = baseSell + ms;
-
-    const index = currencies.findIndex(
-        c => String(c.code || '').toLowerCase() === code.toLowerCase()
-    );
-
-    const currentUser = getCurrentUser();
-    const currUser = currentUser?.fullName || 'Admin Kasir';
-
-    const data = {
-        ...(index !== -1 ? currencies[index] : {}),
-        code,
-        buy,
-        sell,
-        base_buy: baseBuy,
-        base_sell: baseSell,
-        stock: Number.isFinite(stock) ? stock : 0,
-        alert: Number.isFinite(alertValue) ? alertValue : 500,
-        margin_buy: mb,
-        margin_sell: ms
-    };
-
-    if (index !== -1) {
-        data.inputBy = currencies[index].inputBy || currUser;
-        data.editBy = currUser;
-        currencies[index] = data;
-    } else {
-        data.inputBy = currUser;
-        data.editBy = '';
-        currencies.push(data);
-    }
-
-    try {
-        const results = await saveCurrencies(currencies);
-
-        const failures = (Array.isArray(results) ? results : []).filter(
-            result =>
-                result.status === 'rejected' ||
-                (result.status === 'fulfilled' &&
-                 result.value &&
-                 result.value.ok === false)
-        );
-
-        if (failures.length > 0) {
-            const details = failures
-                .map(result =>
-                    result.status === 'rejected'
-                        ? result.reason?.message || 'Penyimpanan gagal'
-                        : result.value?.message || 'Penyimpanan ditolak server'
-                )
-                .join('\n');
-
-            alert(
-                'Valuta belum berhasil tersimpan seluruhnya ke server.\n' +
-                details +
-                '\n\nForm tetap dibuka. Periksa koneksi dan coba lagi.'
-            );
-            return;
-        }
-
-        closeCurrencyModal();
-        loadCurrencyTable();
-        alert('Valuta berhasil disimpan.');
-
-    } catch (error) {
-        console.error('Gagal menyimpan valuta:', error);
-        alert('Gagal menyimpan valuta: ' + (error.message || error));
-    }
-}
+// Form Tambah/Edit Valuta dipindah ke 45-currency-form.js (openCurrencyModal, closeCurrencyModal, saveCurrency).
 
 window.deleteCurrency = function(code) {
     const currencies = getCurrencies();
@@ -420,52 +188,29 @@ function normalizeWhatsAppNumber(phone) {
 
 function getReportWaTemplateOptions() {
     const templates = typeof getWaTemplates === 'function' ? getWaTemplates() : [];
-    const defaultTemplate = typeof getDefaultWaTemplate === 'function' ? getDefaultWaTemplate() : templates[0];
+    // Pilihan awal = template yang ditugaskan untuk tombol Riwayat (Pengaturan > Template WA).
+    const preferred = typeof window.getWaTemplateForPurpose === 'function' ? window.getWaTemplateForPurpose('riwayat') : templates[0];
+    const escName = (v) => String(v || 'Template').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     return templates.map(template => {
-        const selected = defaultTemplate && template.id === defaultTemplate.id ? 'selected' : '';
-        return `<option value="${template.id}" ${selected}>${template.name}</option>`;
+        const selected = preferred && template.id === preferred.id ? 'selected' : '';
+        return `<option value="${escName(template.id)}" ${selected}>${escName(template.name)}</option>`;
     }).join('');
 }
 
-function buildTransactionWaMessage(transaction, customer, template) {
-    const profile = getProfile();
-    const invoiceTrxs = getTransactions().filter(t => t.id === transaction.id);
-    const detailRows = (invoiceTrxs.length ? invoiceTrxs : [transaction]).map(item => {
-        const type = item.tipe || item.type || '-';
-        const valuta = item.valuta || item.curCode || '-';
-        const nominal = parseFloat(item.nominal || item.amount || 0).toLocaleString('id-ID');
-        const rate = typeof formatRate === 'function' ? formatRate(item.rate || 0) : (item.rate || 0);
-        const total = typeof formatIdr === 'function' ? formatIdr(item.total || item.totalIdr || item.totalIDR || 0) : (item.total || 0);
-        return `- ${type} ${nominal} ${valuta} @ ${rate} = ${total}`;
-    }).join('\n');
-
-    const content = template && template.content
-        ? template.content
-        : `Halo [NAMA_NASABAH], berikut detail transaksi Anda.\n\nInvoice: [NO_INVOICE]\nTanggal: [TANGGAL]\n[VALUTA_LIST]\nTotal: [GRAND_TOTAL]`;
-
-    return content
-        .replace(/\[NAMA_MC\]/g, profile.name || 'MC-ALMARA')
-        .replace(/\[NO_HP_MC\]/g, profile.phoneWA || profile.phone || '-')
-        .replace(/\[NAMA_NASABAH\]/g, (customer && customer.nama) || transaction.customerName || 'Bapak/Ibu')
-        .replace(/\[NO_INVOICE\]/g, transaction.id || '-')
-        .replace(/\[TANGGAL\]/g, transaction.timestamp ? window.formatDateToDMY(transaction.timestamp) : '-')
-        .replace(/\[VALUTA_LIST\]/g, detailRows)
-        .replace(/\[GRAND_TOTAL\]/g, formatIdr(transaction.total || 0))
-        .replace(/\[METODE_BAYAR\]/g, transaction.paymentMethod || '-')
-        .replace(/\[METODE_RINCIAN\]/g, transaction.paymentDetail || '-');
-}
-
 function buildPurposeTransactionWaMessage(transaction, customer, purpose, selectedTemplate = null) {
-    const fallback = buildTransactionWaMessage(transaction, customer, selectedTemplate || null);
     const rows = getTransactions().filter(item => item.id === transaction.id);
     const currencyList = (rows.length ? rows : [transaction]).map(item =>
         `- ${item.tipe || '-'} ${Number(item.nominal || 0).toLocaleString('id-ID')} ${item.valuta || '-'} @ ${formatRate(item.rate || 0)} = ${formatIdr(item.total || 0)}`
     ).join('\n');
-    return window.buildWaMessageForPurpose(purpose, fallback, {
-        customerName: customer?.nama || transaction.customerName || 'Nasabah',
-        invoice: transaction.id || '-', date: transaction.timestamp ? window.formatDateToDMY(transaction.timestamp) : '-',
-        currencyList, total: formatIdr(transaction.total || 0), paymentMethod: transaction.paymentMethod || '-'
-    });
+    // Template pilihan pengguna (dropdown) menang atas template per-purpose.
+    return window.buildWaMessageForPurpose(purpose, DEFAULT_WA_TEMPLATE, {
+        customerName: customer?.nama || transaction.customerName || 'Bapak/Ibu',
+        invoice: transaction.id || '-',
+        date: transaction.timestamp ? window.formatDateToDMY(transaction.timestamp) : '-',
+        currencyList, total: formatIdr(transaction.total || 0),
+        paymentMethod: transaction.paymentMethod || '-',
+        paymentDetail: transaction.paymentDetail || '-'
+    }, { template: selectedTemplate });
 }
 
 window.sendReportWhatsApp = async function(invoiceId, selectId) {
@@ -480,7 +225,7 @@ window.sendReportWhatsApp = async function(invoiceId, selectId) {
 
     const templates = typeof getWaTemplates === 'function' ? getWaTemplates() : [];
     const selectedId = document.getElementById(selectId) ? document.getElementById(selectId).value : '';
-    const template = templates.find(t => t.id === selectedId) || (typeof getDefaultWaTemplate === 'function' ? getDefaultWaTemplate() : templates[0]);
+    const template = templates.find(t => t.id === selectedId) || (typeof window.getWaTemplateForPurpose === 'function' ? window.getWaTemplateForPurpose('riwayat') : templates[0]);
     try {
         await window.sendWhatsAppGateway(waNum, buildPurposeTransactionWaMessage(transaction, customer, 'riwayat', template), { reference: invoiceId });
         alert('Pesan transaksi berhasil dikirim melalui WA Gateway.');
@@ -766,7 +511,7 @@ window.printBulkReceipts = function() {
         
         fullHtml += `
             <div style="margin-bottom: 2rem;">
-            <h2 class="center" style="margin-top: 5px; margin-bottom: 0px; font-size: 15px;">${profile.name || 'MC-ALMARA'}</h2>
+            <h2 class="center" style="margin-top: 5px; margin-bottom: 0px; font-size: 15px;">${profile.name || 'Money Changer'}</h2>
             ${addressToShow ? `<div class="center" style="font-size: 11px; margin-top: 2px; margin-bottom: 2px;">${addressToShow}</div>` : ''}
             ${profile.biLicense ? `<div class="center" style="font-size: 11px; margin-bottom: 2px;">No. Izin: ${profile.biLicense}</div>` : ''}
             <div class="center">
@@ -852,7 +597,9 @@ window.reprintReceipt = function(receiptId) {
         customerId: firstTrx.customerId,
         receiverId: firstTrx.receiverId || firstTrx.customerId,
         timestamp: firstTrx.timestamp,
-        kasir: firstTrx.kasir
+        kasir: firstTrx.kasir,
+        bookingId: firstTrx.bookingId || null,
+        dpAmount: parseFloat(firstTrx.dpAmount) || 0
     };
     
     if(firstTrx.paymentMethod === 'TRANSFER') {
@@ -1720,12 +1467,6 @@ function resetCustomerTableFilters() {
     localStorage.removeItem(CUSTOMER_TABLE_FILTER_KEY);
 }
 
-window.resetCustomerDateFilters = function() {
-    const { startDateInput, endDateInput } = getCustomerTableFilterElements();
-    if(startDateInput) startDateInput.value = '';
-    if(endDateInput) endDateInput.value = '';
-    filterCustomersTable();
-};
 
 function filterCustomersTable() {
     saveCustomerTableFilters();
@@ -2185,18 +1926,6 @@ window.closeCustomerPreviewModal = function() {
 // ==============================
 // BROADCAST WA LOGIC
 // ==============================
-window.toggleAllCustomers = function(el) {
-    const tbody = document.getElementById('customersTableBody');
-    if(!tbody) return;
-    const checkboxes = tbody.querySelectorAll('.chk-cust');
-    checkboxes.forEach(chk => {
-        // Only check those that are currently visible/filtered
-        if (chk.closest('tr').style.display !== 'none') {
-            chk.checked = el.checked;
-        }
-    });
-    updateBlastWaCount();
-};
 
 window.updateBlastWaCount = function() {
     const checkboxes = document.querySelectorAll('.chk-cust:checked');
@@ -2233,7 +1962,7 @@ function populateBlastWaTemplateSelect() {
     if(!select) return;
 
     const templates = typeof getWaTemplates === 'function' ? getWaTemplates() : [];
-    const defaultTemplate = typeof getDefaultWaTemplate === 'function' ? getDefaultWaTemplate() : templates[0];
+    const defaultTemplate = typeof window.getWaTemplateForPurpose === 'function' ? window.getWaTemplateForPurpose('broadcast') : templates[0];
     const manualOption = '<option value="">Tulis Manual</option>';
     const options = templates.map(t => {
         const selected = defaultTemplate && t.id === defaultTemplate.id ? 'selected' : '';
@@ -2261,22 +1990,6 @@ window.applyBlastWaTemplate = function() {
     }
 };
 
-function buildBroadcastWaMessage(template, customer) {
-    const profile = typeof getProfile === 'function' ? getProfile() : {};
-    const customerName = customer?.nama || 'Bapak/Ibu';
-    return template
-        .replace(/\[NAMA\]/g, customerName)
-        .replace(/\[NAMA_NASABAH\]/g, customerName)
-        .replace(/\[NAMA_MC\]/g, profile.name || 'MC-ALMARA')
-        .replace(/\[NO_HP_MC\]/g, profile.phoneWA || profile.phone || '-')
-        .replace(/\[TANGGAL\]/g, new Date().toLocaleDateString('id-ID'))
-        .replace(/\[NO_INVOICE\]/g, '-')
-        .replace(/\[VALUTA_LIST\]/g, '-')
-        .replace(/\[GRAND_TOTAL\]/g, '-')
-        .replace(/\[METODE_BAYAR\]/g, '-')
-        .replace(/\[METODE_RINCIAN\]/g, '-');
-}
-
 window.startBlastWa = function() {
     const template = document.getElementById('blastWaTemplate').value;
     if(!template.trim()) {
@@ -2295,8 +2008,8 @@ window.startBlastWa = function() {
         if(c && c.no_hp && c.no_hp !== '-') {
             queuedCount++;
             const tr = document.createElement('tr');
-            const fallbackMessage = buildBroadcastWaMessage(template, c);
-            const finalMsg = window.buildWaMessageForPurpose('broadcast', fallbackMessage, { customerName: c.nama });
+            // Isi pesan = yang diketik/dipilih di kolom broadcast (bukan template lain).
+            const finalMsg = window.buildWaMessageForPurpose('broadcast', template, { customerName: c.nama || 'Bapak/Ibu' }, { template: { content: template } });
             const waNum = normalizeWhatsAppNumber(c.no_hp);
             const encodedMsg = encodeURIComponent(finalMsg).replace(/'/g, '%27');
             
@@ -2463,6 +2176,11 @@ window.openCustomerUpdateModal = function(id) {
         const rad2 = document.getElementById('update_typePerusahaan');
         if(knVal === '2' && rad2) rad2.checked = true;
         else if(rad1) rad1.checked = true;
+        // Data khusus Perusahaan
+        setVal('update_modalCustBusinessType', cust.jenis_badan_usaha);
+        setVal('update_modalCustBusinessField', cust.bidang_usaha);
+        setVal('update_modalCustNib', cust.nib);
+        if (typeof window.updateCustomerUpdateUI === 'function') window.updateCustomerUpdateUI();
 
         // Dropdowns (Hanya isi jika kosong untuk hemat CPU/RAM)
         const elIdType = document.getElementById('update_modalCustIdType');
@@ -2561,6 +2279,12 @@ window.updateCustomer = async function() {
         return;
     }
 
+    const isCompanyUpd = ($('input[name="update_custType"]:checked').val() || String(customers[index].kn || '1')) === '2';
+    if (isCompanyUpd && !String($('#update_modalCustBusinessField').val() || '').trim()) {
+        Swal.fire('Bidang Usaha belum dipilih', 'Pilih Bidang Usaha untuk nasabah perusahaan.', 'warning');
+        return;
+    }
+
     // Ambil data dari form
     const updatedData = {
         ...customers[index],
@@ -2572,9 +2296,9 @@ window.updateCustomer = async function() {
         jenis_id: $('#update_modalCustIdType').val(),
         no_ktp: $('#update_modalCustNik').val(),
         selain_ktp: $('#update_modalCustIdNo').val(),
-        jenis_kelamin: $('#update_modalCustGender').val(),
+        jenis_kelamin: isCompanyUpd ? '-' : $('#update_modalCustGender').val(),
         warga_negara: $('#update_modalCustCitizen').val(),
-        pekerjaan: $('#update_modalCustJob').val(),
+        pekerjaan: isCompanyUpd ? (String($('#update_modalCustBusinessField').val() || '').trim() || '-') : $('#update_modalCustJob').val(),
         npwp: $('#update_modalCustNpwp').val(),
         local_id: $('#update_modalCustLocalId').val(),
         no_rekening: $('#update_modalCustBankAcc').val(),
@@ -2583,7 +2307,10 @@ window.updateCustomer = async function() {
         foto_id: uploadedPhoto,
         editBy: getCurrentUser() ? getCurrentUser().username : 'system',
         tgl_update: new Date().toISOString(),
-        kn: $('input[name="update_custType"]:checked').val() || customers[index].kn
+        kn: $('input[name="update_custType"]:checked').val() || customers[index].kn,
+        jenis_badan_usaha: isCompanyUpd ? (String($('#update_modalCustBusinessType').val() || '').trim().toUpperCase() || null) : null,
+        bidang_usaha: isCompanyUpd ? (String($('#update_modalCustBusinessField').val() || '').trim() || null) : null,
+        nib: isCompanyUpd ? (String($('#update_modalCustNib').val() || '').trim() || null) : null
     };
 
     // Update Array & Local Storage (Perbaiki Key ke mc_customers)
@@ -2618,6 +2345,27 @@ window.updateCustomer = async function() {
     } else if (typeof window.loadCustomersTable === 'function') {
         window.loadCustomersTable();
     }
+};
+
+// Menyesuaikan form Update Data Nasabah dengan tipe entitas (Perorangan / Perusahaan).
+window.updateCustomerUpdateUI = function() {
+    const isCompany = !!document.getElementById('update_typePerusahaan')?.checked;
+    const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+    show('update_businessTypeGroup', isCompany);
+    show('update_nibGroup', isCompany);
+    show('update_businessFieldGroup', isCompany);
+    show('update_jobGroup', !isCompany);
+    show('update_genderGroup', !isCompany);
+    const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    setText('update_birthPlaceLabel', isCompany ? 'Lokasi Terbit' : 'Tempat Lahir');
+    setText('update_birthDateLabel', isCompany ? 'Tanggal Terbit' : 'Tanggal Lahir');
+    setText('update_sectionDataTitle', isCompany ? 'Data Perusahaan' : 'Data Diri');
+    setText('update_entityBadge', isCompany ? 'PERUSAHAAN' : 'PERORANGAN');
+    const birthPlaceEl = document.getElementById('update_modalCustBirthPlace');
+    if (birthPlaceEl) birthPlaceEl.placeholder = isCompany ? 'Kota/Kab penerbitan' : 'Kota/Kab';
+    const type = String(document.getElementById('update_modalCustBusinessType')?.value || '').trim().toUpperCase();
+    const label = isCompany ? (CUSTOMER_BUSINESS_TYPE_LABELS[type] || 'Nama Perusahaan') : 'Nama Lengkap';
+    setText('update_nameLabel', label);
 };
 
 window.isEditingCustomer = false;
@@ -2930,19 +2678,27 @@ window.updateCustomerBusinessTypeUI = function() {
         }
     }
 
+    // Mode Perusahaan: Bidang Usaha menggantikan Pekerjaan, data identitas memakai istilah penerbitan
+    // dan Jenis Kelamin tidak relevan.
+    const isCompany = selected === '2';
+    const setLabel = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = text + ' <span class="required-mark">*</span>';
+    };
+    setLabel('modalCustBirthPlaceLabel', isCompany ? 'Lokasi Terbit' : 'Tempat Lahir');
+    setLabel('modalCustBirthDateLabel', isCompany ? 'Tanggal Terbit' : 'Tanggal Lahir');
+    const birthPlaceEl = document.getElementById('modalCustBirthPlace');
+    if (birthPlaceEl) birthPlaceEl.placeholder = isCompany ? 'Kota/Kab penerbitan' : 'Kota/Kab';
+    const genderGroup = document.getElementById('modalCustGenderGroup');
+    if (genderGroup) genderGroup.style.display = isCompany ? 'none' : '';
+    const jobGroup = document.getElementById('modalCustJobGroup');
+    if (jobGroup) jobGroup.style.display = isCompany ? 'none' : '';
+
     window.updateCustomerNameLabel();
 };
 
 // toggleEntitas() sebelumnya dipanggil langsung dari HTML form, tetapi fungsi
 // tersebut tidak ada pada modul aktif. Buat satu sumber handler yang pasti.
-window.toggleEntitas = function() {
-    const checked = document.querySelector('input[name="modalCustTypeGroup"]:checked');
-    const typeEl = document.getElementById('modalCustType');
-    const type = String(checked?.value || '').trim();
-
-    if (typeEl) typeEl.value = type;
-    window.updateCustomerBusinessTypeUI();
-};
 
 // Pasang listener langsung ke radio agar tetap bekerja walaupun inline
 // onchange lama/handler lain tidak tersedia.
@@ -2999,9 +2755,10 @@ async function saveCustomer() {
     const birthPlace = document.getElementById('modalCustBirthPlace').value;
     const birthDate = document.getElementById('modalCustBirthDate').value;
     const address = document.getElementById('modalCustAddress').value;
-    const gender = document.getElementById('modalCustGender').value;
+    const gender = typeKn === '2' ? '-' : document.getElementById('modalCustGender').value;
     const citizen = document.getElementById('modalCustCitizen').value;
-    const job = document.getElementById('modalCustJob').value;
+    // Perusahaan: Bidang Usaha menggantikan Pekerjaan agar laporan yang membaca kolom pekerjaan tetap terisi.
+    const job = typeKn === '2' ? businessField : document.getElementById('modalCustJob').value;
     const identityType = String(document.getElementById('modalCustIdType').value || '').trim().toUpperCase();
     const identityNumber = document.getElementById('modalCustNik').value.trim();
     const otherId = document.getElementById('modalCustIdNo').value.trim();
@@ -3381,267 +3138,9 @@ window.captureCameraSnapshot = function() {
     window.closeCameraModal();
 };
 
-// ==============================
-// KURS HARI INI (INTERNAL LOOKUP & CALCULATOR)
-// ==============================
-window.loadKursHariIniTable = function() {
-    const container = document.getElementById('kursHariIniContainer');
-    const calcSelect = document.getElementById('calcKursValuta');
-    if (!container) return;
-
-    const activeCurrencies = typeof getCurrencies === 'function' ? getCurrencies() : [];
-    const masterCurrencies = typeof getMasterCurrencies === 'function' ? getMasterCurrencies() : [];
-
-    // Populate calculator dropdown
-    if (calcSelect) {
-        const prevVal = calcSelect.value;
-        calcSelect.innerHTML = activeCurrencies.map(c => `<option value="${c.code}">${c.code} - ${c.code}</option>`).join('');
-        if (prevVal && activeCurrencies.some(c => c.code === prevVal)) {
-            calcSelect.value = prevVal;
-        } else if (activeCurrencies.length > 0) {
-            calcSelect.value = activeCurrencies[0].code;
-        }
-    }
-
-    let html = '';
-
-    activeCurrencies.forEach(c => {
-        const currencyCode = String(c.code || '').toUpperCase();
-        const baseCurrencyCode = getCurrencyBaseCode(currencyCode);
-        const mc = masterCurrencies.find(m => m.code === currencyCode) || masterCurrencies.find(m => m.code === baseCurrencyCode) || { flag: '', country: '', countryCode: '' };
-        const countryCode = String(mc.countryCode || '').toLowerCase();
-        const flagUrl = countryCode ? `https://flagcdn.com/w80/${countryCode}.png` : '';
-        const countryName = mc.country || 'Global';
-
-        const isLowStock = (c.stock || 0) <= (c.alert || 0);
-
-        const trendIconMini = c.trend === 'up' 
-            ? `<span style="color: #10B981; font-size: 0.95rem; line-height: 1; margin-left: 6px;" title="Tren Naik">▲</span>` 
-            : (c.trend === 'down' 
-                ? `<span style="color: #ef4444; font-size: 0.95rem; line-height: 1; margin-left: 6px;" title="Tren Turun">▼</span>` 
-                : `<span style="color: #64748b; font-size: 0.8rem; opacity: 0.6; line-height: 1; margin-left: 6px;" title="Tren Stabil">─</span>`);
-
-        html += `
-            <div class="kurs-card" data-code="${currencyCode}" data-country="${countryName.toLowerCase()}" onclick="window.handleKursCardClick(event, '${currencyCode}')" style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: all 0.2s ease; cursor: pointer; user-select: none;">
-                <!-- Header: Checkbox, Flag, Code, Country -->
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" class="kurs-select-checkbox" value="${currencyCode}" style="width: 15px; height: 15px; margin: 0; cursor: pointer; accent-color: #38bdf8;" onchange="window.toggleKursSelection('${currencyCode}')">
-                    
-                    <span style="width: 32px; height: 22px; border-radius: 3px; overflow: hidden; display: inline-flex; border: 1px solid rgba(255,255,255,0.1); justify-content: center; align-items: center; background: #0f172a; flex-shrink: 0;">
-                        ${flagUrl ? `<img src="${flagUrl}" alt="${currencyCode}" style="width:100%; height:100%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">` : ''}
-                        <span style="display:none; font-weight:bold; font-size:0.75rem; color:#fff;">${currencyCode.slice(0, 2)}</span>
-                    </span>
-                    
-                    <strong style="font-size: 1.1rem; color: #f8fafc; letter-spacing: 0.2px; display: inline-flex; align-items: center;">${currencyCode} ${trendIconMini}</strong>
-                    
-                    <span style="color: #94a3b8; font-size: 0.75rem; font-weight: 500; margin-left: auto; text-align: right; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${countryName}">${countryName}</span>
-                </div>
-                
-                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.05); margin: 0;">
-                
-                <!-- Rates Box -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; text-align: center;">
-                    <div style="background: rgba(16, 185, 129, 0.05); padding: 4px 2px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.1); display: flex; flex-direction: column; justify-content: center;">
-                        <span style="font-size: 0.65rem; color: #34d399; font-weight: bold; text-transform: uppercase; letter-spacing: 0.2px;">BELI</span>
-                        <div style="font-size: 1.05rem; font-weight: 700; color: #10B981;">${typeof formatRate === 'function' ? formatRate(c.buy) : c.buy.toLocaleString()}</div>
-                    </div>
-                    <div style="background: rgba(239, 68, 68, 0.05); padding: 4px 2px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.1); display: flex; flex-direction: column; justify-content: center;">
-                        <span style="font-size: 0.65rem; color: #f87171; font-weight: bold; text-transform: uppercase; letter-spacing: 0.2px;">JUAL</span>
-                        <div style="font-size: 1.05rem; font-weight: 700; color: #ef4444;">${typeof formatRate === 'function' ? formatRate(c.sell) : c.sell.toLocaleString()}</div>
-                    </div>
-                </div>
-                
-                <!-- Footer Info: Stock -->
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #cbd5e1;">
-                    <span>Stok: <strong style="color:#f8fafc;">${(c.stock || 0).toLocaleString('id-ID')}</strong></span>
-                    ${isLowStock 
-                        ? `<span style="color: #f87171; font-weight: bold;" title="Stok Minim"><i class="fa-solid fa-triangle-exclamation"></i></span>`
-                        : `<span style="color: #34d399; font-weight: bold;" title="Stok Aman"><i class="fa-solid fa-circle-check"></i></span>`}
-                </div>
-            </div>
-        `;
-     });
-
-     container.innerHTML = html || '<div style="color: #94a3b8; text-align: center; grid-column: 1/-1; padding: 40px; font-size: 1.1rem;"><i class="fa-solid fa-circle-info fa-2x mb-3" style="color:#64748b;"></i><br>Tidak ada valuta aktif saat ini.</div>';
-     
-     
-    if (typeof window.loadKursDenominationsIntoCards === 'function') {
-        window.loadKursDenominationsIntoCards();
-    }
+// Kurs Hari Ini: papan kurs, kalkulator, dan pilihan kurs ada di 41-kurs-hari-ini.js.
 
 
-     // Run initial conversion calculation
-     window.calculateQuickRate();
-
-     // Restore selections
-     if (typeof window.updateKursSelectionUI === 'function') {
-         window.updateKursSelectionUI();
-     }
-};
-
-
-window.loadKursDenominationsIntoCards = async function () {
-    const container = document.getElementById('kursHariIniContainer');
-    if (!container) return;
-
-    try {
-        const response = await fetch(
-            '/api/currency-denominations?active=true',
-            {
-                method: 'GET',
-                credentials: 'same-origin',
-                headers: { Accept: 'application/json' }
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
-        }
-
-        const result = await response.json();
-        if (result.status !== 'success' || !Array.isArray(result.data)) {
-            throw new Error('Format data pecahan tidak sesuai.');
-        }
-
-        const format = value => {
-            const number = Number(value || 0);
-            return typeof formatRate === 'function'
-                ? formatRate(number)
-                : number.toLocaleString('id-ID');
-        };
-
-        const escapeHtml = value =>
-            String(value ?? '').replace(/[&<>"']/g, char => ({
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#39;'
-            })[char]);
-
-        container.querySelectorAll('.kurs-card').forEach(card => {
-            const code = String(card.dataset.code || '').toUpperCase();
-
-            const rows = result.data
-                .filter(row =>
-                    String(row.currency_code || '').toUpperCase() === code &&
-                    Number(row.is_active) !== 0
-                )
-                .sort((a, b) =>
-                    Number(b.denomination || 0) -
-                    Number(a.denomination || 0)
-                );
-
-            let section = card.querySelector('.kurs-denominations');
-
-            if (!section) {
-                section = document.createElement('div');
-                section.className = 'kurs-denominations';
-                section.style.cssText =
-                    'border-top:1px solid rgba(255,255,255,.08);' +
-                    'padding-top:8px;margin-top:2px;';
-
-                section.addEventListener('click', event => {
-                    event.stopPropagation();
-                });
-
-                card.appendChild(section);
-            }
-
-            if (!rows.length) {
-                section.innerHTML = '';
-                section.style.display = 'none';
-                return;
-            }
-
-            section.style.display = 'block';
-
-            section.innerHTML = `
-                <div style="font-size:.72rem;font-weight:700;
-                    color:#cbd5e1;margin-bottom:6px;">
-                    RINCIAN PECAHAN
-                </div>
-                <div style="display:grid;
-                    grid-template-columns:minmax(0,1fr) auto auto;
-                    gap:5px;font-size:.68rem;color:#94a3b8;
-                    padding-bottom:4px;">
-                    <span>Pecahan</span>
-                    <span style="text-align:right">Beli</span>
-                    <span style="text-align:right">Jual</span>
-                </div>
-                ${rows.map(row => `
-                    <div style="display:grid;
-                        grid-template-columns:minmax(0,1fr) auto auto;
-                        gap:5px;padding:5px 0;
-                        border-top:1px solid rgba(255,255,255,.05);
-                        font-size:.75rem;">
-                        <span style="color:#e2e8f0">
-                            ${escapeHtml(
-                                row.type === 'coin' ? 'Koin' : 'Uang kertas'
-                            )}
-                            ${escapeHtml(format(row.denomination))}
-                        </span>
-                        <span style="color:#34d399;text-align:right">
-                            ${escapeHtml(format(row.buy))}
-                        </span>
-                        <span style="color:#f87171;text-align:right">
-                            ${escapeHtml(format(row.sell))}
-                        </span>
-                    </div>
-                `).join('')}
-            `;
-        });
-    } catch (error) {
-        console.error('Gagal memuat pecahan Kurs Hari Ini:', error);
-    }
-};
-
-
-window.filterKursHariIni = function() {
-    const query = (document.getElementById('searchKursHariIni')?.value || '').toLowerCase().trim();
-    const cards = document.querySelectorAll('#kursHariIniContainer .kurs-card');
-    
-    cards.forEach(card => {
-        const code = (card.getAttribute('data-code') || '').toLowerCase();
-        const country = (card.getAttribute('data-country') || '').toLowerCase();
-        
-        if (code.includes(query) || country.includes(query)) {
-            card.style.display = 'flex';
-        } else {
-            card.style.display = 'none';
-        }
-    });
-};
-
-window.calculateQuickRate = function() {
-    const valutaCode = document.getElementById('calcKursValuta')?.value;
-    const type = document.getElementById('calcKursTipe')?.value;
-    const amount = parseFloat(document.getElementById('calcKursAmount')?.value) || 0;
-    
-    const rateLabel = document.getElementById('calcKursRateLabel');
-    const totalLabel = document.getElementById('calcKursTotalLabel');
-    
-    if (!valutaCode) {
-        if (rateLabel) rateLabel.innerText = 'Rp 0';
-        if (totalLabel) totalLabel.innerText = 'Rp 0';
-        return;
-    }
-    
-    const currencies = typeof getCurrencies === 'function' ? getCurrencies() : [];
-    const cObj = currencies.find(c => c.code === valutaCode);
-    
-    if (!cObj) {
-        if (rateLabel) rateLabel.innerText = 'Rp 0';
-        if (totalLabel) totalLabel.innerText = 'Rp 0';
-        return;
-    }
-    
-    const rate = type === 'beli' ? (cObj.buy || 0) : (cObj.sell || 0);
-    const total = amount * rate;
-    
-    if (rateLabel) rateLabel.innerText = `Rp ${rate.toLocaleString('id-ID')}`;
-    if (totalLabel) totalLabel.innerText = `Rp ${total.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
-};
 
 // ==========================================
 // VIEWER FOTO WAJAH NASABAH (TRANSAKSI)
@@ -3667,78 +3166,6 @@ window.viewTrxCustomerPhoto = function(photoUrl) {
 // ==========================================
 // SELEKSI KURS & KIRIM WHATSAPP
 // ==========================================
-window.selectedKursCodes = [];
-
-window.toggleKursSelection = function(code) {
-    const idx = window.selectedKursCodes.indexOf(code);
-    if (idx === -1) {
-        window.selectedKursCodes.push(code);
-    } else {
-        window.selectedKursCodes.splice(idx, 1);
-    }
-    window.updateKursSelectionUI();
-};
-
-window.handleKursCardClick = function(event, code) {
-    if (event.target.closest('.kurs-select-checkbox') || event.target.closest('button') || event.target.closest('a') || event.target.closest('input')) {
-        return;
-    }
-    window.toggleKursSelection(code);
-};
-
-window.selectAllKurs = function(shouldSelectAll) {
-    const checkboxes = document.querySelectorAll('.kurs-select-checkbox');
-    window.selectedKursCodes = [];
-    if (shouldSelectAll) {
-        checkboxes.forEach(cb => {
-            window.selectedKursCodes.push(cb.value);
-            cb.checked = true;
-        });
-    } else {
-        checkboxes.forEach(cb => {
-            cb.checked = false;
-        });
-    }
-    window.updateKursSelectionUI();
-};
-
-window.updateKursSelectionUI = function() {
-    const countEl = document.getElementById('selectedKursCount');
-    const sendBtn = document.getElementById('btnSendWaKurs');
-    const selectAllBtn = document.getElementById('btnSelectAllKurs');
-    const deselectAllBtn = document.getElementById('btnDeselectAllKurs');
-    
-    if (countEl) countEl.textContent = window.selectedKursCodes.length;
-    if (sendBtn) {
-        sendBtn.disabled = window.selectedKursCodes.length === 0;
-    }
-    
-    if (selectAllBtn && deselectAllBtn) {
-        if (window.selectedKursCodes.length > 0) {
-            selectAllBtn.style.display = 'none';
-            deselectAllBtn.style.display = 'inline-flex';
-        } else {
-            selectAllBtn.style.display = 'inline-flex';
-            deselectAllBtn.style.display = 'none';
-        }
-    }
-    
-    const cards = document.querySelectorAll('#kursHariIniContainer .kurs-card');
-    cards.forEach(card => {
-        const code = card.getAttribute('data-code');
-        const cb = card.querySelector('.kurs-select-checkbox');
-        if (window.selectedKursCodes.includes(code)) {
-            card.style.borderColor = 'rgba(56, 189, 248, 0.5)';
-            card.style.background = 'rgba(56, 189, 248, 0.08)';
-            if (cb) cb.checked = true;
-        } else {
-            card.style.borderColor = 'rgba(255, 255, 255, 0.06)';
-            card.style.background = 'rgba(30, 41, 59, 0.5)';
-            if (cb) cb.checked = false;
-        }
-    });
-};
-
 window.sendSelectedKursViaWa = function() {
     if (window.selectedKursCodes.length === 0) {
         alert("Pilih setidaknya satu mata uang!");
@@ -3771,7 +3198,7 @@ window.submitSendKursWa = async function() {
     }
     
     const profile = (typeof getProfile === 'function') ? getProfile() : (typeof almaraStore !== 'undefined' && almaraStore.getProfile ? almaraStore.getProfile() : {});
-    const companyName = profile.name || 'Money Changer Almara';
+    const companyName = profile.name || 'Money Changer';
     
     const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' };
     const dateTimeStr = new Date().toLocaleDateString('id-ID', options);
@@ -3784,15 +3211,18 @@ window.submitSendKursWa = async function() {
         return typeof formatRate === 'function' ? formatRate(val) : val.toLocaleString('id-ID');
     };
     
+    let rateLines = '';
     selectedCurrencies.forEach((c, idx) => {
-        text += `${idx + 1}. *${c.code}*\n`;
-        text += `   - Beli: Rp ${formatRateText(c.buy)}\n`;
-        text += `   - Jual: Rp ${formatRateText(c.sell)}\n`;
+        rateLines += `${idx + 1}. *${c.code}*\n`;
+        rateLines += `   - Beli: Rp ${formatRateText(c.buy)}\n`;
+        rateLines += `   - Jual: Rp ${formatRateText(c.sell)}\n`;
     });
+    text += rateLines;
     
     text += `\n*Catatan:* Kurs dapat berubah sewaktu-waktu. Harap konfirmasi sebelum bertransaksi.\n`;
     text += `Terima kasih.`;
-    text = window.buildWaMessageForPurpose('kurs', text, { currencyList: text, date: dateTimeStr, paymentMethod: 'Informasi kurs' });
+    // Jika ada template untuk "Kirim Kurs", [VALUTA_LIST] berisi daftar kurs saja (bukan seluruh pesan).
+    text = window.buildWaMessageForPurpose('kurs', text, { currencyList: rateLines.trim(), date: dateTimeStr, paymentMethod: 'Informasi kurs' });
     
     const phoneInput = document.getElementById('mSendKursWaPhone');
     const phoneVal = phoneInput ? phoneInput.value.trim() : '';

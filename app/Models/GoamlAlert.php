@@ -10,7 +10,7 @@ class GoamlAlert extends Model
 
     protected $fillable = [
         'rule_id','alert_no','rule_type','result_type','classification','severity','status',
-        'customer_id','customer_name','total_amount_idr','transaction_count','invoice_summary',
+        'customer_id','customer_name','total_amount_idr','total_amount_usd','transaction_count','invoice_summary',
         'period_start','period_end','reason','snapshot','reviewed_by',
         'reviewed_at','review_note',
     ];
@@ -18,6 +18,7 @@ class GoamlAlert extends Model
     protected $casts = [
         'snapshot' => 'array',
         'total_amount_idr' => 'decimal:2',
+        'total_amount_usd' => 'decimal:2',
         'period_start' => 'datetime',
         'period_end' => 'datetime',
         'reviewed_at' => 'datetime',

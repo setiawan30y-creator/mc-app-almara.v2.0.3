@@ -47,6 +47,8 @@ if (!window.__almaraRealtimeStoragePatch) {
         'mc_users',
         'mc_light_theme',
         'mc_sidebar_collapsed',
+        'mc_pos_booking_import_v1',
+        'mc_om_seq',
         'mc_invoice_seq',
         'mc_booking_seq',
         'mc_customers_reset_at',
@@ -167,7 +169,8 @@ async function syncFromMySQL_Currencies(options = {}) {
                         }
                     }
 
-                    const code = String(dbCurrency.code || parsedRaw.code || '').trim().toUpperCase();
+                    const rawCode = String(dbCurrency.code || parsedRaw.code || '').trim();
+                    const code = rawCode.toUpperCase();
                     const localCurrency = localCurrencies.find(
                         item => String(item.code || '').trim().toUpperCase() === code
                     ) || {};
@@ -197,7 +200,7 @@ async function syncFromMySQL_Currencies(options = {}) {
                         }
                     }
 
-                    merged.code = code;
+                    merged.code = rawCode; // huruf besar/kecil kode turunan dipertahankan (mis. "AUD (kc)")
                     merged.label = dbCurrency.label ?? parsedRaw.label ?? localCurrency.label ?? localCurrency.name ?? '';
                     if (!merged.name) merged.name = merged.label;
                     merged.buy = parseFloat(dbCurrency.buy ?? parsedRaw.buy ?? localCurrency.buy) || 0;
@@ -418,6 +421,47 @@ async function syncUniversalDatastore(options = {}) {
                         console.log('[Sync-Skip] mc_customers dikelola oleh tabel mc_customers, bukan Universal Datastore.');
                         continue;
                     }
+                    if (key === 'mc_currencies') {
+                        // Daftar valuta dikelola oleh syncFromMySQL_Currencies (api/currencies).
+                        // Baris dari datastore tidak membawa kurs modal awal (initial_rate_locked,
+                        // initialStock) yang ada di raw_json, sehingga menimpa seluruh daftar akan
+                        // membuat Total Valuta bergantian antara 0 dan angka sebenarnya.
+                        // Dari datastore hanya stok (sumber: ledger ERP) yang diterapkan.
+                        if ((window.__almaraActiveCurrencyPushes || 0) > 0 ||
+                            (Date.now() - (window.__almaraLastLocalCurrencyWriteAt || 0)) < 5000) {
+                            continue;
+                        }
+                        try {
+                            const localList = JSON.parse(localStorage.getItem('mc_currencies') || '[]');
+                            const serverList = Array.isArray(value) ? value : [];
+                            if (Array.isArray(localList) && localList.length > 0 && serverList.length > 0) {
+                                const stockByCode = new Map(serverList.map(row => [
+                                    String((row && row.code) || '').trim().toUpperCase(),
+                                    parseFloat(row && row.stock)
+                                ]));
+                                let stockChanged = false;
+                                localList.forEach(item => {
+                                    const code = String((item && item.code) || '').trim().toUpperCase();
+                                    if (!stockByCode.has(code)) return;
+                                    const serverStock = stockByCode.get(code);
+                                    if (Number.isFinite(serverStock) && (parseFloat(item.stock) || 0) !== serverStock) {
+                                        item.stock = serverStock;
+                                        stockChanged = true;
+                                    }
+                                });
+                                if (stockChanged) {
+                                    try {
+                                        window.__almaraApplyingRemoteSync = true;
+                                        localStorage.setItem('mc_currencies', JSON.stringify(localList));
+                                    } finally {
+                                        window.__almaraApplyingRemoteSync = false;
+                                    }
+                                    hasChanges = true;
+                                }
+                            }
+                        } catch (e) {}
+                        continue;
+                    }
                     if (key === 'mc_bi_rates' && localStorage.getItem('mc_bi_rates_reset_at')) {
                         console.log('[Sync-Skip] mc_bi_rates pernah di-reset, mengabaikan data lama dari Universal Datastore.');
                         continue;
@@ -502,6 +546,8 @@ async function syncUniversalDatastore(options = {}) {
                     'mc_users',
                     'mc_light_theme',
                     'mc_sidebar_collapsed',
+                    'mc_pos_booking_import_v1',
+                    'mc_om_seq',
                     'mc_invoice_seq',
                     'mc_booking_seq',
                     'mc_customers_reset_at',
@@ -1354,14 +1400,54 @@ function getTransactionNotificationSummary(rows) {
     };
 }
 
+// Satu kartu per INVOICE (bukan per baris item): beberapa item dalam satu invoice digabung.
+function buildInvoiceNotificationPayload(invoiceId, items, sequence) {
+    const parts = items.map(row => buildTransactionNotificationPayload(row)).filter(Boolean);
+    if (!parts.length) return null;
+
+    const first = parts[0].details[0];
+    const types = Array.from(new Set(parts.map(p => p.details[0].type).filter(Boolean)));
+    const byCurrency = new Map();
+    parts.forEach(p => {
+        const d = p.details[0];
+        if (!d.currency || d.currency === '-') return;
+        const entry = byCurrency.get(d.currency) || { code: d.currency, amount: 0, totalIdr: 0, count: 0 };
+        entry.amount += Number(d.nominal) || 0;
+        entry.totalIdr += Number(d.totalIdr) || 0;
+        entry.count += 1;
+        byCurrency.set(d.currency, entry);
+    });
+
+    return {
+        id: invoiceId,
+        itemKeys: items.map(getRealtimeTransactionKey).filter(Boolean),
+        tabId: getTransactionNotificationTabId(),
+        title: `Transaksi baru ${sequence > 1 ? '#' + sequence : ''}`.trim(),
+        subtitle: `${types.join('/') || 'TRANSAKSI'} - ${first.customerName || '-'} (${invoiceId})`,
+        rawText: invoiceId,
+        currencySummary: Array.from(byCurrency.values()),
+        invoiceGroups: [{ invoiceId, customerName: first.customerName, kasir: first.kasir, count: items.length }],
+        details: parts.map(p => p.details[0]),
+        createdAt: Date.now()
+    };
+}
+
 function showNewTransactionNotification(rows) {
     const list = sortRealtimeTransactions(Array.isArray(rows) ? rows : []);
-    list.forEach((row, index) => {
-        const payload = buildTransactionNotificationPayload(row, {
-            sequenceLabel: String(index + 1)
-        });
+    const groups = new Map();
+    list.forEach(row => {
+        const invoiceId = String(row.id || row.invoiceId || row.itemId || '').trim();
+        if (!invoiceId) return;
+        if (!groups.has(invoiceId)) groups.set(invoiceId, []);
+        groups.get(invoiceId).push(row);
+    });
+
+    let sequence = 0;
+    groups.forEach((items, invoiceId) => {
+        sequence += 1;
+        const payload = buildInvoiceNotificationPayload(invoiceId, items, sequence);
         if (!payload) return;
-        if (payload.id && getTransactionNotificationDismissedSet().has(payload.id)) return;
+        if (getTransactionNotificationDismissedSet().has(invoiceId)) return;
         renderGlobalTransactionNotification(payload);
     });
 }
@@ -1663,10 +1749,11 @@ window.pushTransactionsToMySQL = async function(transactions) {
         
         const failedCount = Number(result.failed_count || 0);
         const okStatus = response.ok && result.status !== 'error' && failedCount === 0;
+        const detail = Array.isArray(result.errors) && result.errors.length ? ' ' + result.errors.join(' | ') : '';
         return rows.map(() => ({
             ok: okStatus,
             status: response.status,
-            message: result.message || ''
+            message: (result.message || '') + detail
         }));
     } catch (error) {
         console.error("Gagal menyimpan bulk transaksi ke MySQL:", error);

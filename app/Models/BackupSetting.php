@@ -15,10 +15,18 @@ class BackupSetting extends Model
         'retention_days',
         'scope',
         'timezone',
+        'storage_path',
+        'secondary_path',
+        'include_uploads',
+        'keep_min_backups',
+        'alert_after_hours',
     ];
 
     protected $casts = [
         'enabled' => 'boolean',
         'retention_days' => 'integer',
+        'include_uploads' => 'boolean',
+        'keep_min_backups' => 'integer',
+        'alert_after_hours' => 'integer',
     ];
 }
