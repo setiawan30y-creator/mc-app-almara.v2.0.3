@@ -1,0 +1,251 @@
+/* @2026-Alifiandra
+ * =====================================================================
+ * sidebar-modern.css  —  Sidebar (menu samping) bergaya modern
+ *
+ * Satu-satunya tempat gaya sidebar. Menggantikan blok <style> lama di
+ * dashboard.blade.php ("almara-sidebar-color-icons" & "sidebar-grouped-menu-style")
+ * serta aturan sidebar yang tersebar di styles.css / apv-theme.css / business-ui.css.
+ *
+ * Markup : resources/views/dashboard.blade.php  (#sidebar)
+ * Perilaku: akordeon grup & warna grup (skrip inline di blade), 01-core.js (ciutkan),
+ *           66-sidebar-ui.js (pencarian menu, tooltip mode ciut)
+ * Letak tata-letak (lebar, ciut) hanya berlaku di desktop; mode HP diatur mobile-app.css.
+ * ===================================================================== */
+
+:root {
+    --sb-w: 268px;
+    --sb-w-collapsed: 76px;
+}
+
+#sidebar {
+    --sb-bg: var(--mc-sidebar-bg, #0B2F29);
+    --sb-text: var(--mc-sidebar-text, #B8CEC4);
+    --sb-muted: color-mix(in srgb, var(--sb-text) 58%, transparent);
+    --sb-line: rgba(255, 255, 255, .08);
+    --sb-hover: rgba(255, 255, 255, .07);
+    --sb-accent: #E7C66E;
+    --sb-item-h: 42px;
+}
+body.mobile-mode #sidebar { --sb-item-h: 48px; }
+
+/* ---------- Lebar & tata letak (desktop saja) ---------- */
+@media (min-width: 769px) {
+    body:not(.mobile-mode) #sidebar {
+        width: var(--sb-w) !important; min-width: var(--sb-w) !important; max-width: var(--sb-w) !important; flex: 0 0 var(--sb-w) !important;
+    }
+    body:not(.mobile-mode) #appContainer > .main-content {
+        margin-left: var(--sb-w) !important; width: calc(100% - var(--sb-w)) !important; max-width: calc(100% - var(--sb-w)) !important;
+    }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar {
+        width: var(--sb-w-collapsed) !important; min-width: var(--sb-w-collapsed) !important; max-width: var(--sb-w-collapsed) !important; flex-basis: var(--sb-w-collapsed) !important;
+    }
+    body.sidebar-collapsed:not(.mobile-mode) #appContainer > .main-content {
+        margin-left: var(--sb-w-collapsed) !important; width: calc(100% - var(--sb-w-collapsed)) !important; max-width: calc(100% - var(--sb-w-collapsed)) !important;
+    }
+}
+
+/* ---------- Kerangka ---------- */
+body #sidebar.sidebar {
+    display: flex; flex-direction: column; overflow: hidden;
+    background:
+        radial-gradient(140% 60% at 0% 0%, rgba(52, 211, 153, .10), transparent 55%),
+        var(--sb-bg) !important;
+    border-right: 1px solid var(--sb-line) !important;
+    color: var(--sb-text);
+}
+body #sidebar * { box-sizing: border-box; }
+
+/* ---------- Header / brand ---------- */
+body #sidebar .almara-sidebar-header {
+    position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+    height: auto !important; min-height: 0; padding: 16px 14px 12px !important;
+    background: transparent !important; border: 0 !important;
+}
+body #sidebar .almara-sidebar-brand { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 11px !important; }
+body #sidebar .almara-sidebar-logo-wrap {
+    flex: 0 0 auto; width: 44px; height: 44px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    background: linear-gradient(145deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .05));
+    border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 6px 16px rgba(0, 0, 0, .22);
+}
+body #sidebar .almara-sidebar-logo-wrap img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+body #sidebar .almara-sidebar-brand-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+body #sidebar .almara-sidebar-brand-text h2 {
+    margin: 0; font-size: .86rem !important; font-weight: 800; line-height: 1.2; letter-spacing: .02em; color: #fff !important;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-transform: uppercase;
+}
+body #sidebar .almara-sidebar-subtitle { font-size: .68rem; color: var(--sb-muted) !important; line-height: 1.25; }
+body #sidebar .almara-sidebar-version {
+    align-self: flex-start; margin-top: 3px; padding: 1px 8px; border-radius: 999px;
+    font-size: .62rem; font-weight: 700; letter-spacing: .04em; color: var(--sb-accent) !important;
+    background: rgba(231, 198, 110, .12); border: 1px solid rgba(231, 198, 110, .25);
+}
+body #sidebar .collapse-sidebar,
+body #sidebar .close-sidebar {
+    flex: 0 0 auto; width: 32px; height: 32px; padding: 0; align-items: center; justify-content: center;
+    border-radius: 10px; border: 1px solid var(--sb-line) !important; background: rgba(255, 255, 255, .05) !important;
+    color: var(--sb-text) !important; cursor: pointer; transition: background-color .15s ease, color .15s ease;
+}
+body #sidebar .collapse-sidebar { display: inline-flex; }
+body #sidebar .collapse-sidebar:hover,
+body #sidebar .close-sidebar:hover { background: rgba(255, 255, 255, .13) !important; color: #fff !important; }
+body #sidebar .collapse-sidebar i { transition: transform .25s ease; }
+@media (min-width: 769px) { body:not(.mobile-mode) #sidebar .close-sidebar { display: none !important; } }
+
+/* ---------- Pencarian menu ---------- */
+body #sidebar .sb-search { position: relative; flex: 0 0 auto; margin: 0 14px 8px; }
+body #sidebar .sb-search > i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: .8rem; color: var(--sb-muted); pointer-events: none; }
+body #sidebar .sb-search input {
+    width: 100%; height: 38px !important; min-height: 0 !important; margin: 0 !important; padding: 0 34px 0 34px !important;
+    border-radius: 12px !important; border: 1px solid var(--sb-line) !important; outline: none;
+    background: rgba(255, 255, 255, .06) !important; color: #fff !important;
+    font-size: .84rem !important; box-shadow: none !important; transition: border-color .15s ease, background-color .15s ease;
+}
+body #sidebar .sb-search input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+body #sidebar .sb-search input::placeholder { color: var(--sb-muted); opacity: 1; }
+body #sidebar .sb-search input:focus { border-color: color-mix(in srgb, var(--sb-accent) 60%, transparent) !important; background: rgba(255, 255, 255, .1) !important; }
+body #sidebar .sb-search kbd {
+    position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+    padding: 1px 6px; border-radius: 6px; font: 600 .66rem/1.4 inherit; color: var(--sb-muted);
+    border: 1px solid var(--sb-line); background: rgba(255, 255, 255, .04); pointer-events: none;
+}
+body #sidebar .sb-search input:not(:placeholder-shown) ~ kbd { display: none; }
+body #sidebar .sb-empty { display: none; margin: 18px 18px; text-align: center; font-size: .82rem; color: var(--sb-muted); }
+body #sidebar.is-searching.no-result .sb-empty { display: block; }
+body #sidebar .nav-item.is-filtered { display: none !important; }
+body #sidebar.is-searching .sidebar-menu-group.is-collapsed .sidebar-group-items { display: flex; }
+
+/* ---------- Daftar menu ---------- */
+body #sidebar .sidebar-nav {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 10px 14px !important;
+    scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .16) transparent;
+}
+body #sidebar .sidebar-nav::-webkit-scrollbar { width: 6px; }
+body #sidebar .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .16); border-radius: 6px; }
+
+body #sidebar .sidebar-menu-group { margin: 2px 0 6px; padding: 0; border: 0 !important; border-radius: 0; background: transparent !important; overflow: visible; }
+body #sidebar .sidebar-group-toggle {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 12px 10px 6px; margin: 0; background: transparent !important; border: 0; border-radius: 8px; cursor: pointer; text-align: left;
+    font-size: calc(.66rem + 4px) !important; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--sb-muted);
+    transition: color .15s ease;
+}
+body #sidebar .sidebar-group-toggle:hover { color: #fff; }
+body #sidebar .sidebar-group-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+body #sidebar .sidebar-group-label > i { display: none; }
+body #sidebar .sidebar-group-label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body #sidebar .sidebar-group-chevron { font-size: .6rem; opacity: .7; transition: transform .2s ease; }
+body #sidebar .sidebar-menu-group.is-collapsed .sidebar-group-chevron { transform: rotate(-90deg); }
+body #sidebar .sidebar-menu-group.is-collapsed .sidebar-group-items { display: none; }
+body #sidebar .sidebar-group-items { padding: 0; display: flex; flex-direction: column; gap: 2px; }
+
+/* Item menu */
+body #sidebar .sidebar-nav .nav-item {
+    --g: #94A3B8;
+    position: relative; display: flex; align-items: center; gap: 12px;
+    min-height: var(--sb-item-h); margin: 0 !important; padding: 6px 10px !important;
+    border: 0 !important; border-radius: 12px; box-shadow: none !important;
+    background: transparent !important; color: var(--sb-text) !important;
+    font-size: .88rem !important; font-weight: 500; line-height: 1.25; text-decoration: none;
+    transition: background-color .15s ease, color .15s ease;
+}
+body #sidebar .sidebar-nav .nav-item:hover { background: var(--sb-hover) !important; color: #fff !important; }
+body #sidebar .sidebar-nav .nav-item > i:first-child {
+    flex: 0 0 auto; width: 30px !important; height: 30px; min-width: 30px; margin: 0 !important; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center; font-size: .82rem !important;
+    color: var(--g) !important; background: color-mix(in srgb, var(--g) 15%, transparent) !important;
+    border: 0 !important; box-shadow: none !important; transition: transform .15s ease, background-color .15s ease, color .15s ease;
+}
+body #sidebar .sidebar-nav .nav-item:hover > i:first-child { transform: scale(1.06); }
+body #sidebar .sidebar-nav .nav-item small { font-size: inherit !important; }
+
+/* Item aktif: pil kaca + penanda kiri + ikon terisi */
+body #sidebar .sidebar-nav .nav-item.active {
+    background: linear-gradient(90deg, rgba(255, 255, 255, .15), rgba(255, 255, 255, .06)) !important;
+    color: #fff !important; font-weight: 700;
+}
+body #sidebar .sidebar-nav .nav-item.active::before {
+    content: ""; position: absolute; left: -10px; top: 9px; bottom: 9px; width: 4px; border-radius: 0 4px 4px 0; background: var(--sb-accent);
+}
+body #sidebar .sidebar-nav .nav-item.active > i:first-child { background: var(--g) !important; color: #0B2F29 !important; box-shadow: 0 4px 12px color-mix(in srgb, var(--g) 45%, transparent) !important; }
+body #sidebar .sidebar-nav .nav-item:focus-visible,
+body #sidebar .sidebar-group-toggle:focus-visible,
+body #sidebar .sb-sync:focus-visible,
+body #sidebar .user-info:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 2px; }
+
+/* Warna ikon per grup (dapat dikembangkan tanpa menyentuh markup) */
+body #sidebar .nav-item[data-sidebar-group="dashboard"]    { --g: #34d399; }
+body #sidebar .nav-item[data-sidebar-group="transaksi"]    { --g: #22c55e; }
+body #sidebar .nav-item[data-sidebar-group="nasabah"]      { --g: #38bdf8; }
+body #sidebar .nav-item[data-sidebar-group="master"]       { --g: #a78bfa; }
+body #sidebar .nav-item[data-sidebar-group="keuangan"]     { --g: #fbbf24; }
+body #sidebar .nav-item[data-sidebar-group="laporan"]      { --g: #60a5fa; }
+body #sidebar .nav-item[data-sidebar-group="bi"]           { --g: #f472b6; }
+body #sidebar .nav-item[data-sidebar-group="tools"]        { --g: #c084fc; }
+body #sidebar .nav-item[data-sidebar-group="administrasi"] { --g: #fb7185; }
+body #sidebar .nav-item[data-sidebar-group="pengaturan"]   { --g: #f97316; }
+body #sidebar .nav-item[data-target="currency-view"]       { --g: #06b6d4; }
+body #sidebar .nav-item[data-target="laporan-goaml-view"]  { --g: #ef4444; }
+body #sidebar .nav-item[data-target="laporan-lku-view"]    { --g: #10b981; }
+body #sidebar .nav-item--external { --g: #10b981; }
+body #sidebar .nav-item--external .ext { margin-left: auto; font-size: .7rem; opacity: .6; }
+
+/* ---------- Footer: kartu pengguna ---------- */
+body #sidebar .sidebar-footer {
+    flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; padding: 12px 12px 10px !important;
+    background: transparent !important; border-top: 1px solid var(--sb-line) !important;
+}
+body #sidebar .user-info {
+    display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; border-radius: 14px;
+    background: rgba(255, 255, 255, .06); border: 1px solid var(--sb-line); color: var(--sb-text) !important; transition: background-color .15s ease;
+}
+body #sidebar .user-info:hover { background: rgba(255, 255, 255, .1); }
+body #sidebar .user-info > i { font-size: 2rem !important; line-height: 1; color: var(--sb-muted) !important; }
+body #sidebar .user-info > img { width: 36px !important; height: 36px !important; flex: 0 0 36px; border-radius: 50% !important; object-fit: cover; box-shadow: 0 0 0 2px rgba(255, 255, 255, .15); }
+body #sidebar .user-info > span { min-width: 0; font-size: .86rem !important; font-weight: 700; line-height: 1.3; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body #sidebar .user-info small { display: block; font-size: .7rem; font-weight: 500; color: var(--sb-muted); }
+body #sidebar .sb-sync {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 10px; cursor: pointer;
+    border-radius: 12px; border: 1px solid rgba(56, 189, 248, .32); background: rgba(56, 189, 248, .1); color: #7dd3fc;
+    font: inherit; font-size: .8rem; font-weight: 700; transition: background-color .15s ease, transform .12s ease;
+}
+body #sidebar .sb-sync:hover { background: rgba(56, 189, 248, .18); }
+body #sidebar .sb-sync:active { transform: scale(.98); }
+body #sidebar .dev-credit { text-align: center; font-size: .68rem; letter-spacing: .04em; color: rgba(255, 255, 255, .38); padding: 0 0 2px; }
+
+/* ---------- Mode ciut (rel ikon) — desktop ---------- */
+@media (min-width: 769px) {
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .almara-sidebar-header { flex-direction: column; padding: 14px 0 8px !important; gap: 8px; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .almara-sidebar-brand-text,
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sb-search,
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-group-label,
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-group-chevron,
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .user-info > span,
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sb-sync > span,
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .dev-credit { display: none !important; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .almara-sidebar-brand { flex: 0 0 auto; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .almara-sidebar-logo-wrap { width: 42px; height: 42px; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .collapse-sidebar { position: static; width: 34px; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .collapse-sidebar i { transform: rotate(180deg); }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-nav { padding: 4px 0 12px !important; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-menu-group { margin: 0; padding-top: 6px; border-top: 1px solid var(--sb-line) !important; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-menu-group:first-child { border-top: 0 !important; padding-top: 0; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-group-toggle { display: none !important; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-menu-group.is-collapsed .sidebar-group-items { display: flex !important; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-nav .nav-item { justify-content: center; gap: 0; padding: 6px 0 !important; font-size: 0 !important; margin: 0 8px !important; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-nav .nav-item .ext { display: none; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-nav .nav-item.active::before { left: -8px; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sidebar-footer { padding: 10px 8px !important; align-items: center; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .user-info { justify-content: center; padding: 6px; background: transparent; border-color: transparent; }
+    body.sidebar-collapsed:not(.mobile-mode) #sidebar .sb-sync { width: 44px; padding: 0; }
+}
+
+/* ---------- Laci HP ---------- */
+body.mobile-mode #sidebar .collapse-sidebar { display: none !important; }
+body #sidebar .sidebar-menu-group.is-empty { display: none !important; }
+body.mobile-mode #sidebar .sidebar-nav .nav-item { border-radius: 14px; }
+body.mobile-mode #sidebar .sidebar-nav .nav-item.active::before { left: -10px; }
+
+@media (prefers-reduced-motion: reduce) {
+    body #sidebar * { transition: none !important; }
+}

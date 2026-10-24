@@ -6,15 +6,6 @@
 const { store: almaraStore, utils: almaraUtils, auth: almaraAuth } = window.AlmaraApp;
 window._trxReceiverManualDirty = false;
 
-function getPosWaGatewaySettings() {
-    try {
-        const settings = JSON.parse(localStorage.getItem('mc_wa_gateway') || '{}');
-        return settings && typeof settings === 'object' ? settings : {};
-    } catch (error) {
-        return {};
-    }
-}
-
 function normalizePosWhatsAppNumber(phone) {
     let value = String(phone || '').replace(/\D/g, '');
     if (value.startsWith('0')) value = '62' + value.slice(1);
@@ -25,8 +16,7 @@ function normalizePosWhatsAppNumber(phone) {
 window.updatePosWaGatewayOption = function() {
     const toggle = document.getElementById('posSendWaGateway');
     const hint = document.getElementById('posWaGatewayHint');
-    const gateway = getPosWaGatewaySettings();
-    const isReady = Boolean(gateway.enabled && gateway.endpoint && gateway.token);
+    const isReady = Boolean(window.__waGwStatus && window.__waGwStatus.ready);
     if (toggle) {
         toggle.disabled = !isReady;
         if (!isReady) toggle.checked = false;
@@ -38,11 +28,15 @@ window.updatePosWaGatewayOption = function() {
     }
 };
 
+const POS_THANKS_FALLBACK = 'Halo [NAMA_NASABAH],\n\nTerima kasih telah bertransaksi di *[NAMA_MC]*.\n\nReferensi transaksi: *[NO_INVOICE]*\nTanggal: [TANGGAL]\n\nKami senang dapat melayani Anda. Sampai jumpa kembali.';
+
 function buildPosThankYouMessage(summary) {
-    const profile = almaraStore.getProfile();
     const customer = (almaraStore.getCustomers() || []).find(c => c.id_nasabah === summary.customerId);
-    const customerName = customer?.nama || 'Pelanggan';
-    return `Halo ${customerName},\n\nTerima kasih telah bertransaksi di *${profile.name || 'MC-ALMARA'}*.\n\nReferensi transaksi: *${summary.receiptId}*\nTanggal: ${almaraUtils.formatDateToDMY(summary.timestamp)}\n\nKami senang dapat melayani Anda. Sampai jumpa kembali.`;
+    return window.buildWaMessageForPurpose('pos-thanks', POS_THANKS_FALLBACK, {
+        customerName: customer?.nama || 'Pelanggan',
+        invoice: summary.receiptId,
+        date: almaraUtils.formatDateToDMY(summary.timestamp)
+    });
 }
 
 async function sendPosThankYouViaGateway(summary) {
@@ -504,35 +498,7 @@ function applyPosDraftToForm(session) {
     isApplyingPosDraft = false;
 }
 
-function renderPosDraftSessions() {
-    const wrap = document.getElementById('posDraftSessionList');
-    if (!wrap) return;
-    const sessions = getPosDraftSessions();
-    if (!sessions.length) {
-        wrap.innerHTML = '<span class="text-muted" style="font-size:.82rem;">Tidak ada form aktif. Tekan tombol + untuk membuat transaksi baru.</span>';
-        document.querySelectorAll('#pos-view .pos-flow-card').forEach(card => { card.style.display = 'none'; });
-        return;
-    }
-    const activeId = getActivePosDraftId();
-    wrap.innerHTML = sessions.map((session, index) => {
-        const count = Array.isArray(session.cart) ? session.cart.length : 0;
-        const active = session.id === activeId;
-        const name = session.fields?.customerSearch || session.label || `Form ${index + 1}`;
-        const completed = Boolean(session.completed);
-        const buttonClass = active
-            ? (completed ? 'btn-secondary' : 'btn-primary')
-            : (completed ? 'btn-secondary' : 'btn-outline');
-        const icon = completed
-            ? '<i class="fa-solid fa-circle-check"></i>'
-            : (session.minimized ? '<i class="fa-solid fa-window-minimize"></i>' : '<i class="fa-solid fa-file-invoice"></i>');
-        return `
-            <button type="button" class="btn btn-sm ${buttonClass}" onclick="window.switchPosDraftSession('${session.id}')" title="${completed ? 'Transaksi selesai' : count + ' item keranjang'}">
-                ${icon}
-                ${name} ${count ? `(${count})` : ''}
-            </button>
-        `;
-    }).join('');
-}
+// renderPosDraftSessions() (antrean nasabah) sekarang ada di 38-pos-queue.js
 
 function ensurePosDraftSessionReady() {
     const sessions = getPosDraftSessions();
@@ -782,66 +748,7 @@ function loadPosForm() {
     ensurePosDraftSessionReady();
 }
 
-function showCustomerHistory() {
-    const custId = document.getElementById('trxCustomer').value || window._posLastProcessedCustomerId || '';
-    const container = document.getElementById('customerPosHistoryContainer');
-    const listEl = document.getElementById('customerPosHistoryList');
-    
-    if (!container || !listEl) return;
-    
-    if (custId === '-' || !custId) {
-        container.style.display = 'none';
-        return;
-    }
-    
-    const allTrxs = almaraStore.getTransactions();
-    const custTrxs = allTrxs.filter(t => t.customerId === custId);
-    
-    if (custTrxs.length === 0) {
-        container.style.display = 'block';
-        listEl.innerHTML = '<div style="text-align: center; color: #64748B; font-style: italic; padding: 5px;">Belum ada histori transaksi.</div>';
-        return;
-    }
-    
-    const invMap = {};
-    custTrxs.forEach(t => {
-        if (!invMap[t.id]) invMap[t.id] = { id: t.id, timestamp: t.timestamp, items: [] };
-        invMap[t.id].items.push(t);
-    });
-    
-    let invoices = Object.values(invMap);
-    invoices.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    invoices = invoices.slice(0, 5); // Ambil 5 invoice terakhir
-    
-    let html = '';
-    invoices.forEach(inv => {
-        let total = 0;
-        let itemsHtml = inv.items.map(i => {
-            total += (i.tipe === 'JUAL' ? i.total : -i.total);
-            return `<div class="pos-history-item"><span class="${i.tipe === 'BELI' ? 'text-green' : 'text-red'} font-weight-bold">${i.tipe}</span> ${i.nominal.toLocaleString()} ${almaraUtils.getFlagHtml(i.valuta)} @ ${almaraUtils.formatRate(i.rate)}</div>`;
-        }).join('');
-        
-        let invDate = almaraUtils.formatDateToDMY(inv.timestamp);
-        let invIdText = inv.id ? `<span style="color: #94A3B8; font-size: 0.7rem; display: block;">${inv.id}</span>` : '';
-        
-        html += `
-            <div class="pos-customer-history-entry">
-                <div class="pos-history-topline">
-                    <div>
-                        <div class="pos-history-date">${invDate}</div>
-                        ${invIdText}
-                    </div>
-                    <div class="pos-history-total" style="color: ${total >= 0 ? '#10B981' : '#F87171'};">${almaraUtils.formatIdr(Math.abs(total))}</div>
-                </div>
-                <div class="pos-history-items">${itemsHtml}</div>
-                <div style="margin-top: 3px; font-size: 0.66rem; color: #94a3b8; text-align: right;">Grand Total</div>
-            </div>
-        `;
-    });
-    
-    container.style.display = 'block';
-    listEl.innerHTML = html;
-}
+// showCustomerHistory() (riwayat nasabah 30 hari per 5 hari) sekarang ada di 38-pos-queue.js
 
 function updatePosSummary() {
     try {
@@ -1047,7 +954,8 @@ function isPosInvoiceManualOwner() {
     const role = String(user && user.role ? user.role : '').toLowerCase();
     const accessRole = typeof getAccessRoleForUserRole === 'function' ? getAccessRoleForUserRole(role) : role;
     const permissions = typeof getRolePermissions === 'function' ? getRolePermissions() : {};
-    return permissions[accessRole]?.actions?.manualInvoice === true;
+    const config = typeof getEffectiveAccessConfig === 'function' ? getEffectiveAccessConfig(user) : permissions[accessRole];
+    return config?.actions?.manualInvoice === true;
 }
 
 function normalizeManualInvoiceId(value) {
@@ -1090,6 +998,119 @@ function nextPosDocumentId(prefix, storageKey) {
     const seq = getPosExistingDocumentMax(prefix) + 1;
     localStorage.setItem(storageKey, seq);
     return `${prefix}-${seq.toString().padStart(4, '0')}`;
+}
+
+// Nomor dokumen dialokasikan SERVER saat submit (atomik, tidak ganda antar kasir/perangkat).
+// Jika server tidak terjangkau, jatuh ke penomoran lokal lama sebagai cadangan.
+async function allocatePosDocumentId(prefix, storageKey) {
+    const hint = getPosExistingDocumentMax(prefix);
+    try {
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const doFetch = window.authFetch || window.fetch;
+        const response = await doFetch('api/pos/next-document', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+            body: JSON.stringify({ prefix, min_seq: hint })
+        });
+        const json = await response.json().catch(() => ({}));
+        if (response.ok && json.status === 'success' && json.data && json.data.id) {
+            localStorage.setItem(storageKey, json.data.seq);
+            return json.data.id;
+        }
+        console.warn('Penomoran server ditolak, memakai nomor lokal:', json.message || response.status);
+    } catch (error) {
+        console.warn('Penomoran server tidak terjangkau, memakai nomor lokal:', error.message);
+    }
+    return nextPosDocumentId(prefix, storageKey);
+}
+
+// Membagi pembayaran tunai/transfer ke tiap item keranjang untuk dicatat server ke ledger ERP.
+// Kembalian: array sejajar dengan keranjang; null berarti item tidak dikirim ke ledger.
+function buildPosErpPayments(cart, payCash, payTransfer, bankName) {
+    const items = Array.isArray(cart) ? cart : [];
+    const result = items.map(() => null);
+    const abs = value => Math.abs(Number(value || 0));
+    const round2 = value => Math.round(value * 100) / 100;
+
+    if (items.some(item => Number(item && item.totalIdr) < 0)) return result;
+
+    const indexes = items.map((_, i) => i).filter(i => Number(items[i].totalIdr) > 0);
+    const baseTotal = indexes.reduce((sum, i) => sum + abs(items[i].totalIdr), 0);
+    const paidTotal = abs(payCash) + abs(payTransfer);
+
+    // Server mensyaratkan total pembayaran = total transaksi. Jika biaya/diskon membuat
+    // total dibayar berbeda dari total item, jangan kirim pembayaran ERP (butuh penyesuaian terpisah).
+    if (baseTotal <= 0 || Math.abs(baseTotal - paidTotal) > 0.005) return result;
+
+    let cashLeft = abs(payCash);
+    indexes.forEach((i, pos) => {
+        const total = abs(items[i].totalIdr);
+        const isLast = pos === indexes.length - 1;
+        const share = isLast ? cashLeft : Math.round(abs(payCash) * total / baseTotal);
+        const cash = round2(Math.max(0, Math.min(cashLeft, total, share)));
+        const transfer = round2(total - cash);
+        cashLeft = Math.max(0, cashLeft - cash);
+
+        const payments = [];
+        if (cash > 0) payments.push({ method: 'cash', amount: cash, currency_code: 'IDR' });
+        if (transfer > 0) payments.push({ method: 'bank', amount: transfer, currency_code: 'IDR', bank_name: String(bankName || 'BCA') });
+        result[i] = payments.length ? payments : null;
+    });
+
+    return result;
+}
+
+// Sama seperti buildPosErpPayments, tetapi DP booking (sudah diterima/dibayar saat booking)
+// ikut dicatat sebagai bagian pembayaran, sehingga total pembayaran = total transaksi.
+function buildPosErpPaymentsWithDp(cart, payCash, payTransfer, bankName, imp, dpUsed) {
+    const items = Array.isArray(cart) ? cart : [];
+    const result = items.map(() => null);
+    const abs = value => Math.abs(Number(value || 0));
+    const round2 = value => Math.round(value * 100) / 100;
+    if (items.some(item => Number(item && item.totalIdr) < 0)) return result;
+
+    const indexes = items.map((_, i) => i).filter(i => Number(items[i].totalIdr) > 0);
+    const baseTotal = indexes.reduce((sum, i) => sum + abs(items[i].totalIdr), 0);
+
+    const buckets = [];
+    const add = (method, bank, amount) => {
+        amount = round2(abs(amount));
+        if (amount <= 0) return;
+        const found = buckets.find(b => b.method === method && b.bank === bank);
+        if (found) found.amount = round2(found.amount + amount); else buckets.push({ method, bank, amount });
+    };
+    add('cash', '', abs(payCash));
+    add('bank', String(bankName || 'BCA'), abs(payTransfer));
+    if (imp && String(imp.dpMethod).toUpperCase() === 'CASH') add('cash', '', dpUsed);
+    else if (imp) add('bank', String(imp.dpMethod || 'BCA'), dpUsed);
+
+    const paidTotal = buckets.reduce((sum, b) => sum + b.amount, 0);
+    if (baseTotal <= 0 || Math.abs(baseTotal - paidTotal) > 0.005) return result;
+
+    const left = buckets.map(b => b.amount);
+    indexes.forEach((i, pos) => {
+        const total = abs(items[i].totalIdr);
+        const isLast = pos === indexes.length - 1;
+        let remainingItem = total;
+        const payments = [];
+        buckets.forEach((b, bi) => {
+            let share;
+            if (bi === buckets.length - 1) share = remainingItem;
+            else share = isLast ? left[bi] : Math.round(b.amount * total / baseTotal);
+            share = round2(Math.max(0, Math.min(left[bi], remainingItem, share)));
+            if (bi === buckets.length - 1) share = round2(Math.max(0, remainingItem));
+            left[bi] = round2(Math.max(0, left[bi] - share));
+            remainingItem = round2(remainingItem - share);
+            if (share > 0) {
+                const row = { method: b.method, amount: share, currency_code: 'IDR' };
+                if (b.method === 'bank') row.bank_name = b.bank;
+                payments.push(row);
+            }
+        });
+        result[i] = payments.length ? payments : null;
+    });
+    return result;
 }
 
 function peekPosDocumentId(prefix, storageKey) {
@@ -1517,6 +1538,45 @@ async function ensurePosMonthlyLimitAllowed(customerId, pendingJualTotal) {
     return true;
 }
 
+// Stok valas TIDAK boleh kurang saat JUAL (kecuali mode Booking). Menghitung stok yang tersedia
+// termasuk cadangan booking yang sedang diambil dan nominal transaksi lama yang sedang diedit.
+function getPosJualStockShortages(cart, extraJual) {
+    const currencies = almaraStore.getCurrencies();
+    const need = {};
+    (cart || []).forEach(item => {
+        if (item.type === 'JUAL') need[item.curCode] = (need[item.curCode] || 0) + (parseFloat(item.amount) || 0);
+    });
+    (extraJual ? [extraJual] : []).forEach(item => {
+        if (item.type === 'JUAL') need[item.curCode] = (need[item.curCode] || 0) + (parseFloat(item.amount) || 0);
+    });
+    const avail = {};
+    currencies.forEach(c => { avail[c.code] = parseFloat(c.stock) || 0; });
+    const editingId = window.editingTrxId;
+    if (editingId) {
+        almaraStore.getTransactions().filter(t => t.id === editingId).forEach(t => {
+            avail[t.valuta] = (avail[t.valuta] || 0) + (t.tipe === 'JUAL' ? 1 : -1) * (parseFloat(t.nominal) || 0);
+        });
+    } else if (typeof window.getPosBookingImport === 'function') {
+        const imp = window.getPosBookingImport();
+        if (imp) imp.rows.forEach(r => {
+            avail[r.valuta] = (avail[r.valuta] || 0) + (String(r.tipe).toUpperCase() === 'JUAL' ? 1 : -1) * (parseFloat(r.nominal) || 0);
+        });
+    }
+    return Object.keys(need).filter(code => need[code] > (avail[code] || 0) + 1e-9).map(code => ({
+        code, need: need[code], available: Math.max(avail[code] || 0, 0), deficit: need[code] - Math.max(avail[code] || 0, 0)
+    }));
+}
+function showPosStockBlocked(shortages) {
+    const msg = shortages.map(x => `${x.code}: stok ${x.available.toLocaleString('id-ID')}, dibutuhkan ${x.need.toLocaleString('id-ID')} (kurang ${x.deficit.toLocaleString('id-ID')})`).join('\n');
+    const title = 'Stok tidak mencukupi';
+    const text = 'Transaksi JUAL tidak bisa diproses.\n' + msg + '\n\nGunakan menu Booking bila valas baru dicarikan sebelum nasabah mengambil.';
+    if (typeof Swal !== 'undefined') {
+        return Swal.fire({ icon: 'error', title, text, confirmButtonText: 'Mengerti', background: '#1e293b', color: '#f8fafc' });
+    }
+    alert(title + '\n' + text);
+    return Promise.resolve();
+}
+
 async function addToCart() {
     const type = document.getElementById('trxType').value;
     const curCode = document.getElementById('trxCurrency').value;
@@ -1545,32 +1605,12 @@ async function addToCart() {
     // We must calculate if total amount in cart + this amount > stock
     if(type === 'JUAL') {
         const cartAmount = currentCart.filter(item => item.curCode === curCode && item.type === 'JUAL').reduce((sum, item) => sum + item.amount, 0);
-        const stockVal = parseFloat(cur.stock) || 0;
-        if((cartAmount + amount) > stockVal) {
-            const deficit = (cartAmount + amount) - stockVal;
-            const confirmMsg = stockVal <= 0
-                ? `Stok ${curCode} kosong, mau lanjut?`
-                : `Stok ${curCode} tidak mencukupi (Tersedia: ${stockVal.toLocaleString()}, Kurang: ${deficit.toLocaleString()}), mau lanjut?`;
-            
-            let proceed = false;
-            if (typeof Swal !== 'undefined') {
-                const result = await Swal.fire({
-                    icon: 'warning',
-                    title: 'Konfirmasi Stok',
-                    text: confirmMsg,
-                    showCancelButton: true,
-                    confirmButtonText: 'OK',
-                    cancelButtonText: 'Batal',
-                    background: '#1e293b',
-                    color: '#f8fafc',
-                    confirmButtonColor: '#3085d6',
-                    cancelButtonColor: '#d33'
-                });
-                proceed = result.isConfirmed;
-            } else {
-                proceed = confirm(confirmMsg);
-            }
-            if (!proceed) {
+        const isBookingMode = document.getElementById('checkoutType') && document.getElementById('checkoutType').value === 'BOOKING';
+        if (!isBookingMode) {
+            const shortages = getPosJualStockShortages(currentCart, { type: 'JUAL', curCode, amount });
+            const mine = shortages.filter(x => x.code === curCode);
+            if (mine.length) {
+                await showPosStockBlocked(mine);
                 return;
             }
         }
@@ -1706,7 +1746,21 @@ function readPosFileAsDataUrl(file) {
     });
 }
 
+// Pembungkus: mencegah submit ganda (klik dua kali / Enter berulang) yang akan membuat dua invoice.
 async function processPayment() {
+    if (window.__posSubmitting) return;
+    window.__posSubmitting = true;
+    const btn = document.getElementById('btnProcessPayment');
+    if (btn) btn.setAttribute('aria-busy', 'true');
+    try {
+        return await processPaymentCore();
+    } finally {
+        window.__posSubmitting = false;
+        if (btn) btn.removeAttribute('aria-busy');
+    }
+}
+
+async function processPaymentCore() {
     if(currentCart.length === 0) {
         alert('Keranjang transaksi masih kosong.');
         return;
@@ -1757,6 +1811,23 @@ async function processPayment() {
         let sign = grandTotal < 0 ? -1 : 1;
         requiredPayment = dpAmountVal * sign;
         remainingAmountVal = absGt - dpAmountVal;
+    }
+
+    // Booking yang diambil: DP sudah diterima saat booking, jadi yang dibayar sekarang hanya sisanya.
+    const bkImp = (checkoutType !== 'BOOKING' && !window.editingTrxId && typeof window.getPosBookingImport === 'function')
+        ? window.getPosBookingImport() : null;
+    if (checkoutType !== 'BOOKING') {
+        const stockShort = getPosJualStockShortages(currentCart);
+        if (stockShort.length) {
+            await showPosStockBlocked(stockShort);
+            return;
+        }
+    }
+    let bkDpUsed = 0;
+    if (bkImp) {
+        const absGtBk = Math.abs(grandTotal);
+        bkDpUsed = Math.min(bkImp.dp, absGtBk);
+        requiredPayment = (absGtBk - bkDpUsed) * (grandTotal < 0 ? -1 : 1);
     }
 
     const paymentMethod = document.getElementById('paymentMethod').value;
@@ -1892,7 +1963,7 @@ async function processPayment() {
     let receiptId = window.editingTrxId;
     if (!receiptId) {
         if (checkoutType === 'BOOKING') {
-            receiptId = nextPosDocumentId('BKG', 'mc_booking_seq');
+            receiptId = await allocatePosDocumentId('BKG', 'mc_booking_seq');
         } else {
             const manualInput = document.getElementById('posTrxIdPreviewModern');
             const manualInvoice = isPosInvoiceManualOwner() ? normalizeManualInvoiceId(manualInput?.value) : '';
@@ -1902,7 +1973,7 @@ async function processPayment() {
                 return;
             }
 
-            receiptId = manualInvoice || nextPosDocumentId('INV', 'mc_invoice_seq');
+            receiptId = manualInvoice || await allocatePosDocumentId('INV', 'mc_invoice_seq');
             if (isPosDocumentIdUsed(receiptId, trxs)) {
                 alert(`No. Invoice ${receiptId} sudah digunakan. Silakan gunakan nomor lain.`);
                 return;
@@ -1918,6 +1989,14 @@ async function processPayment() {
     }
 
     // Currencies sudah di-load di atas
+
+    // Booking diambil: kembalikan stok yang dicadangkan saat booking, lalu stok dikurangi sesuai keranjang.
+    if (bkImp) {
+        bkImp.rows.forEach(r => {
+            const ci = currencies.findIndex(c => c.code === r.valuta);
+            if (ci > -1) currencies[ci].stock += (String(r.tipe).toUpperCase() === 'JUAL' ? 1 : -1) * (parseFloat(r.nominal) || 0);
+        });
+    }
 
     // Deduct stock for all items
     for(let item of currentCart) {
@@ -2063,6 +2142,12 @@ async function processPayment() {
     const finalKeterangan = notesList.join(' | ');
 
     const newTransactionRows = [];
+    // Pembayaran per item dikirim bersama transaksi; server mencatat kas/bank/stok dalam satu langkah.
+    const erpPaymentsByIndex = checkoutType === 'BOOKING'
+        ? []
+        : (bkImp
+            ? buildPosErpPaymentsWithDp(currentCart, payCash, payTransfer, bankTgt, bkImp, bkDpUsed)
+            : buildPosErpPayments(currentCart, payCash, payTransfer, bankTgt));
     currentCart.forEach((item, index) => {
         const transactionRow = {
             id: receiptId,    // Use same receipt ID to group
@@ -2106,8 +2191,18 @@ async function processPayment() {
             limitRequestedBy: limitApproval && item.type === 'JUAL' ? limitApproval.requestedBy : null,
             limitApprovedBy: limitApproval && item.type === 'JUAL' ? limitApproval.approvedBy : null,
             limitApprovedByRole: limitApproval && item.type === 'JUAL' ? limitApproval.approvedByRole : null,
-            limitApprovedAt: limitApproval && item.type === 'JUAL' ? limitApproval.approvedAt : null
+            limitApprovedAt: limitApproval && item.type === 'JUAL' ? limitApproval.approvedAt : null,
+            erpPayments: erpPaymentsByIndex[index] || null
         };
+        if (bkImp) {
+            transactionRow.bookingId = bkImp.bookingId;
+            transactionRow.conversionSourceBookingId = bkImp.bookingId;
+            transactionRow.bookingTimestamp = bkImp.bookingTimestamp;
+            transactionRow.dpAmount = bkDpUsed;
+            transactionRow.dpMethod = bkImp.dpMethod;
+            transactionRow.remainingAmount = 0;
+            transactionRow.settlementAmount = Math.abs(requiredPayment);
+        }
         newTransactionRows.push(transactionRow);
     });
 
@@ -2176,7 +2271,15 @@ async function processPayment() {
         }
     }
 
-    alert(`${checkoutType === 'BOOKING' ? 'Booking' : 'Pembayaran'} Berhasil! (Disimpan dengan ref: ${receiptId})`);
+    if (bkImp && typeof window.finalizeBookingImport === 'function') {
+        try {
+            window.finalizeBookingImport(bkImp, receiptId, { remaining: Math.abs(requiredPayment), paymentMethod, bank: bankTgt, payCash, payTransfer });
+        } catch (bkError) {
+            console.error('Gagal menyelesaikan status booking:', bkError);
+        }
+    }
+
+    alert(`${checkoutType === 'BOOKING' ? 'Booking' : 'Pembayaran'} Berhasil! (Disimpan dengan ref: ${receiptId})` + (bkImp ? `\nBooking ${bkImp.bookingId} selesai.` : ''));
 
     
     // Setup Print Button
@@ -2201,7 +2304,9 @@ async function processPayment() {
         transactionPurpose,
         sourceOfFunds,
         timestamp: finalTimestamp,
-        kasir: currentUser && currentUser.fullName ? currentUser.fullName : 'Admin Kasir'
+        kasir: currentUser && currentUser.fullName ? currentUser.fullName : 'Admin Kasir',
+        bookingId: bkImp ? bkImp.bookingId : null,
+        dpAmount: bkImp ? bkDpUsed : 0
     };
     window._posLastProcessedCustomerId = customerId && customerId !== '-' ? customerId : '';
     setActivePosDraftPrintContext(printCart, printSummary);
@@ -2249,6 +2354,13 @@ async function processPayment() {
         applyPosDraftToForm(sessions[idx]);
     }
 
+    // Nomor invoice yang baru terpakai tidak boleh tertinggal di kolom input,
+    // kalau tidak transaksi berikutnya dianggap input manual dan ditolak "sudah digunakan".
+    const invoiceFieldAfter = document.getElementById('posTrxIdPreviewModern');
+    if (invoiceFieldAfter && !window.editingTrxId) {
+        invoiceFieldAfter.value = '[Dibuat saat proses]';
+    }
+
     updateProcessPaymentState();
     loadDashboard(); // Refresh Dashboard figures
     if (typeof loadReportsTable === 'function') loadReportsTable();
@@ -2256,45 +2368,33 @@ async function processPayment() {
 }
 
 async function sendWhatsAppReceipt(cart, summary) {
-    const profile = almaraStore.getProfile();
-    const assignedTemplate = typeof window.getWaTemplateForPurpose === 'function'
-        ? window.getWaTemplateForPurpose('pos')
-        : null;
-    let waTemplate = assignedTemplate?.content || profile.waTemplate || DEFAULT_WA_TEMPLATE;
-    
-    // Process [VALUTA_LIST]
+    // [VALUTA_LIST]
     let valutaListText = '';
     cart.forEach(item => {
         valutaListText += `- ${item.type} ${item.amount.toLocaleString()} ${item.curCode} \n  (@ ${almaraUtils.formatRate(item.rate)}) = ${almaraUtils.formatIdr(item.totalIdr)}\n`;
     });
-    
-    // Process [METODE_RINCIAN]
+
+    // [METODE_RINCIAN]
     let metodeRincianText = '';
     if(summary.paymentMethod === 'SPLIT') {
         metodeRincianText += `  - Tunai: ${almaraUtils.formatIdr(Math.abs(summary.payCash))}\n`;
         metodeRincianText += `  - Transfer: ${almaraUtils.formatIdr(Math.abs(summary.payTransfer))}\n`;
     }
-    
+
     const customers = almaraStore.getCustomers();
     const customer = summary.customerId ? customers.find(c => c.id_nasabah === summary.customerId) : null;
     const custName = customer ? (customer.nama || 'Pelanggan') : 'Pelanggan';
-    
-    let text = waTemplate
-        .replace(/\[NAMA_NASABAH\]/gi, custName)
-        .replace(/\[PELANGGAN\]/gi, custName)
-        .replace(/\[NASABAH\]/gi, custName)
-        .replace(/\[NAMA\]/gi, custName)
-        .replace(/\[NAMA_MC\]/gi, profile.name)
-        .replace(/\[NO_HP_MC\]/gi, profile.phone !== '-' ? profile.phone : '')
-        .replace(/\[NO_INVOICE\]/gi, summary.receiptId)
-        .replace(/\[TANGGAL\]/gi, almaraUtils.formatDateToDMY(summary.timestamp))
-        .replace(/\[GRAND_TOTAL\]/gi, almaraUtils.formatIdr(Math.abs(summary.grandTotal)))
-        .replace(/\[METODE_BAYAR\]/gi, summary.paymentMethod)
-        .replace(/\[VALUTA_LIST\]/gi, valutaListText.trim())
-        .replace(/\[METODE_RINCIAN\]/gi, metodeRincianText.trim());
 
-    // Clean up excessive empty lines
-    text = text.replace(/\n\s*\n\s*\n/g, '\n\n');
+    // Isi pesan memakai template yang ditugaskan ke "POS / Bukti Transaksi" (Pengaturan > Template WA).
+    const text = window.buildWaMessageForPurpose('pos', DEFAULT_WA_TEMPLATE, {
+        customerName: custName,
+        invoice: summary.receiptId,
+        date: almaraUtils.formatDateToDMY(summary.timestamp),
+        currencyList: valutaListText.trim(),
+        total: almaraUtils.formatIdr(Math.abs(summary.grandTotal)),
+        paymentMethod: summary.paymentMethod,
+        paymentDetail: metodeRincianText.trim()
+    });
 
     let phone = '';
     if (customer && customer.no_hp) {
@@ -2456,9 +2556,11 @@ function printReceipt(cart, summary) {
                 .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
                 small { font-size: 0.8em; color: #000; }
                 .uppercase { text-align: center; font-weight: bold !important; font-size: 17px; }
+                /* Semua teks nota = ukuran "Rincian Transaksi" (16px) */
+                body, body * { font-size: 16px !important; }
             </style>
         </head><body>
-            <h2 class="center" style="margin-top: 5px; margin-bottom: 0px; font-size: 20px;">${profile.name || 'MC-ALMARA'}</h2>
+            <h2 class="center" style="margin-top: 5px; margin-bottom: 0px; font-size: 20px;">${profile.name || 'Money Changer'}</h2>
             ${addressToShow ? `<div class="center" style="font-size: 15px; margin-top: 2px; margin-bottom: 2px;">${addressToShow}</div>` : ''}
             ${profile.biLicense ? `<div class="center" style="font-size: 1em; margin-bottom: 2px;">No. Izin: ${profile.biLicense}</div>` : ''}
             <div class="center">
@@ -2474,7 +2576,7 @@ function printReceipt(cart, summary) {
             <div class="divider-double"></div>
             ${itemsHtml}
             <div class="divider"></div>
-            <div class="row">
+            <div class="row" style="font-weight:bold; font-size:16px;">
                 <span>GRAND TOTAL</span>
                 <span>${almaraUtils.formatIdr(Math.abs(summary.grandTotal))}</span>
             </div>
@@ -2603,7 +2705,7 @@ function printInvoice(cart, summary) {
             </style>
         </head><body>
             <div class="header">
-                <h1>${profile.name || 'MC-ALMARA'}</h1>
+                <h1>${profile.name || 'Money Changer'}</h1>
                 <p>${addressToShow}</p>
                 <p>Telp/WA: ${phone || '-'} | Tgl: ${dateStr}</p>
             </div>
@@ -2641,12 +2743,17 @@ function printInvoice(cart, summary) {
             
             <div class="divider-dashed"></div>
             
-            <div class="row-flex">
+            <div class="row-flex font-weight-bold" style="font-size: 15px;">
                 <span>GRAND TOTAL</span>
                 <span class="font-weight-bold">${almaraUtils.formatIdr(Math.abs(summary.grandTotal))}</span>
             </div>
+            ${summary.bookingId ? `
+                <div class="row-flex"><span>Ref. Booking:</span><span class="font-weight-bold">${summary.bookingId}</span></div>
+                <div class="row-flex"><span>DP (sudah dibayar):</span><span>${almaraUtils.formatIdr(summary.dpAmount || 0)}</span></div>
+                <div class="row-flex"><span>Pelunasan:</span><span>${almaraUtils.formatIdr(Math.max(0, Math.abs(summary.grandTotal) - (summary.dpAmount || 0)))}</span></div>
+            ` : ''}
             <div class="row-flex">
-                <span>Metode:</span>
+                <span>${summary.bookingId ? 'Metode pelunasan:' : 'Metode:'}</span>
                 <span>${summary.paymentMethod}</span>
             </div>
             
@@ -3095,7 +3202,8 @@ window.recalculatePosGrandTotal = function() {
         const cashVal = parseFloat(document.getElementById('splitCashAmount')?.value) || 0;
         const transferEl = document.getElementById('splitTransferAmount');
         if (transferEl) {
-            transferEl.value = Math.max(0, Math.abs(finalGt) - cashVal);
+            const bkDpSplit = typeof window.getPosBookingImport === 'function' ? (window.getPosBookingImport() || { dp: 0 }).dp : 0;
+            transferEl.value = Math.max(0, Math.max(0, Math.abs(finalGt) - bkDpSplit) - cashVal);
         }
     }
 
@@ -3117,7 +3225,8 @@ window.recalculatePosChange = function() {
     const changeNode = document.getElementById('posChangeModern');
 
     if (changeNode) {
-        const change = Math.max(0, cashReceived - Math.abs(finalGt));
+        const bkDpChange = typeof window.getPosBookingImport === 'function' ? (window.getPosBookingImport() || { dp: 0 }).dp : 0;
+        const change = Math.max(0, cashReceived - Math.max(0, Math.abs(finalGt) - bkDpChange));
         changeNode.textContent = almaraUtils.formatIdr(change);
     }
 };
