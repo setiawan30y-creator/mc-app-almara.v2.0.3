@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Datastore;
 use App\Services\BackupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +18,10 @@ use Illuminate\Support\Facades\Schema;
  */
 class DataResetController extends Controller
 {
+    /** Saldo awal kas/bank versi aplikasi (form Saldo Awal). Di-reset ke 0, bukan dihapus,
+     *  supaya browser/komputer lain ikut menarik nilai 0 dan tidak mengirim ulang nilai lama. */
+    private const OPENING_KEYS = ['mc_initial_cash', 'mc_initial_bank_bca', 'mc_initial_bank_mandiri', 'mc_cash', 'mc_bank_bca', 'mc_bank_mandiri'];
+
     /** Kunci mc_datastore yang dikosongkan per cakupan. */
     private const DATASTORE_KEYS = [
         'expenses' => ['mc_expenses'],
@@ -44,8 +49,11 @@ class DataResetController extends Controller
             'cashBank' => ['label' => 'Kas & Saldo Bank',
                 'desc' => 'Semua mutasi kas dan bank serta saldo awalnya (kembali ke 0).',
                 'danger' => 'high', 'counts' => ['erp_cash_movements', 'erp_bank_movements']],
+            'openingBalance' => ['label' => 'Saldo Awal (Kas, Bank & Valas)',
+                'desc' => 'Hanya saldo awal: kas tunai, bank, serta jumlah & kurs modal awal valas pada form Saldo Awal dan tabel Inventaris Modal (kembali ke 0). Transaksi, mutasi, dan stok berjalan tidak dihapus.',
+                'danger' => 'mid', 'counts' => []],
             'currencyStock' => ['label' => 'Stok Valas',
-                'desc' => 'Mutasi, pecahan, dan jumlah stok valas (kembali ke 0). Master valuta tetap.',
+                'desc' => 'Mutasi, pecahan, jumlah stok, serta saldo awal & kurs modal valas (kembali ke 0). Daftar valuta dan kurs jual/beli tetap.',
                 'danger' => 'high', 'counts' => ['erp_currency_stock_movements', 'erp_currency_stock_denominations']],
             'expenses' => ['label' => 'Pengeluaran',
                 'desc' => 'Daftar pengeluaran/pendapatan lain dan mutasi kas/bank-nya.',
@@ -93,6 +101,15 @@ class DataResetController extends Controller
             }
             if ($code === 'operations') {
                 $rows += $this->countRef('erp_bank_movements', 'manual_mutation');
+            }
+            if ($code === 'cashBank') {
+                $rows += $this->countOpening();
+            }
+            if ($code === 'currencyStock') {
+                $rows += $this->countCurrencyOpening();
+            }
+            if ($code === 'openingBalance') {
+                $rows += $this->countOpeningOnly();
             }
             $out[] = ['code' => $code, 'label' => $def['label'], 'desc' => $def['desc'], 'danger' => $def['danger'], 'rows' => $rows];
         }
@@ -186,6 +203,10 @@ class DataResetController extends Controller
                         DB::table($t)->update(['opening_balance' => 0]);
                     }
                 }
+                $n += $this->zeroOpeningKeys();
+                break;
+            case 'openingBalance':
+                $n += $this->resetOpeningOnly();
                 break;
             case 'currencyStock':
                 $n += $this->del('erp_currency_stock_denominations');
@@ -193,6 +214,7 @@ class DataResetController extends Controller
                 if (Schema::hasTable('erp_currency_stocks')) {
                     DB::table('erp_currency_stocks')->update(['quantity' => 0]);
                 }
+                $n += $this->zeroCurrencyOpening();
                 break;
             case 'expenses':
                 $n += $this->delRef('erp_cash_movements', 'expense');
@@ -268,6 +290,211 @@ class DataResetController extends Controller
     private function countRef(string $table, string $ref): int
     {
         return Schema::hasTable($table) ? (int) DB::table($table)->where('reference_type', $ref)->count() : 0;
+    }
+
+    /** Field saldo awal / modal valas di master valuta (raw_json mc_currencies & datastore). */
+    private const CURRENCY_OPENING_FIELDS = ['stock', 'initialStock', 'initial_rate_locked', 'avg_buy_rate', 'modalRate', 'avgCost', 'costRate', 'modalValue'];
+
+    private function currencyHasOpening(array $row): bool
+    {
+        foreach (self::CURRENCY_OPENING_FIELDS as $f) {
+            if (isset($row[$f]) && is_numeric($row[$f]) && (float) $row[$f] != 0.0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function zeroCurrencyRow(array $row): array
+    {
+        foreach (self::CURRENCY_OPENING_FIELDS as $f) {
+            if (array_key_exists($f, $row) || in_array($f, ['stock', 'initialStock', 'initial_rate_locked'], true)) {
+                $row[$f] = 0;
+            }
+        }
+        $row['initial_rate_source'] = '';
+
+        return $row;
+    }
+
+    /** Jumlah valuta yang masih punya stok / saldo awal / kurs modal di master valuta. */
+    private function countCurrencyOpening(): int
+    {
+        if (!Schema::hasTable('mc_currencies')) {
+            return 0;
+        }
+        $n = 0;
+        foreach (DB::table('mc_currencies')->get(['stock', 'raw_json']) as $c) {
+            $raw = is_string($c->raw_json) ? json_decode($c->raw_json, true) : null;
+            if ((float) $c->stock != 0.0 || (is_array($raw) && $this->currencyHasOpening($raw))) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
+    /** Nol-kan stok, saldo awal, dan kurs modal di master valuta; kode, nama, kurs jual/beli tetap. */
+    private function zeroCurrencyOpening(): int
+    {
+        $n = 0;
+        if (Schema::hasTable('mc_currencies')) {
+            foreach (DB::table('mc_currencies')->get(['code', 'stock', 'raw_json']) as $c) {
+                $raw = is_string($c->raw_json) ? json_decode($c->raw_json, true) : null;
+                $raw = is_array($raw) ? $raw : [];
+                if ((float) $c->stock != 0.0 || $this->currencyHasOpening($raw)) {
+                    $n++;
+                }
+                DB::table('mc_currencies')->where('code', $c->code)->update([
+                    'stock' => 0,
+                    'raw_json' => json_encode($this->zeroCurrencyRow($raw), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ]);
+            }
+        }
+        if (Schema::hasTable('mc_datastore')) {
+            $row = Datastore::query()->find('mc_currencies');
+            if ($row && is_array($row->json_data)) {
+                $row->json_data = array_map(fn ($c) => is_array($c) ? $this->zeroCurrencyRow($c) : $c, $row->json_data);
+                $row->save();
+            }
+        }
+
+        return $n;
+    }
+
+    /** Kunci form Saldo Awal (tanpa saldo berjalan mc_cash/mc_bank_*). */
+    private const INITIAL_KEYS = ['mc_initial_cash', 'mc_initial_bank_bca', 'mc_initial_bank_mandiri'];
+    /** Field saldo awal valas di master valuta. */
+    private const CURRENCY_INITIAL_FIELDS = ['initialStock', 'initial_rate_locked'];
+
+    private function currencyInitialNonZero(array $row): bool
+    {
+        foreach (self::CURRENCY_INITIAL_FIELDS as $f) {
+            if (isset($row[$f]) && is_numeric($row[$f]) && (float) $row[$f] != 0.0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Hitung saldo awal kas/bank/valas yang belum 0 (untuk pratinjau). */
+    private function countOpeningOnly(): int
+    {
+        $n = 0;
+        foreach (['erp_cash_accounts', 'erp_bank_accounts'] as $t) {
+            if (Schema::hasTable($t) && Schema::hasColumn($t, 'opening_balance')) {
+                $n += (int) DB::table($t)->where('opening_balance', '!=', 0)->count();
+            }
+        }
+        if (Schema::hasTable('mc_datastore')) {
+            foreach (Datastore::query()->whereIn('store_key', self::INITIAL_KEYS)->get() as $row) {
+                if ((float) (is_scalar($row->json_data) ? $row->json_data : 0) != 0.0) {
+                    $n++;
+                }
+            }
+        }
+        if (Schema::hasTable('mc_currencies')) {
+            foreach (DB::table('mc_currencies')->pluck('raw_json') as $rawJson) {
+                $raw = is_string($rawJson) ? json_decode($rawJson, true) : null;
+                if (is_array($raw) && $this->currencyInitialNonZero($raw)) {
+                    $n++;
+                }
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * Nol-kan saldo awal saja. Mutasi/transaksi tetap. Stok valas di ledger ERP ikut 0 hanya
+     * untuk valuta yang belum punya mutasi (artinya jumlahnya murni berasal dari saldo awal).
+     */
+    private function resetOpeningOnly(): int
+    {
+        $n = $this->countOpeningOnly();
+        foreach (['erp_cash_accounts', 'erp_bank_accounts'] as $t) {
+            if (Schema::hasTable($t) && Schema::hasColumn($t, 'opening_balance')) {
+                DB::table($t)->update(['opening_balance' => 0]);
+            }
+        }
+        if (Schema::hasTable('mc_datastore')) {
+            foreach (self::INITIAL_KEYS as $key) {
+                Datastore::updateOrCreate(['store_key' => $key], ['json_data' => 0]);
+            }
+        }
+        if (Schema::hasTable('mc_currencies')) {
+            foreach (DB::table('mc_currencies')->get(['code', 'raw_json']) as $c) {
+                $raw = is_string($c->raw_json) ? json_decode($c->raw_json, true) : null;
+                if (!is_array($raw) || !$this->currencyInitialNonZero($raw)) {
+                    continue;
+                }
+                $raw['initialStock'] = 0;
+                $raw['initial_rate_locked'] = 0;
+                $raw['initial_rate_source'] = '';
+                DB::table('mc_currencies')->where('code', $c->code)->update([
+                    'raw_json' => json_encode($raw, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ]);
+            }
+        }
+        if (Schema::hasTable('mc_datastore')) {
+            $row = Datastore::query()->find('mc_currencies');
+            if ($row && is_array($row->json_data)) {
+                $row->json_data = array_map(function ($c) {
+                    if (!is_array($c)) return $c;
+                    $c['initialStock'] = 0;
+                    $c['initial_rate_locked'] = 0;
+                    $c['initial_rate_source'] = '';
+                    return $c;
+                }, $row->json_data);
+                $row->save();
+            }
+        }
+        if (Schema::hasTable('erp_currency_stocks') && Schema::hasTable('erp_currency_stock_movements')) {
+            $withMovements = DB::table('erp_currency_stock_movements')->distinct()->pluck('currency_stock_id')->all();
+            DB::table('erp_currency_stocks')->whereNotIn('id', $withMovements ?: [0])->update(['quantity' => 0]);
+        }
+
+        return $n;
+    }
+
+    /** Jumlah saldo awal (ERP + form Saldo Awal) yang masih bernilai selain 0. */
+    private function countOpening(): int
+    {
+        $n = 0;
+        foreach (['erp_cash_accounts', 'erp_bank_accounts'] as $t) {
+            if (Schema::hasTable($t) && Schema::hasColumn($t, 'opening_balance')) {
+                $n += (int) DB::table($t)->where('opening_balance', '!=', 0)->count();
+            }
+        }
+        if (Schema::hasTable('mc_datastore')) {
+            foreach (Datastore::query()->whereIn('store_key', self::OPENING_KEYS)->get() as $row) {
+                if ((float) (is_scalar($row->json_data) ? $row->json_data : 0) != 0.0) {
+                    $n++;
+                }
+            }
+        }
+
+        return $n;
+    }
+
+    /** Set saldo awal versi aplikasi ke 0 (dibuat bila belum ada). */
+    private function zeroOpeningKeys(): int
+    {
+        if (!Schema::hasTable('mc_datastore')) {
+            return 0;
+        }
+        $n = 0;
+        foreach (self::OPENING_KEYS as $key) {
+            $row = Datastore::query()->find($key);
+            if ($row && (float) (is_scalar($row->json_data) ? $row->json_data : 0) != 0.0) {
+                $n++;
+            }
+            Datastore::updateOrCreate(['store_key' => $key], ['json_data' => 0]);
+        }
+
+        return $n;
     }
 
     private function clearKeys(string $group): int

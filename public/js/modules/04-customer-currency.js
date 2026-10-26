@@ -418,6 +418,10 @@ window.printBulkReceipts = function() {
     
     const trxs = getTransactions();
     const profile = getProfile();
+    const rc = (typeof window.mcReceiptConfig === 'function') ? window.mcReceiptConfig(profile) : { disclaimer: 'Hitung kembali uang Anda, Kami tidak menerima\nkomplin setelah meninggalkan counter', signLeft: 'Petugas / Kasir', signRight: 'Penerima', showLicense: true, showCif: true, showCustPhone: true, lines: [] };
+    const rcLines = (pos) => (typeof window.mcReceiptLines === 'function') ? window.mcReceiptLines(rc, pos) : '';
+    const rcEsc = (v) => (typeof window.mcReceiptEsc === 'function') ? window.mcReceiptEsc(v) : String(v == null ? '' : v);
+    const rcText = (v) => rcEsc(v).replace(/\r?\n/g, '<br>');
     const customers = getCustomers();
     
     uniqueIds.forEach((receiptId, idx) => {
@@ -513,17 +517,18 @@ window.printBulkReceipts = function() {
             <div style="margin-bottom: 2rem;">
             <h2 class="center" style="margin-top: 5px; margin-bottom: 0px; font-size: 15px;">${profile.name || 'Money Changer'}</h2>
             ${addressToShow ? `<div class="center" style="font-size: 11px; margin-top: 2px; margin-bottom: 2px;">${addressToShow}</div>` : ''}
-            ${profile.biLicense ? `<div class="center" style="font-size: 11px; margin-bottom: 2px;">No. Izin: ${profile.biLicense}</div>` : ''}
+            ${profile.biLicense && rc.showLicense ? `<div class="center" style="font-size: 11px; margin-bottom: 2px;">No. Izin: ${profile.biLicense}</div>` : ''}
             <div class="center">
                 <div style="font-size: 11px; margin-top: 2px; white-space: nowrap; text-align: center;">
                     ${contactLine}
                 </div>
             </div>
+            ${rcLines('top')}
             <div class="divider"></div>
             <div class="row"><span>${labelInvoice}:</span><span>${receiptId}</span></div>
-            <div class="row"><span>No. CIF:</span><span>${cust.no_cif || '-'}</span></div>
+            ${rc.showCif ? `<div class="row"><span>No. CIF:</span><span>${cust.no_cif || '-'}</span></div>` : ''}
             <div class="row"><span>Nama:</span><span>${custName}</span></div>
-            <div class="row"><span>Telp:</span><span>${custPhone}</span></div>
+            ${rc.showCustPhone ? `<div class="row"><span>Telp:</span><span>${custPhone}</span></div>` : ''}
             <div class="divider-double"></div>
             ${itemsHtml}
             <div class="divider"></div>
@@ -536,20 +541,22 @@ window.printBulkReceipts = function() {
                 <div class="row"><span>Via Tunai:</span><span>${formatIdr(Math.abs(payCash))}</span></div>
                 <div class="row"><span>Via Transfer:</span><span>${formatIdr(Math.abs(payTransfer))}</span></div>
             ` : ''}
+            ${rcLines('total')}
             <div class="divider"></div>
             <div class="row" style="margin-top:5px; font-size: 11px;">
                 <div style="text-align:center; width:45%;">
-                    Petugas / Kasir<br><br><br><br>
+                    ${rcEsc(rc.signLeft)}<br><br><br><br>
                     <div style="border-top:1px dashed #000; padding-top:2px;">${firstTrx.kasir || 'Kasir'}</div>
                 </div>
                 <div style="text-align:center; width:45%;">
-                    Penerima<br><br><br><br>
+                    ${rcEsc(rc.signRight)}<br><br><br><br>
                     <div style="border-top:1px dashed #000; padding-top:2px;">${recName}</div>
                 </div>
             </div>
-            <div class="center" style="margin-top:4px; font-size: 10.5px; font-style: italic; line-height: 1.2;">
-                Hitung kembali uang Anda, Kami tidak menerima<br>komplin setelah meninggalkan counter
-            </div>
+            ${rc.disclaimer.trim() ? `<div class="center" style="margin-top:4px; font-size: 10.5px; font-style: italic; line-height: 1.2;">
+                ${rcText(rc.disclaimer.trim())}
+            </div>` : ''}
+            ${rcLines('bottom')}
             <div class="center" style="margin-top:10px; font-weight: bold !important;">${profile.footer || ''}</div>
             </div>
         `;

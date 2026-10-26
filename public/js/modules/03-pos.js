@@ -2411,6 +2411,47 @@ async function sendWhatsAppReceipt(cart, summary) {
 }
 
 const PRINT_DECIMAL_RATE_CURRENCIES = new Set(['VND', 'KRW', 'JPY', 'IQD', 'THB', 'TWD']);
+// ==========================================
+// PENGATURAN CETAK STRUK (Pengaturan > Profil > Cetak Struk)  @2026-Alifiandra
+// profile.receipt = { disclaimer, signLeft, signRight, showLicense, showCif, showCustPhone,
+//                     lines: [{ text, pos: 'top'|'total'|'bottom', align: 'left'|'center'|'right', bold }] }
+// ==========================================
+const MC_RECEIPT_DEFAULTS = {
+    disclaimer: 'Hitung kembali uang Anda, Kami tidak menerima\nkomplin setelah meninggalkan counter',
+    signLeft: 'Petugas / Kasir',
+    signRight: 'Penerima',
+    showLicense: true,
+    showCif: true,
+    showCustPhone: true,
+    lines: []
+};
+window.MC_RECEIPT_DEFAULTS = MC_RECEIPT_DEFAULTS;
+window.mcReceiptEsc = function (v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+};
+window.mcReceiptText = function (v) { return window.mcReceiptEsc(v).replace(/\r?\n/g, '<br>'); };
+window.mcReceiptConfig = function (profile) {
+    let p = profile;
+    if (!p) { try { p = typeof getProfile === 'function' ? getProfile() : {}; } catch (e) { p = {}; } }
+    const r = (p && typeof p.receipt === 'object' && p.receipt) ? p.receipt : {};
+    const str = (v, d) => (typeof v === 'string' ? v : d);
+    return {
+        disclaimer: str(r.disclaimer, MC_RECEIPT_DEFAULTS.disclaimer),
+        signLeft: str(r.signLeft, MC_RECEIPT_DEFAULTS.signLeft).trim() || MC_RECEIPT_DEFAULTS.signLeft,
+        signRight: str(r.signRight, MC_RECEIPT_DEFAULTS.signRight).trim() || MC_RECEIPT_DEFAULTS.signRight,
+        showLicense: r.showLicense !== false,
+        showCif: r.showCif !== false,
+        showCustPhone: r.showCustPhone !== false,
+        lines: (Array.isArray(r.lines) ? r.lines : []).filter((l) => l && String(l.text || '').trim() !== '')
+    };
+};
+window.mcReceiptLines = function (cfg, pos) {
+    return (cfg && cfg.lines ? cfg.lines : []).filter((l) => (l.pos || 'bottom') === pos).map((l) => {
+        const align = ['left', 'center', 'right'].includes(l.align) ? l.align : 'center';
+        return `<div class="mc-rc-line" style="text-align:${align};${l.bold ? 'font-weight:bold;' : ''}margin:2px 0;line-height:1.25;">${window.mcReceiptText(l.text)}</div>`;
+    }).join('');
+};
+
 function formatPrintRate(rate, currencyCode = '') {
     const value = Number(rate);
     if (!Number.isFinite(value)) return '0';
@@ -2423,6 +2464,7 @@ function formatPrintRate(rate, currencyCode = '') {
 
 function printReceipt(cart, summary) {
     const profile = almaraStore.getProfile();
+    const rc = window.mcReceiptConfig(profile);
     const customers = almaraStore.getCustomers();
     const cust = customers.find(c => c.id_nasabah === summary.customerId) || {};
     const custName = cust.nama || 'Pengunjung Biasa';
@@ -2562,17 +2604,18 @@ function printReceipt(cart, summary) {
         </head><body>
             <h2 class="center" style="margin-top: 5px; margin-bottom: 0px; font-size: 20px;">${profile.name || 'Money Changer'}</h2>
             ${addressToShow ? `<div class="center" style="font-size: 15px; margin-top: 2px; margin-bottom: 2px;">${addressToShow}</div>` : ''}
-            ${profile.biLicense ? `<div class="center" style="font-size: 1em; margin-bottom: 2px;">No. Izin: ${profile.biLicense}</div>` : ''}
+            ${profile.biLicense && rc.showLicense ? `<div class="center" style="font-size: 1em; margin-bottom: 2px;">No. Izin: ${profile.biLicense}</div>` : ''}
             <div class="center">
                 <div style="font-size: 15px; margin-top: 2px; white-space: nowrap; text-align: center;">
                     ${contactLine}
                 </div>
             </div>
+            ${window.mcReceiptLines(rc, 'top')}
             <div class="divider"></div>
             <div class="row"><span>${labelInvoice}:</span><span>${summary.receiptId || '-'}</span></div>
-            <div class="row"><span>No. CIF:</span><span>${cust.no_cif || '-'}</span></div>
+            ${rc.showCif ? `<div class="row"><span>No. CIF:</span><span>${cust.no_cif || '-'}</span></div>` : ''}
             <div class="row"><span>Nama:</span><span>${custName}</span></div>
-            <div class="row"><span>Telp:</span><span>${custPhone}</span></div>
+            ${rc.showCustPhone ? `<div class="row"><span>Telp:</span><span>${custPhone}</span></div>` : ''}
             <div class="divider-double"></div>
             ${itemsHtml}
             <div class="divider"></div>
@@ -2585,20 +2628,22 @@ function printReceipt(cart, summary) {
                 <div class="row"><span>Via Tunai:</span><span>${almaraUtils.formatIdr(Math.abs(summary.payCash))}</span></div>
                 <div class="row"><span>Via Transfer:</span><span>${almaraUtils.formatIdr(Math.abs(summary.payTransfer))}</span></div>
             ` : ''}
+            ${window.mcReceiptLines(rc, 'total')}
             <div class="divider"></div>
             <div class="row" style="margin-top:5px; font-size: 1em;">
                 <div style="text-align:center; width:45%;">
-                    Petugas / Kasir<br><br><br><br>
+                    ${window.mcReceiptEsc(rc.signLeft)}<br><br><br><br>
                     <div style="border-top:1px dashed #000; padding-top:2px;">${summary.kasir || (almaraAuth.getCurrentUser() ? almaraAuth.getCurrentUser().fullName : 'Kasir')}</div>
                 </div>
                 <div style="text-align:center; width:45%;">
-                    Penerima<br><br><br><br>
+                    ${window.mcReceiptEsc(rc.signRight)}<br><br><br><br>
                     <div style="border-top:1px dashed #000; padding-top:2px;">${recName || '-'}</div>
                 </div>
             </div>
-            <div class="center" style="margin-top:4px; font-size: 15px; font-style: italic; line-height: 1.2;">
-                Hitung kembali uang Anda, Kami tidak menerima<br>komplin setelah meninggalkan counter
-            </div>
+            ${rc.disclaimer.trim() ? `<div class="center" style="margin-top:4px; font-size: 15px; font-style: italic; line-height: 1.2;">
+                ${window.mcReceiptText(rc.disclaimer.trim())}
+            </div>` : ''}
+            ${window.mcReceiptLines(rc, 'bottom')}
             <div class="center" style="margin-top:10px; font-weight: bold !important;">${profile.footer || ''}</div>
         </body></html>
     `);
@@ -2618,6 +2663,7 @@ function printInvoice(cart, summary) {
     const recName = summary.receiverManualName || (recIdToUse === summary.customerId ? custName : (rec.nama || 'Pengunjung Biasa'));
 
     const profile = almaraStore.getProfile();
+    const rc = window.mcReceiptConfig(profile);
     const printWindow = window.open('', '_blank');
     
     const beliCart = cart.filter(i => i.type === 'BELI');
@@ -2708,7 +2754,9 @@ function printInvoice(cart, summary) {
                 <h1>${profile.name || 'Money Changer'}</h1>
                 <p>${addressToShow}</p>
                 <p>Telp/WA: ${phone || '-'} | Tgl: ${dateStr}</p>
+                ${profile.biLicense && rc.showLicense ? `<p>No. Izin: ${window.mcReceiptEsc(profile.biLicense)}</p>` : ''}
             </div>
+            ${window.mcReceiptLines(rc, 'top')}
             
             <div class="divider-dashed"></div>
             
@@ -2716,18 +2764,18 @@ function printInvoice(cart, summary) {
                 <span>${labelInvoice}:</span>
                 <span>${summary.receiptId || '-'}</span>
             </div>
-            <div class="row-flex">
+            ${rc.showCif ? `<div class="row-flex">
                 <span>No. CIF:</span>
                 <span>${cust.no_cif || '-'}</span>
-            </div>
+            </div>` : ''}
             <div class="row-flex">
                 <span>Nama:</span>
                 <span class="font-weight-bold">${custName}</span>
             </div>
-            <div class="row-flex">
+            ${rc.showCustPhone ? `<div class="row-flex">
                 <span>Telp:</span>
                 <span>${custPhone}</span>
-            </div>
+            </div>` : ''}
             
             <div class="divider-double"></div>
             <div class="row-flex font-weight-bold" style="font-size: 15px;">
@@ -2767,28 +2815,30 @@ function printInvoice(cart, summary) {
                     <span>${almaraUtils.formatIdr(Math.abs(summary.payTransfer))}</span>
                 </div>
             ` : ''}
+            ${window.mcReceiptLines(rc, 'total')}
             
             <div class="divider-dashed"></div>
             
             <div class="signature-section">
                 <div class="signature-box">
-                    <span>Petugas / Kasir</span>
+                    <span>${window.mcReceiptEsc(rc.signLeft)}</span>
                     <div class="signature-line"></div>
                     <span>${summary.kasir || (almaraAuth.getCurrentUser() ? almaraAuth.getCurrentUser().fullName : 'Kasir')}</span>
                 </div>
                 <div class="signature-box">
-                    <span>Penerima</span>
+                    <span>${window.mcReceiptEsc(rc.signRight)}</span>
                     <div class="signature-line"></div>
                     <span>${recName}</span>
                 </div>
             </div>
             
-            <div class="disclaimer">
-                Hitung kembali uang Anda, Kami tidak menerima<br>komplin setelah meninggalkan counter
-            </div>
+            ${rc.disclaimer.trim() ? `<div class="disclaimer">
+                ${window.mcReceiptText(rc.disclaimer.trim())}
+            </div>` : ''}
+            ${window.mcReceiptLines(rc, 'bottom')}
             
             <div class="footer-thank">
-                Terima Kasih Atas Kunjungan Anda
+                ${window.mcReceiptEsc((profile.footer || '').trim() || 'Terima Kasih Atas Kunjungan Anda')}
             </div>
         </body></html>
     `);

@@ -16,7 +16,8 @@
         fontFamily: '', fontSize: '', headingWeight: '', tabularNums: '',
         btnRadius: '', btnWeight: '', btnCase: '', btnShadow: '',
         inputRadius: '', cardBorderWidth: '', density: '',
-        sidebarGradient: '', navRadius: '', smoothMotion: ''
+        sidebarGradient: '', navRadius: '', smoothMotion: '',
+        sidebarFont: ''
     };
 
     const FONTS = {
@@ -29,6 +30,26 @@
         roboto: { label: 'Roboto', stack: "'Roboto', 'Inter', sans-serif", google: 'Roboto:wght@400;500;700' },
         source: { label: 'Source Sans 3', stack: "'Source Sans 3', 'Inter', sans-serif", google: 'Source+Sans+3:wght@400;600;700' },
         merriweather: { label: 'Merriweather (serif)', stack: "'Merriweather', Georgia, serif", google: 'Merriweather:wght@400;700' },
+        system: { label: 'Font sistem (tanpa unduhan)', stack: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", google: '' }
+    };
+
+    // Jenis huruf khusus sidebar (terpisah dari huruf utama). Kosong = ikut huruf aplikasi.
+    const SIDEBAR_FONTS = {
+        segoe: { label: 'Segoe UI (Windows, jelas)', stack: "'Segoe UI', Tahoma, Arial, sans-serif", google: '' },
+        tahoma: { label: 'Tahoma (Windows, tegas)', stack: "Tahoma, Verdana, 'Segoe UI', sans-serif", google: '' },
+        verdana: { label: 'Verdana (Windows, lebar)', stack: "Verdana, Tahoma, 'Segoe UI', sans-serif", google: '' },
+        bahnschrift: { label: 'Bahnschrift (Windows, tinggi & ramping)', stack: "Bahnschrift, 'Segoe UI', Arial, sans-serif", google: '' },
+        bahnschriftsc: { label: 'Bahnschrift SemiCondensed (Windows)', stack: "'Bahnschrift SemiCondensed', Bahnschrift, 'Segoe UI', Arial, sans-serif", google: '' },
+        inter: { label: 'Inter', stack: "'Inter', 'Segoe UI', sans-serif", google: 'Inter:wght@400;500;600;700;800' },
+        jakarta: { label: 'Plus Jakarta Sans', stack: "'Plus Jakarta Sans', 'Inter', sans-serif", google: 'Plus+Jakarta+Sans:wght@400;500;600;700;800' },
+        poppins: { label: 'Poppins', stack: "'Poppins', 'Inter', sans-serif", google: 'Poppins:wght@400;500;600;700;800' },
+        manrope: { label: 'Manrope', stack: "'Manrope', 'Inter', sans-serif", google: 'Manrope:wght@400;500;600;700;800' },
+        dmsans: { label: 'DM Sans', stack: "'DM Sans', 'Inter', sans-serif", google: 'DM+Sans:wght@400;500;600;700;800' },
+        nunito: { label: 'Nunito Sans', stack: "'Nunito Sans', 'Inter', sans-serif", google: 'Nunito+Sans:wght@400;600;700;800' },
+        roboto: { label: 'Roboto', stack: "'Roboto', 'Inter', sans-serif", google: 'Roboto:wght@400;500;700;900' },
+        robotocond: { label: 'Roboto Condensed (ramping)', stack: "'Roboto Condensed', 'Roboto', sans-serif", google: 'Roboto+Condensed:wght@400;500;600;700;800' },
+        barlowsc: { label: 'Barlow Semi Condensed (ramping)', stack: "'Barlow Semi Condensed', 'Inter', sans-serif", google: 'Barlow+Semi+Condensed:wght@400;500;600;700;800' },
+        source: { label: 'Source Sans 3', stack: "'Source Sans 3', 'Inter', sans-serif", google: 'Source+Sans+3:wght@400;600;700;800' },
         system: { label: 'Font sistem (tanpa unduhan)', stack: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", google: '' }
     };
 
@@ -242,6 +263,20 @@ html[data-mc-theme] body #dashboard-view .chart-range-btn.active {
         document.head.appendChild(link);
     }
 
+    function loadSidebarFont(key) {
+        const f = SIDEBAR_FONTS[key];
+        const old = document.getElementById('mc-theme-font-sidebar');
+        if (!f || !f.google) { if (old) old.remove(); return; }
+        const href = 'https://fonts.googleapis.com/css2?family=' + f.google + '&display=swap';
+        if (old && old.getAttribute('href') === href) return;
+        if (old) old.remove();
+        const link = document.createElement('link');
+        link.id = 'mc-theme-font-sidebar';
+        link.rel = 'stylesheet';
+        link.href = href;
+        document.head.appendChild(link);
+    }
+
     function buildExtraCss(t) {
         const P = 'html[data-mc-theme] body';
         const r = [];
@@ -286,6 +321,8 @@ html[data-mc-theme] body #dashboard-view .chart-range-btn.active {
         // Sidebar
         if (t.sidebarGradient === '1') r.push(`${P}.apv-theme .sidebar { background: linear-gradient(180deg, var(--mc-sidebar-bg), color-mix(in srgb, var(--mc-sidebar-bg) 72%, #000)) !important; }`);
         if (t.navRadius) r.push(`${P} .sidebar-nav .nav-item { border-radius: ${t.navRadius} !important; }`);
+        const sbFont = SIDEBAR_FONTS[t.sidebarFont];
+        if (sbFont) r.push(`${P} #sidebar, ${P} #sidebar a, ${P} #sidebar button, ${P} #sidebar input, ${P} #sidebar .nav-item, ${P} #sidebar .sidebar-group-toggle, ${P} #sidebar .sidebar-group-label, ${P} #sidebar .sidebar-group-label > span { font-family: ${sbFont.stack} !important; }`);
 
         // Gerak halus
         if (t.smoothMotion === '1') r.push(`${P} .btn, ${P} .panel, ${P} .stat-card, ${P} .nav-item, ${P} input, ${P} select { transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease !important; } ${P} .stat-card:hover { transform: translateY(-2px); }`);
@@ -302,6 +339,7 @@ html[data-mc-theme] body #dashboard-view .chart-range-btn.active {
         }
         style.textContent = buildExtraCss(t);
         loadFont(t.fontFamily);
+        loadSidebarFont(t.sidebarFont);
     }
 
     function syncFromServer() {
@@ -364,7 +402,7 @@ html[data-mc-theme] body #dashboard-view .chart-range-btn.active {
         return apply(defaults, false);
     }
 
-    window.MCTheme = { defaults, load, apply, reset, key: KEY, version: 6, fonts: FONTS, shadows: SHADOWS, presets: PRESETS, sync: syncFromServer, normalize };
+    window.MCTheme = { defaults, load, apply, reset, key: KEY, version: 7, fonts: FONTS, sidebarFonts: SIDEBAR_FONTS, shadows: SHADOWS, presets: PRESETS, sync: syncFromServer, normalize };
 
     if (document.body) { apply(load(), false); syncFromServer(); }
     else document.addEventListener('DOMContentLoaded', function () { apply(load(), false); syncFromServer(); }, { once: true });

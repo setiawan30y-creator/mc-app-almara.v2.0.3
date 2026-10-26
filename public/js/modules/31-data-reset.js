@@ -89,7 +89,17 @@
         const add = (...k) => k.forEach(x => arrayKeys.add(x));
         if (scopes.includes('transactions')) { add('mc_transactions'); localStorage.removeItem('mc_invoice_seq'); }
         if (scopes.includes('customers')) add('mc_customers');
-        if (scopes.includes('cashBank')) Object.assign(scalars, { mc_cash: 0, mc_bank_bca: 0, mc_bank_mandiri: 0 });
+        if (scopes.includes('cashBank')) Object.assign(scalars, { mc_cash: 0, mc_bank_bca: 0, mc_bank_mandiri: 0, mc_initial_cash: 0, mc_initial_bank_bca: 0, mc_initial_bank_mandiri: 0 });
+        if (scopes.includes('openingBalance')) {
+            Object.assign(scalars, { mc_initial_cash: 0, mc_initial_bank_bca: 0, mc_initial_bank_mandiri: 0 });
+            if (!scopes.includes('currencyStock') && typeof getCurrencies === 'function') {
+                // Server sudah meng-nol-kan saldo awal valas; cukup samakan cache browser tanpa kirim ulang.
+                try {
+                    const list = getCurrencies().map(c => ({ ...c, initialStock: 0, initial_rate_locked: 0, initial_rate_source: '' }));
+                    localStorage.setItem('mc_currencies', JSON.stringify(list));
+                } catch (e) { /* abaikan */ }
+            }
+        }
         if (scopes.includes('currencyStock') && typeof getCurrencies === 'function' && typeof saveCurrencies === 'function') {
             saveCurrencies(getCurrencies().map(c => ({ ...c, stock: 0, initialStock: 0, initial_rate_locked: 0, initial_rate_source: '', avg_buy_rate: 0, modalRate: 0, avgCost: 0, costRate: 0, modalValue: 0 })));
         }

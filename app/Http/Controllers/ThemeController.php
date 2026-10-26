@@ -25,6 +25,7 @@ class ThemeController extends Controller
     private const ENUMS = [
         'fontFamily' => ['inter', 'jakarta', 'poppins', 'manrope', 'dmsans', 'nunito', 'roboto', 'source', 'merriweather', 'system'],
         'fontSize' => ['13', '14', '15', '16', '17', '18'],
+        'sidebarFont' => ['segoe', 'tahoma', 'verdana', 'bahnschrift', 'bahnschriftsc', 'inter', 'jakarta', 'poppins', 'manrope', 'dmsans', 'nunito', 'roboto', 'robotocond', 'barlowsc', 'source', 'system'],
         'headingWeight' => ['500', '600', '700', '800'],
         'btnWeight' => ['500', '600', '700', '800'],
         'btnCase' => ['none', 'uppercase'],

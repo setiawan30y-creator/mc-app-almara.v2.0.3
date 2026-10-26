@@ -624,7 +624,8 @@ window.submitProfile = function() {
         goamlOrgId: val('profGoamlOrgId'),
         phone: val('profPhone'),
         phoneWA: val('profWaNumber'),
-        footer: val('profFooter')
+        footer: val('profFooter'),
+        receipt: (typeof window.pfCollectReceipt === 'function') ? window.pfCollectReceipt() : (getProfile().receipt || undefined)
     });
     delete profileData.waTemplate; // template pesan WA kini dikelola di Pengaturan > Template WA
     delete profileData.visionKey;

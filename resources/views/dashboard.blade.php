@@ -297,7 +297,7 @@
     <link rel="stylesheet" href="{{ asset('css/styles.css?v=' . time()) }}">
     <link rel="stylesheet" href="{{ asset('css/apv-theme.css?v=' . time()) }}" id="apvThemeCSS">
     <!-- Global MC-Almara Theme Engine -->
-    <script src="{{ asset('js/mc-theme-engine.js?v=20261014-1') }}"></script>
+    <script src="{{ asset('js/mc-theme-engine.js?v=20261024-1') }}"></script>
     <link rel="stylesheet" href="{{ asset('css/business-ui.css?v=' . time()) }}">
     <link rel="stylesheet" href="{{ asset('css/dashboard-modern.css?v=' . time()) }}">
     <link rel="stylesheet" href="{{ asset('css/sidebar-modern.css?v=' . time()) }}">
@@ -2841,13 +2841,14 @@
 
                                     <section class="pf-card">
                                         <h3><span>3</span> Cetak Struk</h3>
-                                        <p>Isi pesan WhatsApp dikelola terpisah di tab Template WA.</p>
+                                        <p>Atur isi baris pada struk, invoice, dan cetak masal. Isi pesan WhatsApp dikelola terpisah di tab Template WA.</p>
                                         <div class="pf-grid">
                                             <div class="wide">
                                                 <label class="pf-l" for="profFooter">Pesan penutup struk</label>
                                                 <input type="text" id="profFooter" class="form-control" maxlength="160" placeholder="Kalimat penutup di bagian bawah struk">
                                             </div>
                                         </div>
+                                        <div id="pfReceiptEditor"></div>
                                     </section>
 
                                     <div class="form-group" id="visionKeyBox" style="display:none;"></div>

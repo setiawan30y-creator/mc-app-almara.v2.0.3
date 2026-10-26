@@ -172,7 +172,7 @@ body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;background:va
 <div id="tsToast" class="ts-toast"></div>
 <input type="file" id="tsImportFile" accept=".json" style="display:none">
 <script>window.MC_THEME_SYNC = false;</script>
-<script src="{{ asset('js/mc-theme-engine.js?v=20261014-1') }}"></script>
-<script src="{{ asset('js/mc-theme-settings.js?v=20261014-1') }}"></script>
+<script src="{{ asset('js/mc-theme-engine.js?v=20261024-1') }}"></script>
+<script src="{{ asset('js/mc-theme-settings.js?v=20261024-1') }}"></script>
 </body>
 </html>

@@ -80,6 +80,7 @@
         ]},
         { id: 'layout', title: 'Sidebar & Tabel', icon: 'fa-table-columns', groups: [
             { title: 'Sidebar', fields: [
+                { k: 'sidebarFont', label: 'Jenis huruf sidebar', type: 'select', options: () => [['', 'Ikut huruf aplikasi']].concat(Object.entries(MC.sidebarFonts || {}).map(([k, f]) => [k, f.label])) },
                 { k: 'sidebarGradient', label: 'Gradasi pada sidebar', type: 'toggle' },
                 { k: 'navRadius', label: 'Lengkung menu sidebar', type: 'select', options: radii }
             ]},
@@ -130,6 +131,8 @@
         set('--mc-btn-case', state.btnCase === 'uppercase' ? 'uppercase' : '');
         set('--mc-btn-shadow', state.btnShadow === '1' ? '0 4px 14px color-mix(in srgb, var(--mc-button-bg) 35%, transparent)' : '');
         $('tsMockSide').classList.toggle('grad', state.sidebarGradient === '1');
+        const sbf = (MC.sidebarFonts || {})[state.sidebarFont];
+        $('tsMockSide').style.fontFamily = sbf ? sbf.stack : '';
         $('tsMockTable').classList.toggle('zebra', state.tableZebra === '1');
     }
 
