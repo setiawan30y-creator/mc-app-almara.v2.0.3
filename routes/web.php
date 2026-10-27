@@ -14,16 +14,20 @@ $erpAuth = app()->environment('local') && (bool) config('app.dev_bypass_auth', f
     ? [DevelopmentBypassAuth::class]
     : ['auth', 'single.session'];
 
-function decodeDatastorePayload($payload)
-{
-    $decoded = $payload;
-    for ($i = 0; $i < 2; $i++) {
-        if (!is_string($decoded)) break;
-        $next = json_decode($decoded, true);
-        if (json_last_error() !== JSON_ERROR_NONE) break;
-        $decoded = $next;
+// Dibungkus function_exists: file route bisa dimuat dua kali (config:cache / route:cache),
+// tanpa pembungkus ini muncul "Cannot redeclare function decodeDatastorePayload()".
+if (!function_exists('decodeDatastorePayload')) {
+    function decodeDatastorePayload($payload)
+    {
+        $decoded = $payload;
+        for ($i = 0; $i < 2; $i++) {
+            if (!is_string($decoded)) break;
+            $next = json_decode($decoded, true);
+            if (json_last_error() !== JSON_ERROR_NONE) break;
+            $decoded = $next;
+        }
+        return is_array($decoded) ? $decoded : null;
     }
-    return is_array($decoded) ? $decoded : null;
 }
 
 // Berkas unggahan (foto nasabah, dokumen, bukti): disimpan privat, hanya untuk pengguna yang sudah login.
