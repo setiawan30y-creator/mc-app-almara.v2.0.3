@@ -14,22 +14,6 @@ $erpAuth = app()->environment('local') && (bool) config('app.dev_bypass_auth', f
     ? [DevelopmentBypassAuth::class]
     : ['auth', 'single.session'];
 
-// Dibungkus function_exists: file route bisa dimuat dua kali (config:cache / route:cache),
-// tanpa pembungkus ini muncul "Cannot redeclare function decodeDatastorePayload()".
-if (!function_exists('decodeDatastorePayload')) {
-    function decodeDatastorePayload($payload)
-    {
-        $decoded = $payload;
-        for ($i = 0; $i < 2; $i++) {
-            if (!is_string($decoded)) break;
-            $next = json_decode($decoded, true);
-            if (json_last_error() !== JSON_ERROR_NONE) break;
-            $decoded = $next;
-        }
-        return is_array($decoded) ? $decoded : null;
-    }
-}
-
 // Berkas unggahan (foto nasabah, dokumen, bukti): disimpan privat, hanya untuk pengguna yang sudah login.
 Route::get('/uploads/{path}', [UploadFileController::class, 'show'])
     ->where('path', '.*')
@@ -159,10 +143,10 @@ Route::get('/papan-kurs', function () {
     $profileData = null; $papanSettings = null;
     try {
         $profileStore = Datastore::where('store_key', 'mc_profile')->first();
-        if ($profileStore) $profileData = decodeDatastorePayload($profileStore->json_data);
+        if ($profileStore) $profileData = \App\Support\DatastorePayload::decode($profileStore->json_data);
         $settingsStore = Datastore::where('store_key', 'mc_papan_settings')->first();
-        if ($settingsStore) $papanSettings = decodeDatastorePayload($settingsStore->json_data);
-    } catch (\Exception $e) {}
+        if ($settingsStore) $papanSettings = \App\Support\DatastorePayload::decode($settingsStore->json_data);
+    } catch (\Throwable $e) {}
     return view('papan-kurs', ['profile' => $profileData, 'papanSettings' => $papanSettings]);
 })->middleware(['auth', 'single.session']);
 
