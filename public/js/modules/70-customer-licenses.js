@@ -145,9 +145,33 @@
             '#licPosWarn{grid-column:1/-1;margin-top:10px;padding:9px 12px;border-radius:10px;font-size:.8rem;line-height:1.45;border:1px solid}',
             '#licPosWarn.bad{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.4);color:#ef4444}#licPosWarn.warn{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.45);color:#d97706}',
             '#licPosWarn b{display:block;margin-bottom:2px}',
-            '.lic-list{text-align:left;max-height:55vh;overflow:auto;font-size:.86rem}.lic-list table{width:100%;border-collapse:collapse}',
-            '.lic-list td{padding:6px 6px;border-bottom:1px solid rgba(148,163,184,.2);vertical-align:top}.lic-list td small{display:block;opacity:.75;font-size:.74rem}',
-            '.lic-list .x{color:#f87171;font-weight:700;white-space:nowrap}.lic-list .w{color:#fbbf24;font-weight:700;white-space:nowrap}'
+            /* popup pengingat izin (gaya kartu modern, warna kontras tetap) */
+            'html body .swal2-popup.lic-pop{padding:0!important;border-radius:20px!important;overflow:hidden;background:#111827!important;border:1px solid #1f2a3c!important;box-shadow:0 30px 80px -20px rgba(0,0,0,.65)!important}',
+            'html body .swal2-popup.lic-pop .swal2-html-container{margin:0!important;padding:0!important;color:#e2e8f0!important;font-size:.9rem!important;text-align:left!important}',
+            'html body .swal2-popup.lic-pop .swal2-actions{margin:0!important;padding:14px 22px 20px!important;justify-content:flex-end;background:#0d1320;border-top:1px solid #1f2a3c}',
+            '.lp-head{display:flex;gap:14px;align-items:flex-start;padding:22px 22px 16px}',
+            '.lp-ico{flex:0 0 46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.25rem}',
+            '.lp-ico.x{background:rgba(239,68,68,.16);color:#f87171;box-shadow:inset 0 0 0 1px rgba(239,68,68,.35)}',
+            '.lp-ico.w{background:rgba(245,158,11,.16);color:#fbbf24;box-shadow:inset 0 0 0 1px rgba(245,158,11,.35)}',
+            '.lp-ico.ok{background:rgba(34,197,94,.16);color:#4ade80;box-shadow:inset 0 0 0 1px rgba(34,197,94,.35)}',
+            '.lp-ttl{margin:0;color:#f8fafc!important;font-size:1.12rem;font-weight:700;line-height:1.3}',
+            '.lp-sub{margin:4px 0 0!important;color:#cbd5e1!important;font-size:.86rem;line-height:1.5}',
+            '.lp-chips{display:flex;gap:8px;flex-wrap:wrap;padding:0 22px 12px}',
+            '.lp-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:600}',
+            '.lp-chip.x{background:rgba(239,68,68,.15);color:#fca5a5}.lp-chip.w{background:rgba(245,158,11,.15);color:#fcd34d}',
+            '.lp-list{display:flex;flex-direction:column;gap:8px;padding:0 22px 18px;max-height:46vh;overflow:auto}',
+            '.lp-item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;background:#1a2332;border:1px solid #243044;position:relative}',
+            '.lp-item::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0}',
+            '.lp-item.x::before{background:#ef4444}.lp-item.w::before{background:#f59e0b}',
+            '.lp-main{flex:1;min-width:0}',
+            '.lp-name{color:#f8fafc!important;font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+            '.lp-doc{color:#a8b3c4!important;font-size:.78rem;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+            '.lp-side{text-align:right;flex:0 0 auto}',
+            '.lp-pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:.74rem;font-weight:700;white-space:nowrap}',
+            '.lp-pill.x{background:rgba(239,68,68,.18);color:#fca5a5}.lp-pill.w{background:rgba(245,158,11,.18);color:#fcd34d}',
+            '.lp-date{color:#a8b3c4!important;font-size:.74rem;margin-top:4px;white-space:nowrap}',
+            '.lp-more{color:#a8b3c4!important;font-size:.8rem;text-align:center;padding-top:2px}',
+            '@media (max-width:480px){.lp-head{padding:18px 16px 12px}.lp-chips,.lp-list{padding-left:16px;padding-right:16px}}'
         ].join('\n');
         document.head.appendChild(st);
     }
@@ -390,10 +414,30 @@
 
     function alertTable(items, max) {
         var list = items.slice(0, max || items.length);
-        return '<div class="lic-list"><table>' + list.map(function (r) {
-            return '<tr><td><b>' + esc(r.customer_name || r.customer_id) + '</b><small>' + esc(r.label) + (r.number ? ' · ' + esc(r.number) : '') + '</small></td>' +
-                '<td style="text-align:right"><span class="' + (r.state === 'expired' ? 'x' : 'w') + '">' + esc(daysText(r)) + '</span><small>' + esc(fmtDay(r.expires_at)) + '</small></td></tr>';
-        }).join('') + '</table>' + (items.length > list.length ? '<p style="margin:8px 0 0;opacity:.75">dan ' + (items.length - list.length) + ' izin lainnya.</p>' : '') + '</div>';
+        return '<div class="lp-list">' + list.map(function (r) {
+            var c = r.state === 'expired' ? 'x' : 'w';
+            return '<div class="lp-item ' + c + '"><div class="lp-main"><div class="lp-name">' + esc(r.customer_name || r.customer_id) + '</div>' +
+                '<div class="lp-doc">' + esc(r.label) + (r.number ? ' · ' + esc(r.number) : '') + '</div></div>' +
+                '<div class="lp-side"><span class="lp-pill ' + c + '">' + esc(daysText(r)) + '</span><div class="lp-date">' + esc(fmtDay(r.expires_at)) + '</div></div></div>';
+        }).join('') + (items.length > list.length ? '<div class="lp-more">+ ' + (items.length - list.length) + ' izin lainnya</div>' : '') + '</div>';
+    }
+
+    /* Kerangka popup: ikon + judul + keterangan + ringkasan + daftar. */
+    function alertHtml(kind, icon, title, sub, items, max) {
+        var html = '<div class="lp-head"><div class="lp-ico ' + kind + '"><i class="fa-solid ' + icon + '"></i></div>' +
+            '<div><h3 class="lp-ttl">' + esc(title) + '</h3><p class="lp-sub">' + sub + '</p></div></div>';
+        if (items && items.length) {
+            var ex = items.filter(function (r) { return r.state === 'expired'; }).length, so = items.length - ex;
+            html += '<div class="lp-chips">' + (ex ? '<span class="lp-chip x"><i class="fa-solid fa-circle-xmark"></i> ' + ex + ' kedaluwarsa</span>' : '') +
+                (so ? '<span class="lp-chip w"><i class="fa-solid fa-clock"></i> ' + so + ' segera habis</span>' : '') + '</div>' + alertTable(items, max);
+        }
+        return html;
+    }
+    function popOpts(html, extra) {
+        injectStyle();
+        var o = { html: html, width: 560, showConfirmButton: true, customClass: { popup: 'lic-pop' }, buttonsStyling: true, focusConfirm: false };
+        for (var k in extra) o[k] = extra[k];
+        return o;
     }
 
     function openLicensePage() {
@@ -405,15 +449,16 @@
         var items = alertItems(), remind = (S.alerts && S.alerts.remind_days) || 30;
         if (!window.Swal) { if (items.length) alert(items.length + ' izin nasabah kedaluwarsa / segera habis.'); return; }
         if (!items.length) {
-            window.Swal.fire({ icon: 'success', title: 'Perizinan aman', text: 'Tidak ada izin nasabah yang kedaluwarsa atau berakhir dalam ' + remind + ' hari ke depan.', showCancelButton: canManage(), confirmButtonText: 'Tutup', cancelButtonText: 'Buka Perizinan' })
+            window.Swal.fire(popOpts(alertHtml('ok', 'fa-shield-halved', 'Perizinan aman', 'Tidak ada izin nasabah yang kedaluwarsa atau berakhir dalam ' + remind + ' hari ke depan.'),
+                { showCancelButton: canManage(), confirmButtonText: 'Tutup', cancelButtonText: 'Buka Perizinan', reverseButtons: true }))
                 .then(function (r) { if (r.dismiss === window.Swal.DismissReason.cancel) openLicensePage(); });
             return;
         }
-        window.Swal.fire({
-            icon: 'warning', title: 'Izin nasabah jatuh tempo', width: 600,
-            html: '<p style="margin:0 0 10px">Izin yang sudah lewat atau berakhir dalam ' + remind + ' hari ke depan:</p>' + alertTable(items),
-            showCancelButton: canManage(), confirmButtonText: 'Tutup', cancelButtonText: 'Buka Perizinan Nasabah', reverseButtons: true
-        }).then(function (r) { if (r.dismiss === window.Swal.DismissReason.cancel) openLicensePage(); });
+        var expired = items.filter(function (r) { return r.state === 'expired'; }).length;
+        window.Swal.fire(popOpts(alertHtml(expired ? 'x' : 'w', 'fa-file-shield', 'Izin nasabah jatuh tempo',
+            'Izin yang sudah lewat atau berakhir dalam <b style="color:#f8fafc">' + remind + ' hari</b> ke depan.', items),
+            { showCancelButton: canManage(), confirmButtonText: 'Tutup', cancelButtonText: 'Buka Perizinan Nasabah', reverseButtons: true }))
+            .then(function (r) { if (r.dismiss === window.Swal.DismissReason.cancel) openLicensePage(); });
     }
 
     function maybePopup() {
@@ -427,12 +472,11 @@
             try { localStorage.setItem(key, '1'); } catch (e) { /* abaikan */ }
             var expired = items.filter(function (r) { return r.state === 'expired'; }).length;
             if (!window.Swal) return;
-            window.Swal.fire({
-                icon: expired ? 'error' : 'warning', width: 600,
-                title: expired ? expired + ' izin nasabah sudah kedaluwarsa' : items.length + ' izin nasabah segera habis',
-                html: '<p style="margin:0 0 10px">Segera minta dokumen perpanjangan dari nasabah berikut:</p>' + alertTable(items, 8),
-                showCancelButton: true, confirmButtonText: 'Nanti', cancelButtonText: 'Buka Perizinan Nasabah', reverseButtons: true
-            }).then(function (r) { if (r.dismiss === window.Swal.DismissReason.cancel) openLicensePage(); });
+            window.Swal.fire(popOpts(alertHtml(expired ? 'x' : 'w', expired ? 'fa-triangle-exclamation' : 'fa-hourglass-half',
+                expired ? expired + ' izin nasabah sudah kedaluwarsa' : items.length + ' izin nasabah segera habis',
+                'Segera minta dokumen perpanjangan dari nasabah berikut.', items, 8),
+                { showCancelButton: true, confirmButtonText: 'Nanti', cancelButtonText: 'Buka Perizinan Nasabah', reverseButtons: true }))
+                .then(function (r) { if (r.dismiss === window.Swal.DismissReason.cancel) openLicensePage(); });
         })();
     }
 
