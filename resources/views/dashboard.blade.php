@@ -4723,6 +4723,50 @@
                                 <option value="BADAN USAHA CV">BADAN USAHA CV</option>
                             </select>
                     </div>
+                    <!-- Bidang Usaha (di bawah Jenis Badan Usaha): menggantikan Pekerjaan jika KN = Perusahaan -->
+                    <div class="form-group field-full" id="modalCustBusinessFieldGroup" style="display: none;">
+                            <label>Bidang Usaha <span class="required-mark">*</span></label>
+                            <select id="modalCustBusinessField" class="form-control">
+                                <option value="">Pilih Bidang Usaha</option>
+                                <option value="KUPVA / MONEY CHANGER">KUPVA / Money Changer</option>
+                                <option value="PERBANKAN">Perbankan</option>
+                                <option value="JASA KEUANGAN">Jasa Keuangan</option>
+                                <option value="ASURANSI">Asuransi</option>
+                                <option value="KOPERASI">Koperasi</option>
+                                <option value="PERDAGANGAN">Perdagangan</option>
+                                <option value="PERDAGANGAN ECERAN">Perdagangan Eceran</option>
+                                <option value="PERDAGANGAN BESAR">Perdagangan Besar</option>
+                                <option value="JASA">Jasa</option>
+                                <option value="JASA PROFESIONAL">Jasa Profesional</option>
+                                <option value="TEKNOLOGI INFORMASI">Teknologi Informasi</option>
+                                <option value="TELEKOMUNIKASI">Telekomunikasi</option>
+                                <option value="MANUFAKTUR / INDUSTRI">Manufaktur / Industri</option>
+                                <option value="KONSTRUKSI">Konstruksi</option>
+                                <option value="PROPERTI / REAL ESTATE">Properti / Real Estate</option>
+                                <option value="PERHOTELAN">Perhotelan</option>
+                                <option value="RESTORAN / KULINER">Restoran / Kuliner</option>
+                                <option value="TRANSPORTASI">Transportasi</option>
+                                <option value="LOGISTIK / PERGUDANGAN">Logistik / Pergudangan</option>
+                                <option value="PENDIDIKAN">Pendidikan</option>
+                                <option value="KESEHATAN">Kesehatan</option>
+                                <option value="FARMASI">Farmasi</option>
+                                <option value="PERTANIAN">Pertanian</option>
+                                <option value="PERKEBUNAN">Perkebunan</option>
+                                <option value="PETERNAKAN">Peternakan</option>
+                                <option value="PERIKANAN">Perikanan</option>
+                                <option value="KEHUTANAN">Kehutanan</option>
+                                <option value="PERTAMBANGAN">Pertambangan</option>
+                                <option value="ENERGI / MIGAS">Energi / Migas</option>
+                                <option value="UTILITAS">Utilitas</option>
+                                <option value="YAYASAN / SOSIAL">Yayasan / Sosial</option>
+                                <option value="ORGANISASI / NIRLABA">Organisasi / Nirlaba</option>
+                                <option value="MEDIA / PENERBITAN">Media / Penerbitan</option>
+                                <option value="PERIKLANAN / KREATIF">Periklanan / Kreatif</option>
+                                <option value="TRAVEL / PARIWISATA">Travel / Pariwisata</option>
+                                <option value="PENDUKUNG USAHA">Pendukung Usaha</option>
+                                <option value="LAINNYA">Lainnya</option>
+                            </select>
+                    </div>
 
                     <!-- Row 2: Nama & No Tlp -->
                     <div class="form-group">
@@ -4789,50 +4833,6 @@
                                 <!-- Populated by master -->
                             </select>
                     </div>
-                    <!-- Bidang Usaha: menggantikan Pekerjaan jika KN = Perusahaan -->
-                    <div class="form-group field-full" id="modalCustBusinessFieldGroup" style="display: none;">
-                            <label>Bidang Usaha <span class="required-mark">*</span></label>
-                            <select id="modalCustBusinessField" class="form-control">
-                                <option value="">Pilih Bidang Usaha</option>
-                                <option value="KUPVA / MONEY CHANGER">KUPVA / Money Changer</option>
-                                <option value="PERBANKAN">Perbankan</option>
-                                <option value="JASA KEUANGAN">Jasa Keuangan</option>
-                                <option value="ASURANSI">Asuransi</option>
-                                <option value="KOPERASI">Koperasi</option>
-                                <option value="PERDAGANGAN">Perdagangan</option>
-                                <option value="PERDAGANGAN ECERAN">Perdagangan Eceran</option>
-                                <option value="PERDAGANGAN BESAR">Perdagangan Besar</option>
-                                <option value="JASA">Jasa</option>
-                                <option value="JASA PROFESIONAL">Jasa Profesional</option>
-                                <option value="TEKNOLOGI INFORMASI">Teknologi Informasi</option>
-                                <option value="TELEKOMUNIKASI">Telekomunikasi</option>
-                                <option value="MANUFAKTUR / INDUSTRI">Manufaktur / Industri</option>
-                                <option value="KONSTRUKSI">Konstruksi</option>
-                                <option value="PROPERTI / REAL ESTATE">Properti / Real Estate</option>
-                                <option value="PERHOTELAN">Perhotelan</option>
-                                <option value="RESTORAN / KULINER">Restoran / Kuliner</option>
-                                <option value="TRANSPORTASI">Transportasi</option>
-                                <option value="LOGISTIK / PERGUDANGAN">Logistik / Pergudangan</option>
-                                <option value="PENDIDIKAN">Pendidikan</option>
-                                <option value="KESEHATAN">Kesehatan</option>
-                                <option value="FARMASI">Farmasi</option>
-                                <option value="PERTANIAN">Pertanian</option>
-                                <option value="PERKEBUNAN">Perkebunan</option>
-                                <option value="PETERNAKAN">Peternakan</option>
-                                <option value="PERIKANAN">Perikanan</option>
-                                <option value="KEHUTANAN">Kehutanan</option>
-                                <option value="PERTAMBANGAN">Pertambangan</option>
-                                <option value="ENERGI / MIGAS">Energi / Migas</option>
-                                <option value="UTILITAS">Utilitas</option>
-                                <option value="YAYASAN / SOSIAL">Yayasan / Sosial</option>
-                                <option value="ORGANISASI / NIRLABA">Organisasi / Nirlaba</option>
-                                <option value="MEDIA / PENERBITAN">Media / Penerbitan</option>
-                                <option value="PERIKLANAN / KREATIF">Periklanan / Kreatif</option>
-                                <option value="TRAVEL / PARIWISATA">Travel / Pariwisata</option>
-                                <option value="PENDUKUNG USAHA">Pendukung Usaha</option>
-                                <option value="LAINNYA">Lainnya</option>
-                            </select>
-                    </div>
 
                     <!-- Row 7: Standardized IDs (Sistem & Reporting) -->
                     <div class="customer-system-section">
@@ -4864,8 +4864,8 @@
                             <input type="text" id="modalCustLocalId" class="form-control" placeholder="Ref id bank/lainnya">
                     </div>
                     <div class="form-group field-full">
-                            <label>Nomor Rekening / Virtual Account (Refund)</label>
-                            <input type="text" id="modalCustBankAcc" class="form-control" placeholder="No Rekening / OVO / Dana..">
+                            <label>Nomor Rekening</label>
+                            <input type="text" id="modalCustBankAcc" class="form-control" placeholder="No Rekening">
                     </div>
                     </div>
                 </div>
