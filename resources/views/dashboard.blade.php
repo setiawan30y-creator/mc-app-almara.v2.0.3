@@ -4797,7 +4797,7 @@
                     <div class="form-group" id="modalCustIdExpiryGroup" style="display:none;">
                             <label for="modalCustIdExpiry">Masa Berlaku Identitas</label>
                             <input type="date" id="modalCustIdExpiry" class="form-control">
-                            <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Isi untuk SIM, Paspor, KITAS. Kosongkan bila seumur hidup (KTP).</small>
+                            <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Untuk SIM, Paspor, KITAS. Bila lewat, Kasir diminta pengkinian data.</small>
                     </div>
 
                     <!-- Row 4: Alamat & Jenis ID -->
@@ -5059,7 +5059,7 @@
                             <div id="update_idExpiryGroup" style="display:none;">
                                 <label for="update_modalCustIdExpiry">Masa Berlaku Identitas</label>
                                 <input type="date" id="update_modalCustIdExpiry" class="form-control">
-                                <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Kosongkan bila seumur hidup (KTP).</small>
+                                <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Untuk SIM, Paspor, KITAS.</small>
                             </div>
                             <div class="upd-full">
                                 <label>Alamat (Sesuai ID)</label>
