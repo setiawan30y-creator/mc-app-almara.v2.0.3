@@ -348,6 +348,9 @@ function applyRoleAccess(role) {
     // Perwakilan PT (data internal PKS): role pengelola.
     if (['owner', 'superadmin', 'admin', 'supervisor'].includes(accessRole)) visibleMenus.add('pt-rep-view');
 
+    // Perizinan Nasabah (pengingat jatuh tempo izin PT/Yayasan): role pengelola.
+    if (['owner', 'superadmin', 'admin', 'supervisor'].includes(accessRole)) visibleMenus.add('customer-license-view');
+
     // Riwayat Kurs (audit BI): role pengelola.
     if (['owner', 'superadmin', 'admin', 'supervisor'].includes(accessRole)) visibleMenus.add('kurs-history-view');
 

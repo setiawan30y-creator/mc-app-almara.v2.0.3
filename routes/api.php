@@ -34,6 +34,7 @@ use App\Http\Controllers\InvestorController;
 use App\Http\Controllers\PickupController;
 use App\Http\Controllers\PosDocumentController;
 use App\Http\Controllers\RateHistoryController;
+use App\Http\Controllers\CustomerLicenseController;
 use App\Http\Controllers\GoamlComplianceController;
 use App\Http\Controllers\DashboardAnalyticsController;
 use App\Http\Middleware\DevelopmentBypassAuth;
@@ -224,6 +225,14 @@ Route::post('/goaml/alerts/{alert}/ltkm', [GoamlComplianceController::class, 'cr
     Route::get('/letter-numbers/records/{id}', [LetterNumberController::class, 'documents']);
     Route::post('/letter-numbers/records/{id}/documents', [LetterNumberController::class, 'uploadDocument']);
     Route::put('/letter-numbers/records/{id}', [LetterNumberController::class, 'updateRecord'])->middleware('role:owner,superadmin,admin,supervisor');
+    // Perizinan nasabah perusahaan + pengingat jatuh tempo - @2026-Alifiandra
+    Route::get('/customer-licenses/alerts', [CustomerLicenseController::class, 'alerts']);
+    Route::post('/customer-licenses/settings', [CustomerLicenseController::class, 'saveSettings'])->middleware('role:owner,superadmin,admin');
+    Route::get('/customer-licenses', [CustomerLicenseController::class, 'index'])->middleware('role:owner,superadmin,admin,supervisor');
+    Route::post('/customer-licenses', [CustomerLicenseController::class, 'store'])->middleware('role:owner,superadmin,admin,supervisor');
+    Route::put('/customer-licenses/{license}', [CustomerLicenseController::class, 'update'])->middleware('role:owner,superadmin,admin,supervisor');
+    Route::delete('/customer-licenses/{license}', [CustomerLicenseController::class, 'destroy'])->middleware('role:owner,superadmin,admin');
+
     // Riwayat Kurs (audit BI) - @2026-Alifiandra
     Route::get('/rate-history', [RateHistoryController::class, 'index'])->middleware('role:owner,superadmin,admin,supervisor');
     Route::get('/rate-history/status', [RateHistoryController::class, 'status'])->middleware('role:owner,superadmin,admin,supervisor');
