@@ -1295,90 +1295,130 @@ function updateHeaderChip(id, iconClass, text) {
     if (label) label.textContent = text;
 }
 
-async function refreshHeaderWeatherAndLocation() {
-    const locationFallback = '-';
-    const weatherFallback = '-';
+/* Widget lokasi & cuaca di header.  @2026-Alifiandra
+   1) Coba GPS browser (butuh HTTPS + izin lokasi).
+   2) Bila GPS gagal (ditolak / tidak tersedia / timeout), perkirakan lokasi dari alamat IP
+      supaya cuaca tetap tampil.
+   3) Bila keduanya gagal, pakai hasil terakhir yang berhasil (disimpan di browser). */
+const HEADER_GEO_CACHE_KEY = 'mc_header_geo_v1';
 
-    updateHeaderChip('headerLocationWidget', 'fa-location-dot', locationFallback);
-    updateHeaderChip('headerWeatherWidget', 'fa-cloud-sun', weatherFallback);
+function headerGeoErrorText(error) {
+    if (!window.isSecureContext) return 'Perlu HTTPS';
+    if (!error) return 'Lokasi tidak tersedia';
+    if (error.code === 1) return 'Izin lokasi ditolak';
+    if (error.code === 3) return 'Lokasi timeout';
+    return 'Lokasi tidak tersedia';
+}
 
-    if (!window.isSecureContext) {
-        updateHeaderChip('headerLocationWidget', 'fa-lock', 'Perlu HTTPS');
-        updateHeaderChip('headerWeatherWidget', 'fa-cloud-sun', '-');
-        return;
+function setHeaderWidgetTitle(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.title = text + ' — ketuk untuk memperbarui';
+}
+
+async function fetchHeaderWeather(lat, lon) {
+    try {
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current=temperature_2m,weather_code,is_day&timezone=auto`, { cache: 'no-store' });
+        const data = res.ok ? await res.json() : null;
+        const current = data && data.current ? data.current : null;
+        if (!current) return null;
+        const code = typeof current.weather_code !== 'undefined' ? Number(current.weather_code) : null;
+        const meta = code !== null && HEADER_WEATHER_CODE_MAP[code] ? HEADER_WEATHER_CODE_MAP[code] : { label: 'Cuaca', icon: 'fa-cloud-sun' };
+        const temp = typeof current.temperature_2m !== 'undefined' ? `${Math.round(Number(current.temperature_2m))}°C` : '';
+        return { icon: meta.icon, text: temp ? `${meta.label} ${temp}` : meta.label };
+    } catch (e) {
+        return null;
     }
+}
 
-    if (!navigator.geolocation) {
-        updateHeaderChip('headerLocationWidget', 'fa-circle-xmark', 'Lokasi tidak didukung');
-        updateHeaderChip('headerWeatherWidget', 'fa-cloud-sun', '-');
-        return;
-    }
+async function fetchHeaderPlace(lat, lon) {
+    const [geoResult, nomResult] = await Promise.allSettled([
+        fetch(`https://geocoding-api.open-meteo.com/v1/reverse?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&language=id&count=1`, { cache: 'no-store' }),
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=1&accept-language=id`, { cache: 'no-store' })
+    ]);
+    const json = async (r) => { try { return r.status === 'fulfilled' && r.value.ok ? await r.value.json() : null; } catch (e) { return null; } };
+    const geo = await json(geoResult);
+    const nom = await json(nomResult);
+    const address = nom && nom.address ? nom.address : null;
+    const area = address && (address.village || address.suburb || address.neighbourhood || address.quarter || address.city_district);
+    const city = address && (address.city || address.town || address.municipality || address.county || address.regency);
+    const detailed = area ? (city && area.toLowerCase() !== city.toLowerCase() ? `${area}, ${city}` : area) : city;
+    if (detailed) return detailed;
+    const place = geo && Array.isArray(geo.results) && geo.results.length ? geo.results[0] : null;
+    return place ? [place.name, place.admin1].filter(Boolean).join(', ') : null;
+}
 
-    const timeoutId = setTimeout(() => {
-        updateHeaderChip('headerLocationWidget', 'fa-triangle-exclamation', 'Lokasi timeout');
-    }, 9000);
-
-    navigator.geolocation.getCurrentPosition(async function(position) {
-        clearTimeout(timeoutId);
-
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-
+async function fetchHeaderIpLocation() {
+    const sources = [
+        { url: 'https://ipapi.co/json/', map: d => ({ lat: d.latitude, lon: d.longitude, city: d.city }) },
+        { url: 'https://ipwho.is/', map: d => (d && d.success === false ? null : { lat: d.latitude, lon: d.longitude, city: d.city }) }
+    ];
+    for (const s of sources) {
         try {
-            /* Do not let a failed geocoding request hide a valid GPS position
-               or a successful weather response. */
-            const [weatherResult, locationResult, detailedLocationResult] = await Promise.allSettled([
-                fetch(`https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current=temperature_2m,weather_code,is_day&timezone=auto`, { cache: 'no-store' }),
-                fetch(`https://geocoding-api.open-meteo.com/v1/reverse?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&language=id&count=1`, { cache: 'no-store' }),
-                fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=1&accept-language=id`, { cache: 'no-store' })
-            ]);
+            const res = await fetch(s.url, { cache: 'no-store' });
+            if (!res.ok) continue;
+            const loc = s.map(await res.json());
+            if (loc && Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lon))) {
+                return { lat: Number(loc.lat), lon: Number(loc.lon), city: loc.city || '' };
+            }
+        } catch (e) { /* coba sumber berikutnya */ }
+    }
+    return null;
+}
 
-            const weatherResponse = weatherResult.status === 'fulfilled' ? weatherResult.value : null;
-            const locationResponse = locationResult.status === 'fulfilled' ? locationResult.value : null;
-            const detailedLocationResponse = detailedLocationResult.status === 'fulfilled' ? detailedLocationResult.value : null;
-            const weatherData = weatherResponse && weatherResponse.ok ? await weatherResponse.json() : null;
-            const locationData = locationResponse && locationResponse.ok ? await locationResponse.json() : null;
-            const detailedLocationData = detailedLocationResponse && detailedLocationResponse.ok ? await detailedLocationResponse.json() : null;
+function readHeaderGeoCache() {
+    try { return JSON.parse(localStorage.getItem(HEADER_GEO_CACHE_KEY) || 'null'); } catch (e) { return null; }
+}
+function writeHeaderGeoCache(obj) {
+    try { localStorage.setItem(HEADER_GEO_CACHE_KEY, JSON.stringify(Object.assign({ at: Date.now() }, obj))); } catch (e) { /* abaikan */ }
+}
 
-            const place = locationData && Array.isArray(locationData.results) && locationData.results.length > 0 ? locationData.results[0] : null;
-            const address = detailedLocationData && detailedLocationData.address ? detailedLocationData.address : null;
-            const areaName = address && (
-                address.village || address.suburb || address.neighbourhood || address.quarter || address.city_district
-            );
-            const cityName = address && (
-                address.city || address.town || address.municipality || address.county || address.regency
-            );
-            const detailedPlaceLabel = areaName
-                ? (cityName && areaName.toLowerCase() !== cityName.toLowerCase() ? `${areaName}, ${cityName}` : areaName)
-                : cityName;
-            const placeLabel = detailedPlaceLabel || (place
-                ? [place.name, place.admin1, place.country].filter(Boolean).join(', ')
-                : `Lat ${lat.toFixed(2)}, Lon ${lon.toFixed(2)}`);
-
-            const current = weatherData && weatherData.current ? weatherData.current : null;
-            const weatherCode = current && typeof current.weather_code !== 'undefined' ? Number(current.weather_code) : null;
-            const weatherMeta = weatherCode !== null && HEADER_WEATHER_CODE_MAP[weatherCode]
-                ? HEADER_WEATHER_CODE_MAP[weatherCode]
-                : { label: 'Cuaca', icon: 'fa-cloud-sun' };
-            const temperature = current && typeof current.temperature_2m !== 'undefined'
-                ? `${Math.round(Number(current.temperature_2m))}°C`
-                : '';
-            const weatherText = temperature
-                ? `${weatherMeta.label} ${temperature}`
-                : (weatherData ? weatherMeta.label : 'Tidak tersedia');
-
-            updateHeaderChip('headerLocationWidget', 'fa-location-dot', placeLabel);
-            updateHeaderChip('headerWeatherWidget', weatherMeta.icon, weatherText);
-        } catch (error) {
-            console.warn('Gagal memuat widget lokasi/cuaca:', error);
-            updateHeaderChip('headerLocationWidget', 'fa-location-dot', `Lat ${lat.toFixed(2)}, Lon ${lon.toFixed(2)}`);
-            updateHeaderChip('headerWeatherWidget', 'fa-cloud-sun', 'Tidak tersedia');
-        }
-    }, function(error) {
-        clearTimeout(timeoutId);
-        console.warn('Geolocation ditolak / gagal:', error);
-        updateHeaderChip('headerLocationWidget', 'fa-location-dot', 'Izin lokasi ditolak');
+async function showHeaderFor(lat, lon, placeHint, source, note) {
+    const [weather, place] = await Promise.all([fetchHeaderWeather(lat, lon), placeHint ? Promise.resolve(placeHint) : fetchHeaderPlace(lat, lon)]);
+    const label = place || `Lat ${Number(lat).toFixed(2)}, Lon ${Number(lon).toFixed(2)}`;
+    updateHeaderChip('headerLocationWidget', source === 'gps' ? 'fa-location-dot' : 'fa-location-crosshairs', label);
+    setHeaderWidgetTitle('headerLocationWidget', source === 'gps' ? 'Lokasi dari GPS browser' : `Perkiraan lokasi dari jaringan (${note || 'GPS tidak tersedia'})`);
+    if (weather) {
+        updateHeaderChip('headerWeatherWidget', weather.icon, weather.text);
+        setHeaderWidgetTitle('headerWeatherWidget', `Cuaca di ${label}`);
+        writeHeaderGeoCache({ lat, lon, label, source });
+    } else {
         updateHeaderChip('headerWeatherWidget', 'fa-cloud-sun', 'Tidak tersedia');
+        setHeaderWidgetTitle('headerWeatherWidget', 'Layanan cuaca tidak bisa dihubungi');
+    }
+    return !!weather;
+}
+
+async function headerFallback(reason) {
+    const ip = await fetchHeaderIpLocation();
+    if (ip) {
+        await showHeaderFor(ip.lat, ip.lon, ip.city || null, 'ip', reason);
+        return;
+    }
+    const cached = readHeaderGeoCache();
+    if (cached && Number.isFinite(Number(cached.lat))) {
+        const ok = await showHeaderFor(cached.lat, cached.lon, cached.label, cached.source || 'ip', reason + ', memakai lokasi terakhir');
+        if (ok) return;
+    }
+    updateHeaderChip('headerLocationWidget', 'fa-location-dot', reason);
+    setHeaderWidgetTitle('headerLocationWidget', reason);
+    updateHeaderChip('headerWeatherWidget', 'fa-cloud-sun', 'Tidak tersedia');
+}
+
+async function refreshHeaderWeatherAndLocation() {
+    updateHeaderChip('headerLocationWidget', 'fa-location-dot', '-');
+    updateHeaderChip('headerWeatherWidget', 'fa-cloud-sun', '-');
+
+    if (!window.isSecureContext || !navigator.geolocation) {
+        await headerFallback(!window.isSecureContext ? 'Perlu HTTPS' : 'Lokasi tidak didukung');
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(function (position) {
+        showHeaderFor(position.coords.latitude, position.coords.longitude, null, 'gps')
+            .catch(function () { headerFallback('Gagal memuat data lokasi'); });
+    }, function (error) {
+        console.warn('Geolocation ditolak / gagal, memakai perkiraan dari IP:', error);
+        headerFallback(headerGeoErrorText(error));
     }, {
         enableHighAccuracy: false,
         timeout: 8000,

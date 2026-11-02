@@ -24,6 +24,10 @@
     var esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
     var nf = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
     var fmt = function (n) { return n == null || n === '' ? '-' : nf.format(Number(n) || 0); };
+    // Selisih (margin) dengan tanda: +50 / −50 / 0
+    var fmtM = function (n) { if (n == null || n === '') return '-'; var v = Number(n) || 0; return v > 0 ? '+' + nf.format(v) : (v < 0 ? '−' + nf.format(Math.abs(v)) : '0'); };
+    var numOrEmpty = function (n) { return n == null || n === '' ? '' : Number(n); };
+    var srcLine = function (base, margin) { return base == null ? '' : fmt(base) + ' · ' + fmtM(margin); };
     var pad = function (n) { return String(n).padStart(2, '0'); };
     var ymd = function (d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
     var dmy = function (s) { if (!s) return '-'; var p = String(s).slice(0, 10).split('-'); return p[2] + '/' + p[1] + '/' + p[0]; };
@@ -78,6 +82,10 @@
             '.khs-btn.on{border-color:var(--k-pri);color:var(--k-pri);background:color-mix(in srgb,var(--k-pri) 10%,transparent)}',
             '.khs-card{background:var(--k-card);border:1px solid var(--k-bd);border-radius:var(--k-r);padding:16px 18px}',
             '.khs-card>h3{margin:0 0 4px;font-size:.95rem;display:flex;gap:8px;align-items:center}.khs-card>p{margin:0 0 14px;color:var(--k-mut);font-size:.8rem}',
+            '.khs-tg{margin-left:auto;width:30px;height:30px;border-radius:8px;border:1px solid var(--k-bd);background:transparent;color:var(--k-tx);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem;flex:none}',
+            '.khs-tg:hover{background:var(--k-inp);border-color:var(--k-pri);color:var(--k-pri)}',
+            '.khs-sum{font-weight:500;font-size:.78rem;color:var(--k-mut);margin-left:6px}',
+            '.khs-card.collapsed>h3{margin:0}.khs-card.collapsed #khsSettingsBody{display:none}',
             '.khs-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}',
             '.khs-stat{border:1px solid var(--k-bd);border-radius:12px;padding:10px 12px}.khs-stat small{display:block;color:var(--k-mut);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;font-weight:700}',
             '.khs-stat b{display:block;font-size:1rem;margin-top:3px}.khs-stat em{font-style:normal;font-size:.75rem;color:var(--k-mut)}',
@@ -102,7 +110,10 @@
             '.khs-t td{padding:8px 10px;border-bottom:1px solid var(--k-bd);white-space:nowrap;vertical-align:top}.khs-t tr:last-child td{border-bottom:0}',
             '.khs-t td.r,.khs-t th.r{text-align:right}.khs-t tr:hover td{background:var(--mc-table-hover,rgba(148,163,184,.06))}',
             '.khs-t .sticky{position:sticky;left:0;background:var(--k-card);z-index:2}.khs-t th.sticky{z-index:3}',
-            '.khs-cell b{display:block;color:var(--k-buy);font-weight:700}.khs-cell span{display:block;color:var(--k-sell);font-weight:700}',
+            '.khs-cell b{display:block;color:var(--k-buy);font-weight:700}.khs-cell span{display:block;color:var(--k-sell);font-weight:700;margin-top:3px}',
+            '.khs-cell small,.khs-src{display:block;font-size:.66rem;color:var(--k-mut);font-weight:400;white-space:nowrap}',
+            '.khs-t th.grp{text-align:center;border-left:1px solid var(--k-bd)}.khs-t td.gl,.khs-t th.gl{border-left:1px solid var(--k-bd)}',
+            '.khs-m{color:var(--k-mut)}',
             '.khs-code{font-weight:800}.khs-sub{display:block;color:var(--k-mut);font-size:.72rem;font-weight:400}',
             '.khs-tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.7rem;font-weight:700}',
             '.khs-tag.jadwal{background:color-mix(in srgb,var(--k-pri) 15%,transparent);color:var(--k-pri)}.khs-tag.manual{background:rgba(56,189,248,.15);color:#38bdf8}.khs-tag.perubahan{background:color-mix(in srgb,var(--k-warn) 18%,transparent);color:var(--k-warn)}',
@@ -123,7 +134,7 @@
         root.innerHTML =
             '<div class="khs">' +
             '<div class="khs-head"><div><h2><i class="fa-solid fa-clock-rotate-left"></i> Riwayat Kurs</h2>' +
-            '<p>Arsip kurs beli/jual seluruh valuta yang dicatat otomatis sesuai jadwal, ditambah pencatatan manual dan setiap perubahan kurs. Data tidak bisa diubah atau dihapus dari aplikasi, sehingga dapat dijadikan bukti saat audit Bank Indonesia.</p></div>' +
+            '<p>Arsip kurs sumber, selisih, dan kurs hasil (beli/jual) seluruh valuta yang dicatat otomatis sesuai jadwal, ditambah pencatatan manual dan setiap perubahan kurs. Data tidak bisa diubah atau dihapus dari aplikasi, sehingga dapat dijadikan bukti saat audit Bank Indonesia.</p></div>' +
             '<div class="khs-acts">' +
             (canSnap() ? '<button type="button" class="khs-btn pri" data-k="snap"><i class="fa-solid fa-camera"></i> Catat Sekarang</button>' : '') +
             '<button type="button" class="khs-btn" data-k="xlsx"><i class="fa-solid fa-file-excel" style="color:#10b981"></i> Excel</button>' +
@@ -133,8 +144,9 @@
 
             '<section class="khs-card"><h3><i class="fa-solid fa-signal"></i> Status Pencatatan</h3><p>Pencatatan terjadwal berjalan di server, jadi tetap tercatat walaupun aplikasi tidak sedang dibuka.</p><div id="khsStatus"><div class="khs-note">Memuat status...</div></div></section>' +
 
-            '<section class="khs-card" id="khsSettingsCard"><h3><i class="fa-solid fa-sliders"></i> Jadwal Pencatatan</h3>' +
-            '<p>' + (canEdit() ? 'Atur jam operasional dan selang waktu pencatatan.' : 'Hanya owner/admin yang dapat mengubah jadwal.') + '</p><div id="khsSettings"></div></section>' +
+            '<section class="khs-card" id="khsSettingsCard"><h3><i class="fa-solid fa-sliders"></i> Jadwal Pencatatan<span class="khs-sum" id="khsSettingsSum"></span>' +
+            '<button type="button" class="khs-tg" data-k="toggle-settings" aria-controls="khsSettingsBody" aria-expanded="true" title="Sembunyikan"><i class="fa-solid fa-minus"></i></button></h3>' +
+            '<div id="khsSettingsBody"><p>' + (canEdit() ? 'Atur jam operasional dan selang waktu pencatatan.' : 'Hanya owner/admin yang dapat mengubah jadwal.') + '</p><div id="khsSettings"></div></div></section>' +
 
             '<section class="khs-card"><h3><i class="fa-solid fa-table"></i> Data Riwayat</h3><p>Pilih periode, lalu tampilkan per jam (matriks satu tanggal) atau sebagai daftar.</p>' +
             '<div class="khs-grid">' +
@@ -153,6 +165,7 @@
         root.addEventListener('click', onClick);
         root.addEventListener('change', onChange);
         S.built = true;
+        applySettingsCollapse(readCollapse());
         fillCodes();
         markMode();
     }
@@ -189,6 +202,24 @@
             '<div class="khs-stat"><small>Total catatan</small><b>' + nf.format(st.total_records || 0) + '</b><em>' + (st.first_record ? 'Sejak ' + esc(dmy(st.first_record)) : 'Belum ada') + '</em></div>' +
             '</div>' +
             (alive ? '' : '<div class="khs-warn"><b>Penjadwal server belum berjalan.</b> Pencatatan otomatis membutuhkan cron Laravel di server: <code>* * * * * cd /path/aplikasi &amp;&amp; php artisan schedule:run</code>. Di komputer lokal (Laragon), jalankan <code>php artisan schedule:work</code> atau buat Task Scheduler Windows. Pencatatan manual tetap bisa dipakai.</div>');
+    }
+
+    var COLLAPSE_KEY = 'mc_khs_settings_collapsed';
+    function readCollapse() { try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch (e) { return false; } }
+    function applySettingsCollapse(collapsed) {
+        var card = $('khsSettingsCard'), btn = document.querySelector('[data-k="toggle-settings"]');
+        if (!card || !btn) return;
+        card.classList.toggle('collapsed', collapsed);
+        btn.innerHTML = '<i class="fa-solid ' + (collapsed ? 'fa-plus' : 'fa-minus') + '"></i>';
+        btn.title = collapsed ? 'Tampilkan' : 'Sembunyikan';
+        btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        updateSettingsSummary();
+    }
+    function updateSettingsSummary() {
+        var el = $('khsSettingsSum'), card = $('khsSettingsCard'); if (!el) return;
+        var s = S.status && S.status.settings;
+        el.textContent = card && card.classList.contains('collapsed') && s
+            ? '— ' + (s.enabled ? s.start + '–' + s.end + ', tiap ' + intervalLabel(s.interval) : 'nonaktif') : '';
     }
 
     function intervalLabel(m) { m = Number(m) || 60; return m < 60 ? m + ' menit' : (m === 60 ? '1 jam' : (m / 60) + ' jam'); }
@@ -256,6 +287,7 @@
             S.status = r.data;
             renderStatus();
             if (!S.dirty) renderSettings();
+            updateSettingsSummary();
         } catch (e) {
             var box = $('khsStatus'); if (box) box.innerHTML = '<div class="khs-warn">Status tidak bisa dimuat: ' + esc(e.message) + '</div>';
         }
@@ -313,20 +345,28 @@
                 '</tr></thead><tbody>' +
                 m.codes.map(function (code) {
                     return '<tr><td class="sticky"><span class="khs-code">' + esc(code) + '</span><span class="khs-sub">' + esc(m.labels[code] || '') + '</span></td>' +
-                        m.cols.map(function (k) { var r = m.cell[code + '#' + k]; return '<td class="r khs-cell">' + (r ? '<b>' + fmt(r.buy) + '</b><span>' + fmt(r.sell) + '</span>' : '<span style="color:var(--k-mut)">-</span>') + '</td>'; }).join('') + '</tr>';
+                        m.cols.map(function (k) {
+                            var r = m.cell[code + '#' + k];
+                            if (!r) return '<td class="r khs-cell"><span style="color:var(--k-mut)">-</span></td>';
+                            var sb = srcLine(r.base_buy, r.margin_buy), ss = srcLine(r.base_sell, r.margin_sell);
+                            return '<td class="r khs-cell"><b>' + fmt(r.buy) + '</b>' + (sb ? '<small>' + sb + '</small>' : '') + '<span>' + fmt(r.sell) + '</span>' + (ss ? '<small>' + ss + '</small>' : '') + '</td>';
+                        }).join('') + '</tr>';
                 }).join('') +
-                '</tbody></table></div><div class="khs-note"><b style="color:var(--k-buy)">Hijau</b> = kurs beli, <b style="color:var(--k-sell)">merah</b> = kurs jual. ' + m.codes.length + ' valuta, ' + m.cols.length + ' waktu pencatatan.</div>';
+                '</tbody></table></div><div class="khs-note"><b style="color:var(--k-buy)">Hijau</b> = kurs beli, <b style="color:var(--k-sell)">merah</b> = kurs jual (kurs hasil). Angka kecil di bawahnya = <b>kurs sumber · selisih</b>. ' + m.codes.length + ' valuta, ' + m.cols.length + ' waktu pencatatan.</div>';
             return;
         }
         var shown = S.rows.slice(0, MAX_ROWS_SHOWN);
-        box.innerHTML = '<div class="khs-tw"><table class="khs-t"><thead><tr><th>Tanggal</th><th>Jam</th><th>Jenis</th><th>Valuta</th><th class="r">Kurs Beli</th><th class="r">Kurs Jual</th><th>Sebelumnya</th><th>Dicatat oleh</th></tr></thead><tbody>' +
+        box.innerHTML = '<div class="khs-tw"><table class="khs-t"><thead>' +
+            '<tr><th rowspan="2">Tanggal</th><th rowspan="2">Jam</th><th rowspan="2">Jenis</th><th rowspan="2">Valuta</th><th colspan="3" class="grp">Beli</th><th colspan="3" class="grp">Jual</th><th rowspan="2" class="gl">Kurs hasil sebelumnya</th><th rowspan="2">Dicatat oleh</th></tr>' +
+            '<tr><th class="r gl">Sumber</th><th class="r">Selisih</th><th class="r">Hasil</th><th class="r gl">Sumber</th><th class="r">Selisih</th><th class="r">Hasil</th></tr></thead><tbody>' +
             shown.map(function (r) {
                 var prev = r.source === 'perubahan' ? '<span class="khs-chg">Beli ' + fmt(r.prev_buy) + ' · Jual ' + fmt(r.prev_sell) + '</span>' : '';
                 return '<tr><td>' + esc(dmy(r.taken_at)) + '</td><td>' + esc(String(r.taken_at).slice(11, 19)) + (r.slot && r.source === 'jadwal' ? '<span class="khs-sub">jadwal ' + esc(hm(r.slot)) + '</span>' : '') + '</td>' +
                     '<td><span class="khs-tag ' + esc(r.source) + '">' + esc(SRC[r.source] || r.source) + '</span></td>' +
                     '<td><span class="khs-code">' + esc(r.code) + '</span><span class="khs-sub">' + esc(labelOf(r)) + '</span></td>' +
-                    '<td class="r" style="color:var(--k-buy);font-weight:700">' + fmt(r.buy) + '</td><td class="r" style="color:var(--k-sell);font-weight:700">' + fmt(r.sell) + '</td>' +
-                    '<td>' + prev + '</td><td>' + esc(r.recorded_by || (r.source === 'jadwal' ? 'Sistem' : '-')) + '</td></tr>';
+                    '<td class="r gl">' + fmt(r.base_buy) + '</td><td class="r khs-m">' + fmtM(r.margin_buy) + '</td><td class="r" style="color:var(--k-buy);font-weight:700">' + fmt(r.buy) + '</td>' +
+                    '<td class="r gl">' + fmt(r.base_sell) + '</td><td class="r khs-m">' + fmtM(r.margin_sell) + '</td><td class="r" style="color:var(--k-sell);font-weight:700">' + fmt(r.sell) + '</td>' +
+                    '<td class="gl">' + prev + '</td><td>' + esc(r.recorded_by || (r.source === 'jadwal' ? 'Sistem' : '-')) + '</td></tr>';
             }).join('') + '</tbody></table></div>' +
             '<div class="khs-note">' + nf.format(S.rows.length) + ' catatan' + (S.rows.length > MAX_ROWS_SHOWN ? ', ditampilkan ' + nf.format(MAX_ROWS_SHOWN) + ' pertama (ekspor berisi semua)' : '') + '.</div>';
     }
@@ -338,19 +378,29 @@
             ['Dibuat: ' + new Date().toLocaleString('id-ID') + (userName() ? ' oleh ' + userName() : '')], []];
     }
     function listAoa() {
-        return [['Tanggal', 'Jam', 'Jadwal', 'Jenis', 'Kode', 'Valuta', 'Kurs Beli', 'Kurs Jual', 'Beli Sebelumnya', 'Jual Sebelumnya', 'Dicatat oleh']].concat(S.rows.map(function (r) {
+        return [['Tanggal', 'Jam', 'Jadwal', 'Jenis', 'Kode', 'Valuta',
+            'Sumber Beli', 'Selisih Beli', 'Kurs Beli (Hasil)', 'Sumber Jual', 'Selisih Jual', 'Kurs Jual (Hasil)',
+            'Kurs Beli Sebelumnya', 'Kurs Jual Sebelumnya', 'Dicatat oleh']].concat(S.rows.map(function (r) {
             return [dmy(r.taken_at), String(r.taken_at).slice(11, 19), r.slot ? hm(r.slot) : '', SRC[r.source] || r.source, r.code, labelOf(r),
-                Number(r.buy) || 0, Number(r.sell) || 0, r.prev_buy == null ? '' : Number(r.prev_buy), r.prev_sell == null ? '' : Number(r.prev_sell),
+                numOrEmpty(r.base_buy), numOrEmpty(r.margin_buy), Number(r.buy) || 0, numOrEmpty(r.base_sell), numOrEmpty(r.margin_sell), Number(r.sell) || 0,
+                numOrEmpty(r.prev_buy), numOrEmpty(r.prev_sell),
                 r.recorded_by || (r.source === 'jadwal' ? 'Sistem' : '')];
         }));
     }
     function matrixAoa() {
         var m = matrixData(); if (!m.cols.length) return null;
         var head = ['Kode', 'Valuta'];
-        m.cols.forEach(function (k) { var t = m.colMeta[k].time + (m.colMeta[k].manual ? ' (manual)' : ''); head.push('Beli ' + t, 'Jual ' + t); });
+        m.cols.forEach(function (k) {
+            var t = m.colMeta[k].time + (m.colMeta[k].manual ? ' (manual)' : '');
+            head.push(t + ' Sumber Beli', t + ' Selisih Beli', t + ' Beli', t + ' Sumber Jual', t + ' Selisih Jual', t + ' Jual');
+        });
         return [head].concat(m.codes.map(function (code) {
             var row = [code, m.labels[code] || ''];
-            m.cols.forEach(function (k) { var r = m.cell[code + '#' + k]; row.push(r ? Number(r.buy) : '', r ? Number(r.sell) : ''); });
+            m.cols.forEach(function (k) {
+                var r = m.cell[code + '#' + k];
+                if (!r) { row.push('', '', '', '', '', ''); return; }
+                row.push(numOrEmpty(r.base_buy), numOrEmpty(r.margin_buy), Number(r.buy), numOrEmpty(r.base_sell), numOrEmpty(r.margin_sell), Number(r.sell));
+            });
             return row;
         }));
     }
@@ -365,7 +415,7 @@
         if (!window.XLSX) return exportCsv();
         var wb = XLSX.utils.book_new();
         var list = XLSX.utils.aoa_to_sheet(headerAoa('Laporan Riwayat Kurs (Daftar)').concat(listAoa()));
-        list['!cols'] = [12, 10, 8, 15, 10, 22, 14, 14, 15, 15, 16].map(function (w) { return { wch: w }; });
+        list['!cols'] = [12, 10, 8, 15, 10, 22, 13, 11, 16, 13, 11, 16, 18, 18, 16].map(function (w) { return { wch: w }; });
         XLSX.utils.book_append_sheet(wb, list, 'Daftar');
         if (S.from === S.to) {
             var mx = matrixAoa();
@@ -387,19 +437,37 @@
 
     function printReport() {
         if (!ensureData()) return;
-        var useMatrix = S.mode === 'matrix' && S.from === S.to && matrixAoa();
-        var aoa = useMatrix ? matrixAoa() : listAoa();
-        var numCols = useMatrix ? function (i) { return i >= 2; } : function (i) { return i >= 6 && i <= 9; };
-        var table = '<table><thead><tr>' + aoa[0].map(function (h, i) { return '<th' + (numCols(i) ? ' class="r"' : '') + '>' + esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
-            aoa.slice(1).map(function (r) { return '<tr>' + r.map(function (v, i) { return '<td' + (numCols(i) ? ' class="r"' : '') + '>' + esc(typeof v === 'number' ? fmt(v) : v) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table>';
+        var m = (S.mode === 'matrix' && S.from === S.to) ? matrixData() : null;
+        var useMatrix = !!(m && m.cols.length);
+        var table;
+        if (useMatrix) {
+            table = '<table><thead><tr><th>Valuta</th>' + m.cols.map(function (k) { var c = m.colMeta[k]; return '<th class="r">' + esc(c.time) + (c.manual ? ' (manual)' : '') + '</th>'; }).join('') + '</tr></thead><tbody>' +
+                m.codes.map(function (code) {
+                    return '<tr><td><b>' + esc(code) + '</b><br><small>' + esc(m.labels[code] || '') + '</small></td>' + m.cols.map(function (k) {
+                        var r = m.cell[code + '#' + k]; if (!r) return '<td class="r">-</td>';
+                        var sb = srcLine(r.base_buy, r.margin_buy), ss = srcLine(r.base_sell, r.margin_sell);
+                        return '<td class="r">B <b>' + fmt(r.buy) + '</b>' + (sb ? '<br><small>' + sb + '</small>' : '') + '<br>J <b>' + fmt(r.sell) + '</b>' + (ss ? '<br><small>' + ss + '</small>' : '') + '</td>';
+                    }).join('') + '</tr>';
+                }).join('') + '</tbody></table><p class="meta">B = kurs beli, J = kurs jual (kurs hasil). Angka kecil = kurs sumber · selisih.</p>';
+        } else {
+            table = '<table><thead><tr><th rowspan="2">Tanggal</th><th rowspan="2">Jam</th><th rowspan="2">Jenis</th><th rowspan="2">Valuta</th><th colspan="3" class="c">Beli</th><th colspan="3" class="c">Jual</th><th rowspan="2">Kurs hasil sebelumnya</th><th rowspan="2">Dicatat oleh</th></tr>' +
+                '<tr><th class="r">Sumber</th><th class="r">Selisih</th><th class="r">Hasil</th><th class="r">Sumber</th><th class="r">Selisih</th><th class="r">Hasil</th></tr></thead><tbody>' +
+                S.rows.map(function (r) {
+                    return '<tr><td>' + esc(dmy(r.taken_at)) + '</td><td>' + esc(String(r.taken_at).slice(11, 19)) + '</td><td>' + esc(SRC[r.source] || r.source) + '</td><td><b>' + esc(r.code) + '</b> ' + esc(labelOf(r)) + '</td>' +
+                        '<td class="r">' + fmt(r.base_buy) + '</td><td class="r">' + fmtM(r.margin_buy) + '</td><td class="r"><b>' + fmt(r.buy) + '</b></td>' +
+                        '<td class="r">' + fmt(r.base_sell) + '</td><td class="r">' + fmtM(r.margin_sell) + '</td><td class="r"><b>' + fmt(r.sell) + '</b></td>' +
+                        '<td>' + (r.source === 'perubahan' ? 'B ' + fmt(r.prev_buy) + ' / J ' + fmt(r.prev_sell) : '') + '</td><td>' + esc(r.recorded_by || (r.source === 'jadwal' ? 'Sistem' : '')) + '</td></tr>';
+                }).join('') + '</tbody></table>';
+        }
         var w = window.open('', '_blank');
         if (!w) return alertBox('warning', 'Jendela cetak diblokir', 'Izinkan pop-up untuk situs ini lalu coba lagi.');
         w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + esc(fileBase()) + '</title><style>' +
-            '@page{size:A4 ' + (useMatrix ? 'landscape' : 'portrait') + ';margin:12mm}body{font-family:Arial,sans-serif;color:#000;font-size:10px}' +
-            'h1{font-size:15px;margin:0}h2{font-size:12px;margin:2px 0 8px;font-weight:normal}.meta{font-size:10px;color:#333;margin-bottom:10px}' +
-            'table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:3px 5px;text-align:left}th{background:#eee}.r{text-align:right}' +
-            '.sign{margin-top:28px;display:flex;justify-content:space-between}.sign div{width:40%;text-align:center}.sign .ln{margin-top:55px;border-top:1px solid #000}' +
-            '</style></head><body><h1>' + esc(company()) + '</h1><h2>Laporan Riwayat Kurs ' + (useMatrix ? 'per Jam' : '') + '</h2>' +
+            '@page{size:A4 landscape;margin:10mm}body{font-family:Arial,sans-serif;color:#000;font-size:9.5px}' +
+            'h1{font-size:15px;margin:0}h2{font-size:12px;margin:2px 0 8px;font-weight:normal}.meta{font-size:9.5px;color:#333;margin:6px 0 10px}' +
+            'table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:3px 5px;text-align:left;vertical-align:top}th{background:#eee}.r{text-align:right}.c{text-align:center}small{color:#555;font-size:8.5px}' +
+            'thead{display:table-header-group}tr{page-break-inside:avoid}' +
+            '.sign{margin-top:28px;display:flex;justify-content:space-between}.sign>div{width:40%;text-align:center}.sign .ln{margin:55px auto 0;width:75%;border-top:1px solid #000}' +
+            '</style></head><body><h1>' + esc(company()) + '</h1><h2>Laporan Riwayat Kurs' + (useMatrix ? ' per Jam' : '') + ' (kurs sumber, selisih, dan kurs hasil)</h2>' +
             '<div class="meta">Periode: ' + esc(periodText()) + (S.code ? ' &middot; Valuta: ' + esc(S.code) : '') + (S.source ? ' &middot; Jenis: ' + esc(SRC[S.source] || S.source) : '') +
             ' &middot; Dicetak: ' + esc(new Date().toLocaleString('id-ID')) + (userName() ? ' oleh ' + esc(userName()) : '') + '</div>' + table +
             '<div class="sign"><div>Dibuat oleh,<div class="ln"></div></div><div>Mengetahui,<div class="ln"></div></div></div>' +
@@ -442,6 +510,11 @@
         if (k === 'load') loadRows();
         else if (k === 'save') saveSettings();
         else if (k === 'snap') snapNow();
+        else if (k === 'toggle-settings') {
+            var c = !$('khsSettingsCard').classList.contains('collapsed');
+            try { localStorage.setItem(COLLAPSE_KEY, c ? '1' : '0'); } catch (e2) { /* abaikan */ }
+            applySettingsCollapse(c);
+        }
         else if (k === 'xlsx') exportXlsx();
         else if (k === 'csv') exportCsv();
         else if (k === 'print') printReport();

@@ -14,12 +14,17 @@ class RateSnapshot extends Model
 
     protected $fillable = [
         'taken_at', 'slot', 'source', 'currency_code', 'currency_label',
+        'base_buy', 'margin_buy', 'base_sell', 'margin_sell',
         'buy', 'sell', 'prev_buy', 'prev_sell', 'recorded_by',
     ];
 
     protected $casts = [
         'taken_at' => 'datetime',
         'slot' => 'datetime',
+        'base_buy' => 'float',
+        'margin_buy' => 'float',
+        'base_sell' => 'float',
+        'margin_sell' => 'float',
         'buy' => 'float',
         'sell' => 'float',
         'prev_buy' => 'float',

@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Schema;
  *    Dijalankan oleh perintah mc:rate-snapshot (dipanggil schedule:run tiap menit).
  *  - Manual: tombol "Catat Sekarang".
  *  - Perubahan: setiap kali kurs beli/jual sebuah valuta diubah (opsional).
+ * Setiap catatan menyimpan kurs sumber, selisih (margin), dan kurs hasil (= sumber + selisih).
  */
 class RateHistoryService
 {
@@ -153,13 +154,14 @@ class RateHistoryService
     {
         $now = now();
         $rows = [];
+        $hasSourceCols = Schema::hasColumn('mc_rate_snapshots', 'base_buy');
         foreach (Currency::query()->orderBy('code')->get() as $c) {
             $buy = (float) $c->buy;
             $sell = (float) $c->sell;
             if ($buy <= 0 && $sell <= 0) {
                 continue;
             }
-            $rows[] = [
+            $row = [
                 'taken_at' => $now->format('Y-m-d H:i:s'),
                 'slot' => $slot ? $slot->format('Y-m-d H:i:s') : null,
                 'source' => $source,
@@ -172,6 +174,7 @@ class RateHistoryService
                 'recorded_by' => $actor ?: null,
                 'created_at' => $now->format('Y-m-d H:i:s'),
             ];
+            $rows[] = $hasSourceCols ? array_merge($row, $this->sourceRatesOf($c)) : $row;
         }
         if (!$rows) {
             return 0;
@@ -199,7 +202,8 @@ class RateHistoryService
             if (abs($newBuy - $oldBuy) < 0.00005 && abs($newSell - $oldSell) < 0.00005) {
                 return;
             }
-            RateSnapshot::create([
+            $sourceRates = Schema::hasColumn('mc_rate_snapshots', 'base_buy') ? $this->sourceRatesOf($c) : [];
+            RateSnapshot::create(array_merge([
                 'taken_at' => now(),
                 'slot' => null,
                 'source' => 'perubahan',
@@ -210,10 +214,37 @@ class RateHistoryService
                 'prev_buy' => $oldBuy,
                 'prev_sell' => $oldSell,
                 'recorded_by' => $actor ?: null,
-            ]);
+            ], $sourceRates));
         } catch (\Throwable $e) {
             report($e);
         }
+    }
+
+    /**
+     * Kurs sumber & selisih dari data valuta (raw_json: base_buy/base_sell, margin_buy/margin_sell).
+     * Bila salah satu tidak tersimpan, dihitung dari kurs hasil: sumber = hasil - selisih.
+     * Bila keduanya tidak ada, dibiarkan kosong (tidak ditebak).
+     */
+    public function sourceRatesOf(Currency $c): array
+    {
+        $raw = is_string($c->raw_json) && $c->raw_json !== '' ? json_decode($c->raw_json, true) : null;
+        $raw = is_array($raw) ? $raw : [];
+        $out = [];
+        foreach (['buy', 'sell'] as $side) {
+            $final = (float) $c->{$side};
+            $base = isset($raw['base_'.$side]) && is_numeric($raw['base_'.$side]) && (float) $raw['base_'.$side] > 0 ? (float) $raw['base_'.$side] : null;
+            $margin = isset($raw['margin_'.$side]) && is_numeric($raw['margin_'.$side]) ? (float) $raw['margin_'.$side] : null;
+            if ($base === null && $margin !== null && $final > 0) {
+                $base = $final - $margin;
+            }
+            if ($margin === null && $base !== null && $final > 0) {
+                $margin = $final - $base;
+            }
+            $out['base_'.$side] = $base;
+            $out['margin_'.$side] = $margin;
+        }
+
+        return $out;
     }
 
     private function labelOf(Currency $c): ?string
