@@ -48,6 +48,9 @@ class CustomerLicenseController extends Controller
 
     public function update(Request $request, CustomerLicense $license): JsonResponse
     {
+        if ($license->license_type === CustomerLicense::MAIN_TYPE) {
+            return response()->json(['status' => 'error', 'message' => 'Dokumen legalitas utama diubah lewat form data nasabah (Tanggal Terbit & Berlaku Sampai).'], 422);
+        }
         $data = $this->validated($request);
         unset($data['customer_id']); // izin tidak dipindah antar-nasabah
         $data['updated_by'] = $this->actor($request);
@@ -58,6 +61,9 @@ class CustomerLicenseController extends Controller
 
     public function destroy(CustomerLicense $license): JsonResponse
     {
+        if ($license->license_type === CustomerLicense::MAIN_TYPE) {
+            return response()->json(['status' => 'error', 'message' => 'Dokumen legalitas utama dikelola lewat form data nasabah. Kosongkan "Berlaku Sampai" di sana bila tidak dipantau.'], 422);
+        }
         $license->delete();
 
         return response()->json(['status' => 'success']);
@@ -145,6 +151,7 @@ class CustomerLicenseController extends Controller
             'license_type' => $r->license_type,
             'license_name' => $r->license_name,
             'label' => $r->label(),
+            'from_customer_form' => $r->license_type === CustomerLicense::MAIN_TYPE,
             'number' => $r->number,
             'issued_at' => $r->issued_at?->format('Y-m-d'),
             'expires_at' => $exp,
@@ -159,7 +166,7 @@ class CustomerLicenseController extends Controller
     {
         $data = $request->validate([
             'customer_id' => ['required', 'string', 'max:100'],
-            'license_type' => ['required', Rule::in(array_keys(CustomerLicense::TYPES))],
+            'license_type' => ['required', Rule::in(array_values(array_diff(array_keys(CustomerLicense::TYPES), [CustomerLicense::MAIN_TYPE])))],
             'license_name' => ['nullable', 'string', 'max:150', 'required_if:license_type,LAINNYA'],
             'number' => ['nullable', 'string', 'max:100'],
             'issued_at' => ['nullable', 'date_format:Y-m-d'],

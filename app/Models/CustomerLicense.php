@@ -10,7 +10,11 @@ class CustomerLicense extends Model
 {
     protected $table = 'mc_customer_licenses';
 
+    /** Dokumen legalitas utama: diisi otomatis dari form data nasabah (Tanggal Terbit & Berlaku Sampai). */
+    public const MAIN_TYPE = 'DOKUMEN_UTAMA';
+
     public const TYPES = [
+        'DOKUMEN_UTAMA' => 'Dokumen Legalitas Utama',
         'NIB' => 'NIB (Nomor Induk Berusaha)',
         'AKTA_PENDIRIAN' => 'Akta Pendirian',
         'AKTA_PERUBAHAN' => 'Akta Perubahan',

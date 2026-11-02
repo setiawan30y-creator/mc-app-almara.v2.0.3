@@ -17,7 +17,9 @@
     window.__mcCustLicenses = true;
 
     var VIEW_ID = 'customer-license-view', ROOT_ID = 'custLicRoot';
+    var MAIN_TYPE = 'DOKUMEN_UTAMA';
     var TYPES = {
+        DOKUMEN_UTAMA: 'Dokumen Legalitas Utama',
         NIB: 'NIB (Nomor Induk Berusaha)', AKTA_PENDIRIAN: 'Akta Pendirian', AKTA_PERUBAHAN: 'Akta Perubahan',
         SK_KEMENKUMHAM: 'SK Kemenkumham', IZIN_USAHA: 'Izin Usaha / SIUP', IZIN_OPERASIONAL: 'Izin Operasional',
         DOMISILI: 'Surat Keterangan Domisili', NPWP: 'NPWP Badan', LAINNYA: 'Lainnya'
@@ -157,7 +159,7 @@
         root.innerHTML =
             '<div class="cl">' +
             '<div class="cl-head"><div><h2><i class="fa-solid fa-file-shield"></i> Perizinan Nasabah</h2>' +
-            '<p>Catat izin nasabah perusahaan (PT, CV, Yayasan, dll.) beserta tanggal berakhirnya. Aplikasi akan mengingatkan sebelum izin jatuh tempo: lewat ikon di header, popup saat membuka aplikasi, dan peringatan di Kasir.</p></div></div>' +
+            '<p>Pantau masa berlaku izin nasabah perusahaan (PT, CV, Yayasan, dll.). Masa berlaku <b>dokumen legalitas utama</b> diisi di form data nasabah (<i>Tanggal Terbit</i> &amp; <i>Berlaku Sampai</i>) dan otomatis tampil di sini. Izin lain (NIB, SK, Domisili, dll.) bisa ditambahkan bila perlu. Pengingat muncul di ikon header, popup saat membuka aplikasi, dan di Kasir.</p></div></div>' +
             '<div class="cl-stats" id="clStats"></div>' +
             '<div class="cl-bar"><input type="search" class="cl-in cl-search" id="clSearch" placeholder="Cari nama perusahaan, ID, atau nomor izin...">' +
             '<select class="cl-in" id="clFilter"><option value="all">Semua status</option><option value="expired">Kedaluwarsa</option><option value="soon">Segera habis</option><option value="ok">Berlaku</option><option value="none">Tanpa batas</option><option value="empty">Belum ada izin</option></select>' +
@@ -210,11 +212,13 @@
                 (canManage() ? '<button type="button" class="cl-btn sm pri" data-act="add" data-cust="' + esc(co.id) + '"><i class="fa-solid fa-plus"></i> Tambah izin</button>' : '') + '</div>' +
                 (shown.length ? '<div style="overflow-x:auto"><table class="cl-t"><thead><tr><th>Jenis izin</th><th>Nomor</th><th>Terbit</th><th>Berakhir</th><th>Status</th><th>Dokumen</th><th></th></tr></thead><tbody>' +
                     shown.map(function (r) {
-                        return '<tr><td><b>' + esc(r.label) + '</b>' + (r.notes ? '<small>' + esc(r.notes) + '</small>' : '') + '</td><td>' + esc(r.number || '-') + '</td><td>' + esc(fmtDay(r.issued_at)) + '</td>' +
+                        return '<tr><td><b>' + esc(r.label) + '</b>' + (r.license_type === MAIN_TYPE ? '<small><i class="fa-solid fa-link"></i> dari form data nasabah</small>' : (r.notes ? '<small>' + esc(r.notes) + '</small>' : '')) + '</td><td>' + esc(r.number || '-') + '</td><td>' + esc(fmtDay(r.issued_at)) + '</td>' +
                             '<td>' + esc(fmtDay(r.expires_at)) + '<small>' + esc(daysText(r)) + '</small></td><td>' + badge(r) + '</td>' +
                             '<td>' + (r.document_url ? '<a href="' + esc(r.document_url) + '" target="_blank" rel="noopener"><i class="fa-solid fa-file-lines"></i> Lihat</a>' : '<small>-</small>') + '</td>' +
-                            '<td><div class="cl-acts">' + (canManage() ? '<button type="button" class="cl-btn sm" data-act="edit" data-id="' + r.id + '"><i class="fa-solid fa-pen"></i> Ubah</button>' : '') +
-                            (canDelete() ? '<button type="button" class="cl-btn sm del" data-act="del" data-id="' + r.id + '"><i class="fa-solid fa-trash"></i></button>' : '') + '</div></td></tr>';
+                            '<td><div class="cl-acts">' + (r.license_type === MAIN_TYPE
+                                ? (canManage() ? '<button type="button" class="cl-btn sm" data-act="cust" data-cust="' + esc(r.customer_id) + '" title="Diubah lewat form data nasabah"><i class="fa-solid fa-user-pen"></i> Ubah di data nasabah</button>' : '')
+                                : (canManage() ? '<button type="button" class="cl-btn sm" data-act="edit" data-id="' + r.id + '"><i class="fa-solid fa-pen"></i> Ubah</button>' : '') +
+                                  (canDelete() ? '<button type="button" class="cl-btn sm del" data-act="del" data-id="' + r.id + '"><i class="fa-solid fa-trash"></i></button>' : '')) + '</div></td></tr>';
                     }).join('') + '</tbody></table></div>'
                     : '<div class="cl-none">Belum ada data izin untuk perusahaan ini.</div>') +
                 '</section>';
@@ -243,7 +247,7 @@
         $('clModal').innerHTML = '<div class="cl-ov" data-act="close-bg"><form class="cl-dlg" id="clForm" autocomplete="off">' +
             '<h3>' + (row ? 'Ubah izin' : 'Tambah izin') + '</h3><p>' + esc(co.name) + (co.type ? ' · ' + esc(co.type) : '') + '</p>' +
             '<div class="cl-fg">' +
-            '<div class="cl-f"><label for="clType">Jenis izin</label><select class="cl-in" id="clType">' + Object.keys(TYPES).map(function (k) { return '<option value="' + k + '"' + (d.license_type === k ? ' selected' : '') + '>' + esc(TYPES[k]) + '</option>'; }).join('') + '</select></div>' +
+            '<div class="cl-f"><label for="clType">Jenis izin</label><select class="cl-in" id="clType">' + Object.keys(TYPES).filter(function (k) { return k !== MAIN_TYPE; }).map(function (k) { return '<option value="' + k + '"' + (d.license_type === k ? ' selected' : '') + '>' + esc(TYPES[k]) + '</option>'; }).join('') + '</select></div>' +
             '<div class="cl-f" id="clNameWrap"' + (d.license_type === 'LAINNYA' ? '' : ' style="display:none"') + '><label for="clName">Nama izin</label><input class="cl-in" id="clName" maxlength="150" placeholder="Nama dokumen izin" value="' + esc(d.license_name || '') + '"></div>' +
             '<div class="cl-f full"><label for="clNumber">Nomor izin / dokumen</label><input class="cl-in" id="clNumber" maxlength="100" placeholder="Nomor sesuai dokumen" value="' + esc(d.number || '') + '"></div>' +
             '<div class="cl-f"><label for="clIssued">Tanggal terbit</label><input type="date" class="cl-in" id="clIssued" value="' + esc(d.issued_at || '') + '"></div>' +
@@ -327,6 +331,11 @@
         if (act === 'add') openForm(b.getAttribute('data-cust'));
         else if (act === 'edit') { var r = S.rows.filter(function (x) { return String(x.id) === b.getAttribute('data-id'); })[0]; if (r) openForm(r.customer_id, r); }
         else if (act === 'del') remove(b.getAttribute('data-id'));
+        else if (act === 'cust') {
+            var cid = b.getAttribute('data-cust');
+            if (typeof window.openCustomerUpdateModal === 'function') window.openCustomerUpdateModal(cid);
+            else alertBox('info', 'Ubah di data nasabah', 'Buka menu Nasabah, lalu ubah "Berlaku Sampai" pada data perusahaan ini.');
+        }
         else if (act === 'close') closeForm();
     }
 
@@ -451,6 +460,20 @@
         }
     }
 
+    // Setelah data nasabah disimpan (mis. "Berlaku Sampai" diubah), segarkan pengingat & daftar.
+    window.mcRefreshLicenseAlerts = function () { fetchAlerts(true); if (visible() && S.built) load(); };
+    function hookCustomerSave() {
+        var fn = window.saveToMySQL_Customer;
+        if (typeof fn !== 'function' || fn.__lic) return;
+        var wrapped = function () {
+            var r = fn.apply(this, arguments);
+            Promise.resolve(r).then(function () { setTimeout(window.mcRefreshLicenseAlerts, 800); }).catch(function () { /* abaikan */ });
+            return r;
+        };
+        wrapped.__lic = true;
+        window.saveToMySQL_Customer = wrapped;
+    }
+
     function hookPos() {
         var fn = window.updateModernCustomerProfileCard;
         if (typeof fn !== 'function' || fn.__lic) return;
@@ -470,6 +493,7 @@
     var wasVisible = false;
     setInterval(function () {
         hookPos();
+        hookCustomerSave();
         var now = visible();
         if (now && !wasVisible) window.loadCustomerLicenses();
         wasVisible = now;

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\PrivateUploads;
 use App\Models\Customer;
+use App\Models\CustomerLicense;
 use App\Models\Datastore;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -87,6 +88,7 @@ class CustomerController extends Controller
                 $data
             );
             Datastore::where('store_key', 'mc_customers_reset_at')->delete();
+            $this->syncMainLicense((string) $internal_id, $input, $request);
             return response()->json([
                 'status' => 'success', 
                 'message' => 'Data Nasabah Berhasil Disimpan (Laravel)',
@@ -265,6 +267,75 @@ class CustomerController extends Controller
     }
 
     /** Normalisasi KN agar database hanya menyimpan 1 (perorangan) atau 2 (perusahaan). */
+    /**
+     * Masa berlaku dokumen legalitas utama nasabah perusahaan (form nasabah: Tanggal Terbit & Berlaku Sampai)
+     * disalin ke mc_customer_licenses sebagai DOKUMEN_UTAMA, supaya pengingat jatuh tempo memakai satu sumber.
+     * Tidak pernah menggagalkan penyimpanan nasabah. @2026-Alifiandra
+     */
+    private function syncMainLicense(string $customerId, array $input, Request $request): void
+    {
+        try {
+            if (!\Illuminate\Support\Facades\Schema::hasTable('mc_customer_licenses')) {
+                return;
+            }
+            $existing = CustomerLicense::query()->where('customer_id', $customerId)->where('license_type', CustomerLicense::MAIN_TYPE)->first();
+            $isCompany = ($input['kn'] ?? '') === '2';
+            if (!$isCompany) {
+                $existing?->delete();
+                return;
+            }
+            $expires = $this->parseLooseDate($input['masa_berlaku'] ?? null);
+            if (!$expires && !$existing) {
+                return;
+            }
+            $number = trim((string) ($input['selain_ktp'] ?? ''));
+            if ($number === '' || $number === '-') {
+                $nik = trim((string) ($input['no_ktp'] ?? ''));
+                $number = ($nik !== '' && $nik !== '-') ? $nik : '';
+            }
+            $actor = (string) ($request->user()?->username ?? '');
+            $data = [
+                'number' => $number !== '' ? mb_substr($number, 0, 100) : null,
+                'issued_at' => $this->parseLooseDate($input['tanggal_lahir'] ?? null),
+                'expires_at' => $expires,
+                'updated_by' => $actor,
+            ];
+            if ($data['issued_at'] && $data['expires_at'] && $data['expires_at'] < $data['issued_at']) {
+                $data['issued_at'] = null;
+            }
+            if ($existing) {
+                $existing->update($data);
+            } else {
+                CustomerLicense::create($data + [
+                    'customer_id' => $customerId,
+                    'license_type' => CustomerLicense::MAIN_TYPE,
+                    'notes' => 'Dari form data nasabah',
+                    'created_by' => $actor,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /** Tanggal dari form (Y-m-d, "05 Jan 2026", "05 Mei 2026", 05/01/2026) -> Y-m-d, atau null. */
+    private function parseLooseDate($value): ?string
+    {
+        $v = trim((string) $value);
+        if ($v === '' || $v === '-') {
+            return null;
+        }
+        if (preg_match('#^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$#', $v, $m)) {
+            return checkdate((int) $m[2], (int) $m[1], (int) $m[3]) ? sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]) : null;
+        }
+        $v = strtr($v, ['Mei' => 'May', 'Agu' => 'Aug', 'Agt' => 'Aug', 'Okt' => 'Oct', 'Des' => 'Dec', 'Januari' => 'January', 'Februari' => 'February', 'Maret' => 'March', 'Juni' => 'June', 'Juli' => 'July', 'Agustus' => 'August', 'Oktober' => 'October', 'Desember' => 'December']);
+        try {
+            return Carbon::parse($v)->toDateString();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
     private function normalizeCustomerType($value): string
     {
         $normalized = strtolower(trim((string) $value));

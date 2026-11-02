@@ -4787,6 +4787,12 @@
                             <label id="modalCustBirthDateLabel">Tanggal Lahir <span class="required-mark">*</span></label>
                             <input type="text" id="modalCustBirthDate" class="form-control" placeholder="Pilih Tanggal..">
                     </div>
+                    <!-- Berlaku Sampai: khusus Perusahaan, acuan pengingat jatuh tempo izin (&#64;2026-Alifiandra) -->
+                    <div class="form-group" id="modalCustExpiryGroup" style="display: none;">
+                            <label for="modalCustExpiry">Berlaku Sampai</label>
+                            <input type="date" id="modalCustExpiry" class="form-control">
+                            <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Kosongkan bila berlaku tanpa batas. Dipakai untuk pengingat jatuh tempo.</small>
+                    </div>
 
                     <!-- Row 4: Alamat & Jenis ID -->
                     <div class="form-group">
@@ -5036,6 +5042,12 @@
                             <div>
                                 <label id="update_birthDateLabel">Tanggal Lahir</label>
                                 <input type="text" id="update_modalCustBirthDate" class="form-control flatpickr" placeholder="Pilih Tanggal..">
+                            </div>
+                            <!-- Berlaku Sampai: khusus Perusahaan, acuan pengingat jatuh tempo izin -->
+                            <div id="update_expiryGroup" style="display:none;">
+                                <label for="update_modalCustExpiry">Berlaku Sampai</label>
+                                <input type="date" id="update_modalCustExpiry" class="form-control">
+                                <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Kosongkan bila berlaku tanpa batas.</small>
                             </div>
                             <div class="upd-full">
                                 <label>Alamat (Sesuai ID)</label>

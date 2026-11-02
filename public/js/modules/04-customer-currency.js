@@ -2187,6 +2187,7 @@ window.openCustomerUpdateModal = function(id) {
         setVal('update_modalCustBusinessType', cust.jenis_badan_usaha);
         setVal('update_modalCustBusinessField', cust.bidang_usaha);
         setVal('update_modalCustNib', cust.nib);
+        setVal('update_modalCustExpiry', cust.masa_berlaku);
         if (typeof window.updateCustomerUpdateUI === 'function') window.updateCustomerUpdateUI();
 
         // Dropdowns (Hanya isi jika kosong untuk hemat CPU/RAM)
@@ -2317,7 +2318,9 @@ window.updateCustomer = async function() {
         kn: $('input[name="update_custType"]:checked').val() || customers[index].kn,
         jenis_badan_usaha: isCompanyUpd ? (String($('#update_modalCustBusinessType').val() || '').trim().toUpperCase() || null) : null,
         bidang_usaha: isCompanyUpd ? (String($('#update_modalCustBusinessField').val() || '').trim() || null) : null,
-        nib: isCompanyUpd ? (String($('#update_modalCustNib').val() || '').trim() || null) : null
+        nib: isCompanyUpd ? (String($('#update_modalCustNib').val() || '').trim() || null) : null,
+        // Masa berlaku dokumen legalitas utama (acuan pengingat jatuh tempo)
+        masa_berlaku: isCompanyUpd ? (String($('#update_modalCustExpiry').val() || '').trim() || null) : null
     };
 
     // Update Array & Local Storage (Perbaiki Key ke mc_customers)
@@ -2363,6 +2366,9 @@ window.updateCustomerUpdateUI = function() {
     show('update_businessFieldGroup', isCompany);
     show('update_jobGroup', !isCompany);
     show('update_genderGroup', !isCompany);
+    show('update_expiryGroup', isCompany);
+    const updBirthPlaceGroup = document.getElementById('update_birthPlaceLabel')?.parentElement;
+    if (updBirthPlaceGroup) updBirthPlaceGroup.classList.toggle('upd-full', isCompany);
     const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
     setText('update_birthPlaceLabel', isCompany ? 'Lokasi Terbit' : 'Tempat Lahir');
     setText('update_birthDateLabel', isCompany ? 'Tanggal Terbit' : 'Tanggal Lahir');
@@ -2401,7 +2407,7 @@ window.triggerCustomerEditDirect = function(targetId = null) {
 
     // 2. Clear & Reset ALL fields first to avoid data contamination
     const fields = [
-        'modalCustId', 'modalCustType', 'modalCustName', 'modalCustIdPjk', 'modalCustBusinessType', 'modalCustBusinessField', 'modalCustNib',
+        'modalCustId', 'modalCustType', 'modalCustName', 'modalCustIdPjk', 'modalCustBusinessType', 'modalCustBusinessField', 'modalCustNib', 'modalCustExpiry',
         'modalCustBirthPlace', 'modalCustBirthDate', 'modalCustAddress', 'modalCustIdType',
         'modalCustGender', 'modalCustCitizen', 'modalCustJob',
         'modalCustNik', 'modalCustIdNo', 'modalCustPhone', 'modalCustBankAcc',
@@ -2508,6 +2514,7 @@ window.triggerCustomerEditDirect = function(targetId = null) {
             fill('modalCustBusinessType', c.jenis_badan_usaha || '');
             fill('modalCustBusinessField', c.bidang_usaha || '');
             fill('modalCustNib', c.nib || '');
+            fill('modalCustExpiry', c.masa_berlaku || '');
             window.updateCustomerBusinessTypeUI();
             fill('modalCustName', c.nama);
             fill('modalCustBirthPlace', c.tempat_lahir);
@@ -2700,6 +2707,13 @@ window.updateCustomerBusinessTypeUI = function() {
     if (genderGroup) genderGroup.style.display = isCompany ? 'none' : '';
     const jobGroup = document.getElementById('modalCustJobGroup');
     if (jobGroup) jobGroup.style.display = isCompany ? 'none' : '';
+    // Perusahaan: "Berlaku Sampai" tampil di sebelah Tanggal Terbit; Lokasi Terbit dibuat selebar baris
+    // supaya Tanggal Terbit & Berlaku Sampai berdampingan.
+    const expiryGroup = document.getElementById('modalCustExpiryGroup');
+    if (expiryGroup) expiryGroup.style.display = isCompany ? '' : 'none';
+    if (!isCompany) { const ex = document.getElementById('modalCustExpiry'); if (ex) ex.value = ''; }
+    const birthPlaceGroup = document.getElementById('modalCustBirthPlaceLabel')?.closest('.form-group');
+    if (birthPlaceGroup) birthPlaceGroup.classList.toggle('field-full', isCompany);
 
     window.updateCustomerNameLabel();
 };
@@ -2860,6 +2874,8 @@ async function saveCustomer() {
         jenis_badan_usaha: businessType || null,
         bidang_usaha: businessField || null,
         nib: nib || null,
+        // Masa berlaku dokumen legalitas utama (acuan pengingat jatuh tempo)
+        masa_berlaku: typeKn === '2' ? (String(document.getElementById('modalCustExpiry')?.value || '').trim() || null) : null,
         no_hp: phone || '-',
         nama: name,
         tempat_lahir: birthPlace || '-',
