@@ -2751,6 +2751,10 @@ window.updateCustomerBusinessTypeUI = function() {
     const birthPlaceGroup = document.getElementById('modalCustBirthPlaceLabel')?.closest('.form-group');
     // Perorangan juga: Tanggal Lahir berdampingan dengan Masa Berlaku Identitas.
     if (birthPlaceGroup) birthPlaceGroup.classList.toggle('field-full', isCompany);
+    // Tata letak per bagian: judul bagian & penanda grid perusahaan
+    document.getElementById('customerFormGrid')?.classList.toggle('is-company', isCompany);
+    const secTitle = document.getElementById('modalCustSecDataTitle');
+    if (secTitle) secTitle.textContent = isCompany ? 'Data Perusahaan' : 'Data Diri';
     window.updateCustomerIdExpiryUI();
 
     window.updateCustomerNameLabel();

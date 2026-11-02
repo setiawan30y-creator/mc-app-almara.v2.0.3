@@ -4253,8 +4253,35 @@
         }
         #customerModal .customer-form-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 18px 22px;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 16px 18px;
+            align-items: start;
+        }
+        #customerModal .customer-form-grid > * { grid-column: span 3; min-width: 0; }
+        #customerModal .customer-form-grid > .field-full,
+        #customerModal .customer-form-grid > .cf-sec,
+        #customerModal .customer-form-grid > .customer-system-section { grid-column: 1 / -1; }
+        #customerModal .customer-form-grid > .cf-third { grid-column: span 2; }
+        /* Tempat, Tanggal, dan Masa Berlaku sebaris bila kolom masa berlaku tampil */
+        #customerModal .customer-form-grid > .cf-bp.field-full,
+        #customerModal .customer-form-grid > .cf-bp.field-full + .cf-bd { grid-column: span 2; }
+        /* Perorangan: Local ID selebar baris supaya tidak ada sel kosong */
+        #customerModal .customer-form-grid:not(.is-company) > .cf-localid { grid-column: 1 / -1; }
+        #customerModal .cf-sec {
+            display: flex; align-items: center; gap: 8px;
+            margin-top: 6px; padding-bottom: 8px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+            color: #60a5fa; font-size: .76rem; font-weight: 800;
+            letter-spacing: .08em; text-transform: uppercase;
+        }
+        #customerModal .cf-sec:first-child { margin-top: 0; }
+        #customerModal .cf-hint { display:block; margin-top:4px; font-size:.74rem; opacity:.75; }
+        #customerModal .customer-form-grid .select2-container { width: 100% !important; }
+        @media (max-width: 760px) {
+            #customerModal .customer-form-grid > *,
+            #customerModal .customer-form-grid > .cf-third,
+            #customerModal .customer-form-grid > .cf-bp.field-full,
+            #customerModal .customer-form-grid > .cf-bp.field-full + .cf-bd { grid-column: 1 / -1; }
         }
         #customerModal .form-group {
             margin-bottom: 0;
@@ -4292,7 +4319,7 @@
             gap: 10px;
         }
         #customerModal .entity-toggle-btn {
-            min-height: 112px;
+            min-height: 58px;
             border-radius: 10px;
             background: rgba(30, 41, 59, 0.62);
             border: 1px solid rgba(148, 163, 184, 0.18);
@@ -4310,9 +4337,14 @@
             pointer-events: none;
         }
         #customerModal .entity-toggle-btn span {
-            display: grid;
-            gap: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
             font-weight: 800;
+        }
+        #customerModal .entity-toggle-btn span small {
+            font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+            background: rgba(148, 163, 184, 0.18); opacity: .9;
         }
         #customerModal .entity-toggle-btn i {
             font-size: 1.35rem;
@@ -4328,10 +4360,11 @@
         #customerModal .entity-toggle-btn:has(input:checked)::after {
             content: "\2713";
             position: absolute;
-            top: 8px;
-            right: 8px;
-            width: 28px;
-            height: 28px;
+            top: 50%;
+            transform: translateY(-50%);
+            right: 12px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
             background: #3b82f6;
             color: #fff;
@@ -4691,28 +4724,28 @@
                     </div>
                 </div>
 
-                <!-- Right Side: Form Inputs -->
+                <!-- Right Side: Form Inputs (tata letak per bagian, grid 6 kolom; &#64;2026-Alifiandra) -->
                 <div class="customer-panel">
-                    <div class="customer-form-grid">
-                    <!-- Row 1: Tipe KN & ID PJK -->
-                    <div class="form-group">
-                            <label style="margin-bottom: 12px; display: block;">Tipe Entitas / KN (tipe) <span class="required-mark">*</span></label>
+                    <div class="customer-form-grid" id="customerFormGrid">
+                    <div class="cf-sec"><i class="fa-solid fa-users"></i> Tipe Nasabah</div>
+                    <div class="form-group field-full">
                             <div class="entity-toggle-group">
                                 <label class="entity-toggle-btn" title="Klik untuk mendaftarkan orang pribadi">
                                     <input type="radio" name="modalCustTypeGroup" value="1" onchange="if(typeof toggleEntitas==='function') toggleEntitas(); window.updateCustomerBusinessTypeUI();">
-                                    <span><i class="fas fa-user" style="margin-right: 5px;"></i> Perorangan (1)</span>
+                                    <span><i class="fas fa-user"></i> Perorangan <small>KN 1</small></span>
                                 </label>
                                 <label class="entity-toggle-btn" title="Klik untuk mendaftarkan institusi/korporasi">
                                     <input type="radio" name="modalCustTypeGroup" value="2" onchange="toggleEntitas()">
-                                    <span><i class="fas fa-building" style="margin-right: 5px;"></i> Perusahaan (2)</span>
+                                    <span><i class="fas fa-building"></i> Perusahaan <small>KN 2</small></span>
                                 </label>
                             </div>
                             <input type="hidden" id="modalCustType" value="">
                             <input type="hidden" id="modalCustIdPjk">
                     </div>
 
-                    <!-- Jenis Badan Usaha: hanya tampil jika KN = Perusahaan -->
-                    <div class="form-group field-full" id="modalCustBusinessTypeGroup" style="display: none;">
+                    <div class="cf-sec" id="modalCustSecData"><i class="fa-solid fa-address-card"></i> <span id="modalCustSecDataTitle">Data Diri</span></div>
+                    <!-- Perusahaan: Jenis Badan Usaha & Bidang Usaha -->
+                    <div class="form-group cf-half" id="modalCustBusinessTypeGroup" style="display: none;">
                             <label>Jenis Badan Usaha <span class="required-mark">*</span></label>
                             <select id="modalCustBusinessType" class="form-control" onchange="window.updateCustomerNameLabel()">
                                 <option value="">Pilih Jenis Badan Usaha</option>
@@ -4723,8 +4756,7 @@
                                 <option value="BADAN USAHA CV">BADAN USAHA CV</option>
                             </select>
                     </div>
-                    <!-- Bidang Usaha (di bawah Jenis Badan Usaha): menggantikan Pekerjaan jika KN = Perusahaan -->
-                    <div class="form-group field-full" id="modalCustBusinessFieldGroup" style="display: none;">
+                    <div class="form-group cf-half" id="modalCustBusinessFieldGroup" style="display: none;">
                             <label>Bidang Usaha <span class="required-mark">*</span></label>
                             <select id="modalCustBusinessField" class="form-control">
                                 <option value="">Pilih Bidang Usaha</option>
@@ -4768,45 +4800,62 @@
                             </select>
                     </div>
 
-                    <!-- Row 2: Nama & No Tlp -->
-                    <div class="form-group">
+                    <div class="form-group field-full">
                             <label id="modalCustNameLabel">Nama Lengkap <span class="required-mark">*</span></label>
                             <input type="text" id="modalCustName" class="form-control" placeholder="Sesuai Identitas">
                     </div>
-                    <div class="form-group">
-                            <label>No. TLP <span class="required-mark">*</span></label>
+                    <div class="form-group cf-half">
+                            <label>No. Telepon <span class="required-mark">*</span></label>
                             <input type="text" id="modalCustPhone" class="form-control" placeholder="08xx...">
                     </div>
+                    <div class="form-group cf-half">
+                            <label>Warga Negara</label>
+                            <select id="modalCustCitizen" class="form-control select2-modal">
+                                <!-- Populated by master -->
+                            </select>
+                    </div>
+                    <div class="form-group cf-half" id="modalCustGenderGroup">
+                            <label>Jenis Kelamin</label>
+                            <select id="modalCustGender" class="form-control">
+                                <option value="Pria">Pria</option>
+                                <option value="Wanita">Wanita</option>
+                            </select>
+                    </div>
+                    <div class="form-group cf-half" id="modalCustJobGroup">
+                            <label>Pekerjaan</label>
+                            <select id="modalCustJob" class="form-control select2-modal">
+                                <!-- Populated by master -->
+                            </select>
+                    </div>
 
-                    <!-- Row 3: Tempat & Tgl Lahir -->
-                    <div class="form-group">
+                    <!-- Tempat & Tanggal Lahir/Terbit; bila ada Masa Berlaku, ketiganya sebaris -->
+                    <div class="form-group cf-half cf-bp">
                             <label id="modalCustBirthPlaceLabel">Tempat Lahir <span class="required-mark">*</span></label>
                             <input type="text" id="modalCustBirthPlace" class="form-control" placeholder="Kota/Kab">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group cf-half cf-bd">
                             <label id="modalCustBirthDateLabel">Tanggal Lahir <span class="required-mark">*</span></label>
                             <input type="text" id="modalCustBirthDate" class="form-control" placeholder="Pilih Tanggal..">
                     </div>
-                    <!-- Berlaku Sampai: khusus Perusahaan, acuan pengingat jatuh tempo izin (&#64;2026-Alifiandra) -->
-                    <div class="form-group" id="modalCustExpiryGroup" style="display: none;">
+                    <!-- Berlaku Sampai: khusus Perusahaan, acuan pengingat jatuh tempo izin -->
+                    <div class="form-group cf-third" id="modalCustExpiryGroup" style="display: none;">
                             <label for="modalCustExpiry">Berlaku Sampai</label>
                             <input type="date" id="modalCustExpiry" class="form-control">
-                            <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Kosongkan bila berlaku tanpa batas. Dipakai untuk pengingat jatuh tempo.</small>
+                            <small class="cf-hint">Kosongkan bila tanpa batas.</small>
                     </div>
-                    <!-- Perorangan: masa berlaku identitas di samping Tanggal Lahir, acuan notifikasi pengkinian data di Kasir (&#64;2026-Alifiandra) -->
-                    <div class="form-group" id="modalCustIdExpiryGroup" style="display:none;">
+                    <!-- Perorangan selain KTP: masa berlaku identitas, acuan notifikasi pengkinian data di Kasir -->
+                    <div class="form-group cf-third" id="modalCustIdExpiryGroup" style="display:none;">
                             <label for="modalCustIdExpiry">Masa Berlaku Identitas</label>
                             <input type="date" id="modalCustIdExpiry" class="form-control">
-                            <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Untuk SIM, Paspor, KITAS. Bila lewat, Kasir diminta pengkinian data.</small>
+                            <small class="cf-hint">Bila lewat, Kasir diminta pengkinian data.</small>
                     </div>
-
-                    <!-- Row 4: Alamat & Jenis ID -->
-                    <div class="form-group">
+                    <div class="form-group field-full">
                             <label>Alamat (Sesuai ID) <span class="required-mark">*</span></label>
                             <textarea id="modalCustAddress" class="form-control" rows="2" placeholder="Alamat lengkap sesuai identitas"></textarea>
                     </div>
-                    
-                    <div class="form-group">
+
+                    <div class="cf-sec"><i class="fa-solid fa-id-card"></i> Identitas &amp; Rekening</div>
+                    <div class="form-group cf-half">
                             <label>Jenis Identitas <span class="required-mark">*</span></label>
                             <select id="modalCustIdType" class="form-control" onchange="toggleCustPassportPlaceholder()">
                                 <option value="KTP">KTP (Indonesia)</option>
@@ -4814,39 +4863,33 @@
                                 <option value="SIM">SIM / Lainnya</option>
                             </select>
                     </div>
-
-                    <!-- Row 5: KTP & ID Lain -->
-                    <div class="form-group" id="modalCustNikGroup">
+                    <div class="form-group cf-half" id="modalCustNikGroup">
                             <label>Nomor KTP (NIK) <span class="required-mark">*</span></label>
-                            <input type="text" id="modalCustNik" class="form-control" placeholder="Ketik NIK secara manual atau gunakan Auto-Fill" inputmode="numeric" autocomplete="off">
+                            <input type="text" id="modalCustNik" class="form-control" placeholder="Ketik NIK atau gunakan Auto-Fill" inputmode="numeric" autocomplete="off">
                     </div>
-                    <div class="form-group" id="modalCustIdNoGroup" style="display:none;">
-                            <label>Nomor ID (Lainnya) <span class="required-mark">*</span></label>
-                            <input type="text" id="modalCustIdNo" class="form-control" placeholder="Ketik nomor ID secara manual (opsional)" autocomplete="off">
+                    <div class="form-group cf-half" id="modalCustIdNoGroup" style="display:none;">
+                            <label>Nomor Identitas <span class="required-mark">*</span></label>
+                            <input type="text" id="modalCustIdNo" class="form-control" placeholder="Ketik nomor identitas" autocomplete="off">
                     </div>
-
-                    <!-- Row 6: Gender, WN, Pekerjaan -->
-                    <div class="form-group" id="modalCustGenderGroup">
-                            <label>Jenis Kelamin</label>
-                            <select id="modalCustGender" class="form-control">
-                                <option value="Pria">Pria</option>
-                                <option value="Wanita">Wanita</option>
-                            </select>
+                    <!-- NIB: hanya tampil jika KN = Perusahaan -->
+                    <div class="form-group cf-half" id="modalCustNibGroup" style="display: none;">
+                            <label>NIB <span style="font-weight: normal; opacity: .75;">(opsional)</span></label>
+                            <input type="text" id="modalCustNib" class="form-control" placeholder="Nomor Induk Berusaha">
                     </div>
-                    <div class="form-group">
-                            <label>Warga Negara</label>
-                            <select id="modalCustCitizen" class="form-control select2-modal">
-                                <!-- Populated by master -->
-                            </select>
+                    <div class="form-group cf-half">
+                            <label>NPWP</label>
+                            <input type="text" id="modalCustNpwp" class="form-control" placeholder="No NPWP">
                     </div>
-                    <div class="form-group field-full" id="modalCustJobGroup">
-                            <label>Pekerjaan</label>
-                            <select id="modalCustJob" class="form-control select2-modal">
-                                <!-- Populated by master -->
-                            </select>
+                    <div class="form-group cf-half">
+                            <label>Nomor Rekening</label>
+                            <input type="text" id="modalCustBankAcc" class="form-control" placeholder="No Rekening">
+                    </div>
+                    <div class="form-group cf-half cf-localid">
+                            <label>Local ID (Ref External)</label>
+                            <input type="text" id="modalCustLocalId" class="form-control" placeholder="Ref id bank/lainnya">
                     </div>
 
-                    <!-- Row 7: Standardized IDs (Sistem & Reporting) -->
+                    <div class="cf-sec"><i class="fa-solid fa-gears"></i> Data Sistem</div>
                     <div class="customer-system-section">
                         <div class="form-group">
                             <label style="color: #60A5FA; font-weight: bold;">ID Nasabah (Sistem)</label>
@@ -4858,26 +4901,6 @@
                             <input type="text" id="modalCustCif" class="form-control" placeholder="Otomatis (AMR-0001 / P-0001)" readonly>
                             <small class="text-muted">Nomor unik nasabah untuk laporan mutasi.</small>
                         </div>
-                    </div>
-
-                    <!-- NIB: hanya tampil jika KN = Perusahaan -->
-                    <div class="form-group field-full" id="modalCustNibGroup" style="display: none;">
-                            <label>NIB <span style="font-weight: normal; opacity: .75;">(opsional)</span></label>
-                            <input type="text" id="modalCustNib" class="form-control" placeholder="Nomor Induk Berusaha">
-                    </div>
-
-                    <!-- Row 8: NPWP, Local ID, Rekening -->
-                    <div class="form-group">
-                            <label>NPWP</label>
-                            <input type="text" id="modalCustNpwp" class="form-control" placeholder="No NPWP">
-                    </div>
-                    <div class="form-group">
-                            <label>Local ID (Ref External)</label>
-                            <input type="text" id="modalCustLocalId" class="form-control" placeholder="Ref id bank/lainnya">
-                    </div>
-                    <div class="form-group field-full">
-                            <label>Nomor Rekening</label>
-                            <input type="text" id="modalCustBankAcc" class="form-control" placeholder="No Rekening">
                     </div>
                     </div>
                 </div>
