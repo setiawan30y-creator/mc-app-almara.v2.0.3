@@ -2704,16 +2704,19 @@ window.updateCustomerBusinessTypeUI = function() {
     window.updateCustomerNameLabel();
 };
 
-// toggleEntitas() sebelumnya dipanggil langsung dari HTML form, tetapi fungsi
-// tersebut tidak ada pada modul aktif. Buat satu sumber handler yang pasti.
-
-// Pasang listener langsung ke radio agar tetap bekerja walaupun inline
-// onchange lama/handler lain tidak tersedia.
+// Pasang listener langsung ke radio Tipe Entitas. toggleEntitas() ada di 09-operations.js
+// yang dimuat SETELAH file ini, jadi jangan simpan referensinya saat pemasangan:
+// panggil lewat fungsi pembungkus saat radio diklik. Kolom khusus Perusahaan
+// selalu disegarkan lewat updateCustomerBusinessTypeUI(). @2026-Alifiandra
+function onCustomerEntityTypeChange() {
+    if (typeof window.toggleEntitas === 'function') window.toggleEntitas();
+    window.updateCustomerBusinessTypeUI();
+}
 function bindCustomerEntityTypeEvents() {
     document.querySelectorAll('input[name="modalCustTypeGroup"]').forEach(function(radio) {
         if (radio.dataset.customerEntityBound === '1') return;
         radio.dataset.customerEntityBound = '1';
-        radio.addEventListener('change', window.toggleEntitas);
+        radio.addEventListener('change', onCustomerEntityTypeChange);
     });
 
     window.updateCustomerBusinessTypeUI();

@@ -71,6 +71,10 @@ window.toggleEntitas = function() {
     }
     
     window.toggleCustPassportPlaceholder();
+
+    // Tampilkan/sembunyikan kolom khusus Perusahaan (Jenis Badan Usaha, Bidang Usaha, NIB),
+    // ganti label Lokasi/Tanggal Terbit, dan sembunyikan Jenis Kelamin & Pekerjaan. @2026-Alifiandra
+    if (typeof window.updateCustomerBusinessTypeUI === 'function') window.updateCustomerBusinessTypeUI();
 };
 
 window.toggleCustPassportPlaceholder = function() {
