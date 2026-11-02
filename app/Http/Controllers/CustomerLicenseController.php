@@ -20,6 +20,9 @@ class CustomerLicenseController extends Controller
     public const SETTINGS_KEY = 'mc_license_alert_settings';
     public const REMIND_OPTIONS = [7, 14, 30, 60, 90];
     public const DEFAULT_REMIND = 30;
+    /** Popup harian berhenti setelah izin lewat H+N hari (0 = tidak berhenti). Ikon header & Kasir tetap mengingatkan. */
+    public const POPUP_STOP_OPTIONS = [0, 3, 7, 14, 30];
+    public const DEFAULT_POPUP_STOP = 7;
 
     public function index(Request $request): JsonResponse
     {
@@ -32,6 +35,7 @@ class CustomerLicenseController extends Controller
         return response()->json([
             'status' => 'success',
             'remind_days' => $remind,
+            'popup_stop_days' => $this->settings()['popup_stop_days'],
             'types' => CustomerLicense::TYPES,
             'data' => $q->get()->map(fn ($r) => $this->present($r, $remind))->values(),
         ]);
@@ -92,6 +96,7 @@ class CustomerLicenseController extends Controller
         return response()->json([
             'status' => 'success',
             'remind_days' => $remind,
+            'popup_stop_days' => $this->settings()['popup_stop_days'],
             'today' => now()->format('Y-m-d'),
             'expired' => $items->where('state', 'expired')->count(),
             'soon' => $items->where('state', 'soon')->count(),
@@ -102,14 +107,28 @@ class CustomerLicenseController extends Controller
     public function saveSettings(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'remind_days' => ['required', 'integer', Rule::in(self::REMIND_OPTIONS)],
+            'remind_days' => ['nullable', 'integer', Rule::in(self::REMIND_OPTIONS)],
+            'popup_stop_days' => ['nullable', 'integer', Rule::in(self::POPUP_STOP_OPTIONS)],
         ]);
-        Datastore::updateOrCreate(['store_key' => self::SETTINGS_KEY], ['json_data' => ['remind_days' => (int) $data['remind_days']]]);
+        $cur = $this->settings();
+        if (isset($data['remind_days'])) {
+            $cur['remind_days'] = (int) $data['remind_days'];
+        }
+        if (array_key_exists('popup_stop_days', $data) && $data['popup_stop_days'] !== null) {
+            $cur['popup_stop_days'] = (int) $data['popup_stop_days'];
+        }
+        Datastore::updateOrCreate(['store_key' => self::SETTINGS_KEY], ['json_data' => $cur]);
 
-        return response()->json(['status' => 'success', 'remind_days' => (int) $data['remind_days']]);
+        return response()->json(['status' => 'success'] + $cur);
     }
 
     public function remindDays(): int
+    {
+        return $this->settings()['remind_days'];
+    }
+
+    /** Pengaturan tersimpan, dengan nilai bawaan bila belum ada / tidak valid. */
+    public function settings(): array
     {
         try {
             $row = Datastore::query()->find(self::SETTINGS_KEY);
@@ -117,12 +136,17 @@ class CustomerLicenseController extends Controller
             if (is_string($v)) {
                 $v = json_decode($v, true);
             }
-            $days = is_array($v) ? (int) ($v['remind_days'] ?? 0) : 0;
         } catch (\Throwable $e) {
-            $days = 0;
+            $v = null;
         }
+        $v = is_array($v) ? $v : [];
+        $remind = (int) ($v['remind_days'] ?? 0);
+        $stop = array_key_exists('popup_stop_days', $v) ? (int) $v['popup_stop_days'] : self::DEFAULT_POPUP_STOP;
 
-        return in_array($days, self::REMIND_OPTIONS, true) ? $days : self::DEFAULT_REMIND;
+        return [
+            'remind_days' => in_array($remind, self::REMIND_OPTIONS, true) ? $remind : self::DEFAULT_REMIND,
+            'popup_stop_days' => in_array($stop, self::POPUP_STOP_OPTIONS, true) ? $stop : self::DEFAULT_POPUP_STOP,
+        ];
     }
 
     /** Status: none (tanpa batas), ok (berlaku), soon (segera habis), expired (kedaluwarsa). */

@@ -25,6 +25,9 @@
         DOMISILI: 'Surat Keterangan Domisili', NPWP: 'NPWP Badan', LAINNYA: 'Lainnya'
     };
     var REMIND_OPTIONS = [7, 14, 30, 60, 90];
+    var POPUP_STOP_OPTIONS = [3, 7, 14, 30, 0]; // 0 = popup tidak berhenti
+    // Identitas perorangan yang punya masa berlaku (KTP berlaku seumur hidup).
+    var ID_EXPIRY_TYPES = { SIM: 'SIM', PASSPORT: 'Paspor', KITAS: 'KITAS / KITAP' };
     var STATE = {
         expired: { t: 'Kedaluwarsa', c: 'bad', i: 'fa-circle-xmark' },
         soon: { t: 'Segera habis', c: 'warn', i: 'fa-hourglass-half' },
@@ -32,7 +35,7 @@
         none: { t: 'Tanpa batas', c: 'off', i: 'fa-infinity' }
     };
 
-    var S = { built: false, rows: [], remind: 30, q: '', filter: 'all', editing: null, cust: '', loading: false, alerts: null, alertsAt: 0, posWarned: '' };
+    var S = { built: false, rows: [], remind: 30, popupStop: 7, q: '', filter: 'all', editing: null, cust: '', loading: false, alerts: null, alertsAt: 0, posWarned: '' };
 
     var $ = function (id) { return document.getElementById(id); };
     var esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
@@ -187,12 +190,14 @@
         root.innerHTML =
             '<div class="cl">' +
             '<div class="cl-head"><div><h2><i class="fa-solid fa-file-shield"></i> Perizinan Nasabah</h2>' +
-            '<p>Pantau masa berlaku izin nasabah perusahaan (PT, CV, Yayasan, dll.). Masa berlaku <b>dokumen legalitas utama</b> diisi di form data nasabah (<i>Tanggal Terbit</i> &amp; <i>Berlaku Sampai</i>) dan otomatis tampil di sini. Izin lain (NIB, SK, Domisili, dll.) bisa ditambahkan bila perlu. Pengingat muncul di ikon header, popup saat membuka aplikasi, dan di Kasir.</p></div></div>' +
+            '<p>Pantau masa berlaku izin nasabah perusahaan (PT, CV, Yayasan, dll.). Masa berlaku <b>dokumen legalitas utama</b> diisi di form data nasabah (<i>Tanggal Terbit</i> &amp; <i>Berlaku Sampai</i>) dan otomatis tampil di sini. Izin lain (NIB, SK, Domisili, dll.) bisa ditambahkan bila perlu. Pengingat muncul di ikon header, popup saat membuka aplikasi (berhenti setelah H+ yang dipilih), dan di Kasir sampai data diperbarui.</p></div></div>' +
             '<div class="cl-stats" id="clStats"></div>' +
             '<div class="cl-bar"><input type="search" class="cl-in cl-search" id="clSearch" placeholder="Cari nama perusahaan, ID, atau nomor izin...">' +
             '<select class="cl-in" id="clFilter"><option value="all">Semua status</option><option value="expired">Kedaluwarsa</option><option value="soon">Segera habis</option><option value="ok">Berlaku</option><option value="none">Tanpa batas</option><option value="empty">Belum ada izin</option></select>' +
             '<div class="sp"></div><label class="cl-set">Ingatkan <select class="cl-in" id="clRemind"' + (['owner', 'superadmin', 'admin'].indexOf(role()) > -1 ? '' : ' disabled') + '>' +
-            REMIND_OPTIONS.map(function (d) { return '<option value="' + d + '">' + d + ' hari</option>'; }).join('') + '</select> sebelum berakhir</label></div>' +
+            REMIND_OPTIONS.map(function (d) { return '<option value="' + d + '">' + d + ' hari</option>'; }).join('') + '</select> sebelum berakhir</label>' +
+            '<label class="cl-set" title="Setelah izin lewat jatuh tempo, popup harian berhenti pada H+ ini. Ikon header dan peringatan di Kasir tetap muncul sampai data diperbarui.">Popup berhenti <select class="cl-in" id="clPopupStop"' + (['owner', 'superadmin', 'admin'].indexOf(role()) > -1 ? '' : ' disabled') + '>' +
+            POPUP_STOP_OPTIONS.map(function (d) { return '<option value="' + d + '">' + (d ? 'H+' + d + ' hari' : 'Tidak berhenti') + '</option>'; }).join('') + '</select></label></div>' +
             '<div id="clList"><div class="cl-empty"><i class="fa-solid fa-spinner fa-spin"></i> Memuat data perizinan...</div></div>' +
             '<div id="clModal"></div></div>';
         root.addEventListener('click', onClick);
@@ -261,7 +266,9 @@
             S.rows = Array.isArray(r.data) ? r.data : [];
             S.remind = Number(r.remind_days) || 30;
             if (r.types && typeof r.types === 'object') TYPES = r.types;
+            if (r.popup_stop_days !== undefined && r.popup_stop_days !== null) S.popupStop = Number(r.popup_stop_days);
             var sel = $('clRemind'); if (sel) sel.value = String(S.remind);
+            var ps = $('clPopupStop'); if (ps) ps.value = String(S.popupStop);
             render();
         } catch (e) {
             var box = $('clList'); if (box) box.innerHTML = '<div class="cl-err">Data perizinan tidak bisa dimuat: ' + esc(e.message) + '</div>';
@@ -374,6 +381,11 @@
             try { await api('customer-licenses/settings', 'POST', { remind_days: Number(t.value) }); toast('success', 'Pengingat: ' + t.value + ' hari sebelum berakhir'); await load(); fetchAlerts(true); }
             catch (err) { alertBox('error', 'Gagal menyimpan', err.message); t.value = String(S.remind); }
         }
+        else if (t.id === 'clPopupStop') {
+            var v = Number(t.value);
+            try { await api('customer-licenses/settings', 'POST', { popup_stop_days: v }); toast('success', v ? 'Popup berhenti setelah H+' + v + ' hari' : 'Popup tidak berhenti sampai izin diperbarui'); await load(); fetchAlerts(true); }
+            catch (err) { alertBox('error', 'Gagal menyimpan', err.message); t.value = String(S.popupStop); }
+        }
     }
 
     /* ---------------------------------------------------------- pengingat */
@@ -465,9 +477,15 @@
             .then(function (r) { if (r.dismiss === window.Swal.DismissReason.cancel) openLicensePage(); });
     }
 
+    /* Izin yang masih layak dipopupkan: segera habis, atau kedaluwarsa belum lewat H+{popup_stop_days}. */
+    function popupItems() {
+        var stop = S.alerts && S.alerts.popup_stop_days !== undefined && S.alerts.popup_stop_days !== null ? Number(S.alerts.popup_stop_days) : 7;
+        return alertItems().filter(function (r) { return r.state !== 'expired' || !stop || Math.abs(Number(r.days_left) || 0) <= stop; });
+    }
+
     function maybePopup() {
         if (!canManage()) return;
-        var items = alertItems(); if (!items.length) return;
+        var items = popupItems(); if (!items.length) return;
         var key = 'mc_lic_popup_' + today() + '_' + ((user() && (user().id || user().username)) || '');
         try { if (localStorage.getItem(key)) return; } catch (e) { /* lanjut */ }
         var tries = 0;
@@ -484,28 +502,67 @@
         })();
     }
 
-    /* Kasir: peringatan saat nasabah perusahaan dengan izin bermasalah dipilih. */
+    /* Identitas perorangan (SIM / Paspor / KITAS) yang kedaluwarsa atau segera habis, dari data nasabah. */
+    function idDocIssue(cid) {
+        var c = customers().filter(function (x) { return String(x.id_nasabah) === String(cid); })[0];
+        if (!c || isCorporate(c)) return null;
+        var t = String(c.jenis_id || c.identity_type || '').trim().toUpperCase();
+        if (!ID_EXPIRY_TYPES[t]) return null;
+        var exp = String(c.masa_berlaku_identitas || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(exp)) return null;
+        var days = Math.round((Date.parse(exp + 'T00:00:00') - Date.parse(today() + 'T00:00:00')) / 86400000);
+        var remind = Number((S.alerts && S.alerts.remind_days) || S.remind) || 30;
+        if (isNaN(days) || days > remind) return null;
+        var no = String(c.selain_ktp || '').trim();
+        return { state: days < 0 ? 'expired' : 'soon', days_left: days, label: ID_EXPIRY_TYPES[t], number: no && no !== '-' ? no : '', expires_at: exp, customer_name: c.nama || cid, personal: true };
+    }
+
+    /* Kasir: peringatan saat nasabah dengan izin/identitas bermasalah dipilih. */
     function refreshPosWarning() {
         var card = $('posCustomerProfileCard'); if (!card) return;
         var old = $('licPosWarn');
         var cid = ($('trxCustomer') && $('trxCustomer').value) || '';
         var items = cid ? alertItems().filter(function (r) { return String(r.customer_id) === String(cid); }) : [];
+        var idItem = cid ? idDocIssue(cid) : null;
+        if (idItem) items = [idItem];
         if (!items.length || card.classList.contains('hidden')) { if (old) old.remove(); if (!cid) S.posWarned = ''; return; }
+        var personal = !!idItem;
         var expired = items.filter(function (r) { return r.state === 'expired'; });
+        var what = personal ? 'Identitas nasabah' : 'Izin perusahaan';
         var el = old || document.createElement('div');
         el.id = 'licPosWarn';
         el.className = expired.length ? 'bad' : 'warn';
-        el.innerHTML = '<b><i class="fa-solid fa-file-shield"></i> ' + (expired.length ? 'Izin perusahaan sudah kedaluwarsa' : 'Izin perusahaan segera habis') + '</b>' +
+        el.innerHTML = '<b><i class="fa-solid ' + (personal ? 'fa-id-card' : 'fa-file-shield') + '"></i> ' + what + (expired.length ? ' sudah tidak berlaku' : ' segera habis') + '</b>' +
             items.map(function (r) { return esc(r.label) + (r.number ? ' (' + esc(r.number) + ')' : '') + ': ' + esc(daysText(r)) + ', ' + esc(fmtDay(r.expires_at)); }).join('<br>') +
-            '<br><span style="opacity:.85">Minta dokumen izin terbaru sebelum melanjutkan transaksi.</span>';
+            '<br><span style="opacity:.85">' + (expired.length ? 'Lakukan pengkinian data: minta dokumen terbaru dari nasabah.' : 'Ingatkan nasabah untuk memperbarui dokumennya.') + '</span>';
         if (!old) card.appendChild(el);
-        if (S.posWarned !== cid) {
-            S.posWarned = cid;
-            if (window.Swal && !(window.Swal.isVisible && window.Swal.isVisible())) {
-                window.Swal.fire({ icon: expired.length ? 'error' : 'warning', toast: true, position: 'top-end', timer: 6000, showConfirmButton: false,
-                    title: expired.length ? 'Izin nasabah ini sudah kedaluwarsa' : 'Izin nasabah ini segera habis' });
-            }
+        if (S.posWarned === cid) return;
+        if (!window.Swal || (window.Swal.isVisible && window.Swal.isVisible())) return; // coba lagi saat refresh berikutnya
+        S.posWarned = cid;
+        if (!expired.length) {
+            window.Swal.fire({ icon: 'warning', toast: true, position: 'top-end', timer: 6000, showConfirmButton: false, title: what + ' ini segera habis' });
+            return;
         }
+        posUpdateDialog(cid, expired, personal);
+    }
+
+    /* Dialog pengkinian data: muncul sekali tiap nasabah dipilih di Kasir. */
+    function posUpdateDialog(cid, expired, personal) {
+        // Dokumen utama perusahaan & identitas perorangan diperbarui lewat Update Data nasabah;
+        // izin tambahan (NIB, SK, dll.) lewat menu Perizinan Nasabah.
+        var viaForm = personal || expired.some(function (r) { return r.license_type === MAIN_TYPE; });
+        var canEdit = typeof window.openCustomerUpdateModal === 'function';
+        var sub = personal
+            ? 'Masa berlaku identitas nasabah ini sudah habis. Minta identitas terbaru, lalu perbarui <b>nomor</b> dan <b>masa berlakunya</b> di data nasabah.'
+            : (viaForm
+                ? 'Izin perusahaan ini sudah kedaluwarsa. Minta dokumen terbaru, lalu perbarui <b>Berlaku Sampai</b> di data nasabah.'
+                : 'Izin perusahaan ini sudah kedaluwarsa. Minta dokumen terbaru; admin dapat memperbaruinya di menu <b>Perizinan Nasabah</b>.');
+        var opts = viaForm && canEdit
+            ? { showCancelButton: true, confirmButtonText: '<i class="fa-solid fa-user-pen"></i> Perbarui Data Nasabah', cancelButtonText: 'Lanjutkan Transaksi', reverseButtons: true }
+            : { confirmButtonText: 'Mengerti, lanjutkan' };
+        opts.allowOutsideClick = false;
+        window.Swal.fire(popOpts(alertHtml('x', 'fa-user-pen', 'Perlu pengkinian data nasabah', sub, expired), opts))
+            .then(function (r) { if (r.isConfirmed && viaForm && canEdit) window.openCustomerUpdateModal(cid); });
     }
 
     // Setelah data nasabah disimpan (mis. "Berlaku Sampai" diubah), segarkan pengingat & daftar.

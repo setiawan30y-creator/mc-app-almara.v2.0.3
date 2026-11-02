@@ -100,5 +100,6 @@ window.toggleCustPassportPlaceholder = function() {
     otherIdInput.placeholder = type
         ? `Nomor ${type} / ID lainnya`
         : 'Nomor ID lainnya';
+    if (typeof window.updateCustomerIdExpiryUI === 'function') window.updateCustomerIdExpiryUI();
 };
 

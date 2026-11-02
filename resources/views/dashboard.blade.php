@@ -4818,6 +4818,12 @@
                             <label>Nomor ID (Lainnya) <span class="required-mark">*</span></label>
                             <input type="text" id="modalCustIdNo" class="form-control" placeholder="Ketik nomor ID secara manual (opsional)" autocomplete="off">
                     </div>
+                    <!-- Masa berlaku identitas perorangan (SIM/Paspor/KITAS), acuan notifikasi pengkinian data di Kasir (&#64;2026-Alifiandra) -->
+                    <div class="form-group" id="modalCustIdExpiryGroup" style="display:none;">
+                            <label for="modalCustIdExpiry">Masa Berlaku Identitas</label>
+                            <input type="date" id="modalCustIdExpiry" class="form-control">
+                            <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Untuk SIM, Paspor, KITAS. Bila lewat, Kasir diminta pengkinian data.</small>
+                    </div>
 
                     <!-- Row 6: Gender, WN, Pekerjaan -->
                     <div class="form-group" id="modalCustGenderGroup">
@@ -5084,6 +5090,7 @@
                                     <option value="KTP">KTP (Indonesia)</option>
                                     <option value="PASSPORT">Passport (Asing)</option>
                                     <option value="SIM">SIM / Lainnya</option>
+                                    <option value="KITAS">KITAS / KITAP</option>
                                 </select>
                             </div>
                             <div>
@@ -5093,6 +5100,12 @@
                             <div>
                                 <label>Nomor ID (Lainnya)</label>
                                 <input type="text" id="update_modalCustIdNo" class="form-control" placeholder="No Passport/SIM">
+                            </div>
+                            <!-- Masa berlaku identitas perorangan (SIM/Paspor/KITAS) -->
+                            <div id="update_idExpiryGroup" style="display:none;">
+                                <label for="update_modalCustIdExpiry">Masa Berlaku Identitas</label>
+                                <input type="date" id="update_modalCustIdExpiry" class="form-control">
+                                <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Untuk SIM, Paspor, KITAS.</small>
                             </div>
                             <div>
                                 <label>NPWP (Jika ada)</label>

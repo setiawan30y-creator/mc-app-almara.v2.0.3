@@ -2188,6 +2188,7 @@ window.openCustomerUpdateModal = function(id) {
         setVal('update_modalCustBusinessField', cust.bidang_usaha);
         setVal('update_modalCustNib', cust.nib);
         setVal('update_modalCustExpiry', cust.masa_berlaku);
+        setVal('update_modalCustIdExpiry', cust.masa_berlaku_identitas);
         if (typeof window.updateCustomerUpdateUI === 'function') window.updateCustomerUpdateUI();
 
         // Dropdowns (Hanya isi jika kosong untuk hemat CPU/RAM)
@@ -2195,6 +2196,7 @@ window.openCustomerUpdateModal = function(id) {
         if(elIdType) {
             elIdType.value = cust.jenis_id || 'KTP';
             $(elIdType).trigger('change');
+            window.updateCustomerIdExpiryUI();
         }
         
         const elGender = document.getElementById('update_modalCustGender');
@@ -2320,7 +2322,10 @@ window.updateCustomer = async function() {
         bidang_usaha: isCompanyUpd ? (String($('#update_modalCustBusinessField').val() || '').trim() || null) : null,
         nib: isCompanyUpd ? (String($('#update_modalCustNib').val() || '').trim() || null) : null,
         // Masa berlaku dokumen legalitas utama (acuan pengingat jatuh tempo)
-        masa_berlaku: isCompanyUpd ? (String($('#update_modalCustExpiry').val() || '').trim() || null) : null
+        masa_berlaku: isCompanyUpd ? (String($('#update_modalCustExpiry').val() || '').trim() || null) : null,
+        // Masa berlaku identitas perorangan (SIM/Paspor/KITAS), acuan notifikasi pengkinian data di Kasir
+        masa_berlaku_identitas: window.mcIdNeedsExpiry(isCompanyUpd ? '2' : '1', $('#update_modalCustIdType').val())
+            ? (String($('#update_modalCustIdExpiry').val() || '').trim() || null) : null
     };
 
     // Update Array & Local Storage (Perbaiki Key ke mc_customers)
@@ -2357,6 +2362,22 @@ window.updateCustomer = async function() {
     }
 };
 
+// Masa berlaku identitas perorangan: hanya untuk SIM, Paspor, KITAS (KTP berlaku seumur hidup).
+// Dipakai Kasir untuk notifikasi pengkinian data (70-customer-licenses.js). @2026-Alifiandra
+window.MC_ID_EXPIRY_TYPES = ['SIM', 'PASSPORT', 'KITAS'];
+window.mcIdNeedsExpiry = function(kn, idType) {
+    return String(kn || '1') !== '2' && window.MC_ID_EXPIRY_TYPES.indexOf(String(idType || '').trim().toUpperCase()) > -1;
+};
+window.updateCustomerIdExpiryUI = function() {
+    const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+    show('modalCustIdExpiryGroup', window.mcIdNeedsExpiry(document.getElementById('modalCustType')?.value, document.getElementById('modalCustIdType')?.value));
+    const updKn = document.getElementById('update_typePerusahaan')?.checked ? '2' : '1';
+    show('update_idExpiryGroup', window.mcIdNeedsExpiry(updKn, document.getElementById('update_modalCustIdType')?.value));
+};
+if (window.jQuery) {
+    jQuery(document).on('change', '#update_modalCustIdType, #modalCustIdType', function() { window.updateCustomerIdExpiryUI(); });
+}
+
 // Menyesuaikan form Update Data Nasabah dengan tipe entitas (Perorangan / Perusahaan).
 window.updateCustomerUpdateUI = function() {
     const isCompany = !!document.getElementById('update_typePerusahaan')?.checked;
@@ -2379,6 +2400,7 @@ window.updateCustomerUpdateUI = function() {
     const type = String(document.getElementById('update_modalCustBusinessType')?.value || '').trim().toUpperCase();
     const label = isCompany ? (CUSTOMER_BUSINESS_TYPE_LABELS[type] || 'Nama Perusahaan') : 'Nama Lengkap';
     setText('update_nameLabel', label);
+    window.updateCustomerIdExpiryUI();
 };
 
 window.isEditingCustomer = false;
@@ -2407,7 +2429,7 @@ window.triggerCustomerEditDirect = function(targetId = null) {
 
     // 2. Clear & Reset ALL fields first to avoid data contamination
     const fields = [
-        'modalCustId', 'modalCustType', 'modalCustName', 'modalCustIdPjk', 'modalCustBusinessType', 'modalCustBusinessField', 'modalCustNib', 'modalCustExpiry',
+        'modalCustId', 'modalCustType', 'modalCustName', 'modalCustIdPjk', 'modalCustBusinessType', 'modalCustBusinessField', 'modalCustNib', 'modalCustExpiry', 'modalCustIdExpiry',
         'modalCustBirthPlace', 'modalCustBirthDate', 'modalCustAddress', 'modalCustIdType',
         'modalCustGender', 'modalCustCitizen', 'modalCustJob',
         'modalCustNik', 'modalCustIdNo', 'modalCustPhone', 'modalCustBankAcc',
@@ -2535,6 +2557,8 @@ window.triggerCustomerEditDirect = function(targetId = null) {
             
             fill('modalCustNik', c.no_ktp !== '-' ? c.no_ktp : '');
             fill('modalCustIdNo', c.selain_ktp !== '-' ? c.selain_ktp : '');
+            fill('modalCustIdExpiry', c.masa_berlaku_identitas || '');
+            window.updateCustomerIdExpiryUI();
             fill('modalCustBankAcc', c.no_rekening);
             fill('modalCustCif', c.no_cif);
             fill('modalCustNpwp', c.npwp);
@@ -2876,6 +2900,8 @@ async function saveCustomer() {
         nib: nib || null,
         // Masa berlaku dokumen legalitas utama (acuan pengingat jatuh tempo)
         masa_berlaku: typeKn === '2' ? (String(document.getElementById('modalCustExpiry')?.value || '').trim() || null) : null,
+        // Masa berlaku identitas perorangan (SIM/Paspor/KITAS), acuan notifikasi pengkinian data di Kasir
+        masa_berlaku_identitas: window.mcIdNeedsExpiry(typeKn, identityType) ? (String(document.getElementById('modalCustIdExpiry')?.value || '').trim() || null) : null,
         no_hp: phone || '-',
         nama: name,
         tempat_lahir: birthPlace || '-',
