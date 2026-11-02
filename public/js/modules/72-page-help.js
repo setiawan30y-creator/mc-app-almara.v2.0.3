@@ -315,8 +315,9 @@
         var P = 'html body .swal2-popup.ph-pop';
         var st = document.createElement('style'); st.id = 'ph-style';
         st.textContent = [
-            '#pageHelpBtn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-left:8px;padding:0;border-radius:50%;border:1px solid rgba(148,163,184,.45);background:transparent;color:inherit;opacity:.7;font-size:.72rem;cursor:pointer;vertical-align:middle;flex:0 0 auto;transition:opacity .15s,background .15s}',
-            '#pageHelpBtn:hover,#pageHelpBtn:focus-visible{opacity:1;background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.6);outline:none}',
+            'html body #pageHelpBtn{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:26px!important;height:26px!important;margin-left:10px!important;padding:0!important;border-radius:50%!important;border:0!important;background:#2563eb!important;color:#fff!important;opacity:1!important;font-size:.8rem!important;cursor:pointer;vertical-align:middle;flex:0 0 auto;box-shadow:0 2px 8px rgba(37,99,235,.45),0 0 0 3px rgba(37,99,235,.15)!important;transition:transform .15s,box-shadow .15s,background .15s}',
+            'html body #pageHelpBtn .ph-i{color:#fff!important;font:800 15px/1 Georgia,"Times New Roman",serif!important;margin-top:1px}',
+            'html body #pageHelpBtn:hover,html body #pageHelpBtn:focus-visible{background:#1d4ed8!important;transform:scale(1.08);box-shadow:0 4px 12px rgba(37,99,235,.55),0 0 0 4px rgba(37,99,235,.22)!important;outline:none}',
             '#pageHelpBtn[hidden]{display:none}',
             P + '{padding:0!important;border-radius:20px!important;overflow:hidden;background:#111827!important;border:1px solid #1f2a3c!important;box-shadow:0 30px 80px -20px rgba(0,0,0,.65)!important}',
             P + ' .swal2-html-container{margin:0!important;padding:0!important;color:#e2e8f0!important;font-size:.9rem!important;text-align:left!important}',
@@ -363,7 +364,7 @@
         if (!btn) {
             btn = document.createElement('button');
             btn.type = 'button'; btn.id = 'pageHelpBtn';
-            btn.innerHTML = '<i class="fa-solid fa-info"></i>';
+            btn.innerHTML = '<span class="ph-i">i</span>';
             btn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); show(); });
             title.insertAdjacentElement('afterend', btn);
         } else if (btn.previousElementSibling !== title) {
