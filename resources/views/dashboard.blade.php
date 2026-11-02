@@ -465,6 +465,7 @@
                     </button>
                     <div class="sidebar-group-items" data-sidebar-group-items="master">
                     <a href="#" class="nav-item" data-target="currency-view" data-sidebar-group="master"><i class="fa-solid fa-money-bill-transfer"></i> Manajemen Kurs</a>
+                    <a href="#" class="nav-item" data-target="kurs-history-view" data-sidebar-group="master"><i class="fa-solid fa-clock-rotate-left"></i> Riwayat Kurs</a>
                     <a href="#" class="nav-item" data-target="masterdata-view" data-sidebar-group="master"><i class="fa-solid fa-database"></i> Master Data</a>
                     <a href="/papan-kurs" target="_blank" rel="noopener" class="nav-item nav-item--external" data-sidebar-group="master"><i class="fa-solid fa-desktop"></i> Monitor Papan Kurs <i class="fa-solid fa-arrow-up-right-from-square ext"></i></a>
                     </div>
@@ -1427,6 +1428,11 @@
                     <div id="kursRoot"></div>
                 </section>
 
+
+                <!-- Riwayat Kurs (audit BI, &#64;2026-Alifiandra): dirender oleh public/js/modules/69-kurs-history.js -->
+                <section id="kurs-history-view" class="view-section hidden">
+                    <div id="kurHistRoot"></div>
+                </section>
 
                 <!-- Currency Rate View -->
                 <section id="currency-view" class="view-section hidden">
@@ -5618,7 +5624,7 @@
             '38-pos-queue.js',
             '39-pos-payment.js',
             '40-pickup.js',
-            '41-kurs-hari-ini.js','42-booking.js','43-koin-uang-lama.js','44-iso-picker.js','45-currency-form.js','46-kurs-sync.js','47-kurs-page.js','48-session-guard.js','49-popup-style.js','50-vision-key.js','51-wa-gateway.js','52-wa-template.js','53-profile-form.js','54-login-page-settings.js','55-sidebar-brand.js','56-coretax.js','57-goaml.js','58-ai-settings.js','59-hris.js','60-documents.js','61-ai-assistant.js','62-translator.js','63-assets.js','64-mobile-focus.js','65-dashboard-ui.js','66-sidebar-ui.js','67-sipesat.js','68-pt-reps.js',
+            '41-kurs-hari-ini.js','42-booking.js','43-koin-uang-lama.js','44-iso-picker.js','45-currency-form.js','46-kurs-sync.js','47-kurs-page.js','48-session-guard.js','49-popup-style.js','50-vision-key.js','51-wa-gateway.js','52-wa-template.js','53-profile-form.js','54-login-page-settings.js','55-sidebar-brand.js','56-coretax.js','57-goaml.js','58-ai-settings.js','59-hris.js','60-documents.js','61-ai-assistant.js','62-translator.js','63-assets.js','64-mobile-focus.js','65-dashboard-ui.js','66-sidebar-ui.js','67-sipesat.js','68-pt-reps.js','69-kurs-history.js',
         ];
     @endphp
     <script src="{{ asset('js/sync.js') }}?v={{ time() }}"></script>

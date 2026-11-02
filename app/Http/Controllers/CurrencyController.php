@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Currency;
+use App\Services\RateHistoryService;
 use Illuminate\Http\Request;
 
 class CurrencyController extends Controller
@@ -55,6 +56,16 @@ class CurrencyController extends Controller
                     'raw_json' => json_encode($mergedRaw, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ]
             );
+
+            // Riwayat Kurs: catat bila kurs beli/jual valuta yang sudah ada berubah.
+            if ($existing) {
+                app(RateHistoryService::class)->recordChange(
+                    $currency,
+                    (float) $existing->buy,
+                    (float) $existing->sell,
+                    (string) ($request->user()?->username ?? '')
+                );
+            }
 
             return response()->json([
                 'status' => 'success',

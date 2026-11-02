@@ -33,6 +33,7 @@ use App\Http\Controllers\GantunganController;
 use App\Http\Controllers\InvestorController;
 use App\Http\Controllers\PickupController;
 use App\Http\Controllers\PosDocumentController;
+use App\Http\Controllers\RateHistoryController;
 use App\Http\Controllers\GoamlComplianceController;
 use App\Http\Controllers\DashboardAnalyticsController;
 use App\Http\Middleware\DevelopmentBypassAuth;
@@ -223,6 +224,11 @@ Route::post('/goaml/alerts/{alert}/ltkm', [GoamlComplianceController::class, 'cr
     Route::get('/letter-numbers/records/{id}', [LetterNumberController::class, 'documents']);
     Route::post('/letter-numbers/records/{id}/documents', [LetterNumberController::class, 'uploadDocument']);
     Route::put('/letter-numbers/records/{id}', [LetterNumberController::class, 'updateRecord'])->middleware('role:owner,superadmin,admin,supervisor');
+    // Riwayat Kurs (audit BI) - @2026-Alifiandra
+    Route::get('/rate-history', [RateHistoryController::class, 'index'])->middleware('role:owner,superadmin,admin,supervisor');
+    Route::get('/rate-history/status', [RateHistoryController::class, 'status'])->middleware('role:owner,superadmin,admin,supervisor');
+    Route::post('/rate-history/settings', [RateHistoryController::class, 'saveSettings'])->middleware('role:owner,superadmin,admin');
+    Route::post('/rate-history/snapshot', [RateHistoryController::class, 'snapshot'])->middleware(['role:owner,superadmin,admin,supervisor', 'throttle:10,1']);
     Route::delete('/letter-numbers/documents/{documentId}', [LetterNumberController::class, 'deleteDocument'])->middleware('role:owner,superadmin,admin,supervisor');
 });
 

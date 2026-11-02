@@ -348,6 +348,9 @@ function applyRoleAccess(role) {
     // Perwakilan PT (data internal PKS): role pengelola.
     if (['owner', 'superadmin', 'admin', 'supervisor'].includes(accessRole)) visibleMenus.add('pt-rep-view');
 
+    // Riwayat Kurs (audit BI): role pengelola.
+    if (['owner', 'superadmin', 'admin', 'supervisor'].includes(accessRole)) visibleMenus.add('kurs-history-view');
+
     // Almara Regulatory AI: batasi ke role pengelola.
     if (['owner', 'superadmin', 'admin'].includes(accessRole)) {
         visibleMenus.add('almara-regulatory-ai-view');

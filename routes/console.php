@@ -12,3 +12,8 @@ Artisan::command('inspire', function () {
 Schedule::command('mc:backup --automatic')
     ->everyMinute()
     ->withoutOverlapping();
+
+// Riwayat Kurs (audit BI): dicek tiap menit, mencatat sesuai jadwal di menu Riwayat Kurs.
+Schedule::command('mc:rate-snapshot')
+    ->everyMinute()
+    ->withoutOverlapping();
