@@ -2324,7 +2324,7 @@ window.updateCustomer = async function() {
         // Masa berlaku dokumen legalitas utama (acuan pengingat jatuh tempo)
         masa_berlaku: isCompanyUpd ? (String($('#update_modalCustExpiry').val() || '').trim() || null) : null,
         // Masa berlaku identitas perorangan (SIM/Paspor/KITAS), acuan notifikasi pengkinian data di Kasir
-        masa_berlaku_identitas: window.mcIdNeedsExpiry(isCompanyUpd ? '2' : '1', $('#update_modalCustIdType').val())
+        masa_berlaku_identitas: window.mcIdNeedsExpiry(isCompanyUpd ? '2' : '1')
             ? (String($('#update_modalCustIdExpiry').val() || '').trim() || null) : null
     };
 
@@ -2362,17 +2362,17 @@ window.updateCustomer = async function() {
     }
 };
 
-// Masa berlaku identitas perorangan: hanya untuk SIM, Paspor, KITAS (KTP berlaku seumur hidup).
-// Dipakai Kasir untuk notifikasi pengkinian data (70-customer-licenses.js). @2026-Alifiandra
-window.MC_ID_EXPIRY_TYPES = ['SIM', 'PASSPORT', 'KITAS'];
-window.mcIdNeedsExpiry = function(kn, idType) {
-    return String(kn || '1') !== '2' && window.MC_ID_EXPIRY_TYPES.indexOf(String(idType || '').trim().toUpperCase()) > -1;
+// Masa berlaku identitas perorangan (SIM, Paspor, KITAS; kosong = seumur hidup seperti KTP), tampil di
+// samping Tanggal Lahir. Dipakai Kasir untuk notifikasi pengkinian data (70-customer-licenses.js). @2026-Alifiandra
+window.mcIdNeedsExpiry = function(kn) {
+    return String(kn || '').trim() === '1';
 };
 window.updateCustomerIdExpiryUI = function() {
     const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
-    show('modalCustIdExpiryGroup', window.mcIdNeedsExpiry(document.getElementById('modalCustType')?.value, document.getElementById('modalCustIdType')?.value));
+    const newKn = document.querySelector('input[name="modalCustTypeGroup"]:checked')?.value || document.getElementById('modalCustType')?.value;
+    show('modalCustIdExpiryGroup', window.mcIdNeedsExpiry(newKn));
     const updKn = document.getElementById('update_typePerusahaan')?.checked ? '2' : '1';
-    show('update_idExpiryGroup', window.mcIdNeedsExpiry(updKn, document.getElementById('update_modalCustIdType')?.value));
+    show('update_idExpiryGroup', window.mcIdNeedsExpiry(updKn));
 };
 if (window.jQuery) {
     jQuery(document).on('change', '#update_modalCustIdType, #modalCustIdType', function() { window.updateCustomerIdExpiryUI(); });
@@ -2389,7 +2389,8 @@ window.updateCustomerUpdateUI = function() {
     show('update_genderGroup', !isCompany);
     show('update_expiryGroup', isCompany);
     const updBirthPlaceGroup = document.getElementById('update_birthPlaceLabel')?.parentElement;
-    if (updBirthPlaceGroup) updBirthPlaceGroup.classList.toggle('upd-full', isCompany);
+    // Tempat/Lokasi selebar baris supaya Tanggal Lahir/Terbit berdampingan dengan Masa Berlaku
+    if (updBirthPlaceGroup) updBirthPlaceGroup.classList.add('upd-full');
     const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
     setText('update_birthPlaceLabel', isCompany ? 'Lokasi Terbit' : 'Tempat Lahir');
     setText('update_birthDateLabel', isCompany ? 'Tanggal Terbit' : 'Tanggal Lahir');
@@ -2737,7 +2738,9 @@ window.updateCustomerBusinessTypeUI = function() {
     if (expiryGroup) expiryGroup.style.display = isCompany ? '' : 'none';
     if (!isCompany) { const ex = document.getElementById('modalCustExpiry'); if (ex) ex.value = ''; }
     const birthPlaceGroup = document.getElementById('modalCustBirthPlaceLabel')?.closest('.form-group');
-    if (birthPlaceGroup) birthPlaceGroup.classList.toggle('field-full', isCompany);
+    // Perorangan juga: Tanggal Lahir berdampingan dengan Masa Berlaku Identitas.
+    if (birthPlaceGroup) birthPlaceGroup.classList.toggle('field-full', isCompany || selected === '1');
+    window.updateCustomerIdExpiryUI();
 
     window.updateCustomerNameLabel();
 };
@@ -2901,7 +2904,7 @@ async function saveCustomer() {
         // Masa berlaku dokumen legalitas utama (acuan pengingat jatuh tempo)
         masa_berlaku: typeKn === '2' ? (String(document.getElementById('modalCustExpiry')?.value || '').trim() || null) : null,
         // Masa berlaku identitas perorangan (SIM/Paspor/KITAS), acuan notifikasi pengkinian data di Kasir
-        masa_berlaku_identitas: window.mcIdNeedsExpiry(typeKn, identityType) ? (String(document.getElementById('modalCustIdExpiry')?.value || '').trim() || null) : null,
+        masa_berlaku_identitas: window.mcIdNeedsExpiry(typeKn) ? (String(document.getElementById('modalCustIdExpiry')?.value || '').trim() || null) : null,
         no_hp: phone || '-',
         nama: name,
         tempat_lahir: birthPlace || '-',

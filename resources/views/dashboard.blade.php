@@ -4793,6 +4793,12 @@
                             <input type="date" id="modalCustExpiry" class="form-control">
                             <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Kosongkan bila berlaku tanpa batas. Dipakai untuk pengingat jatuh tempo.</small>
                     </div>
+                    <!-- Perorangan: masa berlaku identitas di samping Tanggal Lahir, acuan notifikasi pengkinian data di Kasir (&#64;2026-Alifiandra) -->
+                    <div class="form-group" id="modalCustIdExpiryGroup" style="display:none;">
+                            <label for="modalCustIdExpiry">Masa Berlaku Identitas</label>
+                            <input type="date" id="modalCustIdExpiry" class="form-control">
+                            <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Isi untuk SIM, Paspor, KITAS. Kosongkan bila seumur hidup (KTP).</small>
+                    </div>
 
                     <!-- Row 4: Alamat & Jenis ID -->
                     <div class="form-group">
@@ -4817,12 +4823,6 @@
                     <div class="form-group" id="modalCustIdNoGroup" style="display:none;">
                             <label>Nomor ID (Lainnya) <span class="required-mark">*</span></label>
                             <input type="text" id="modalCustIdNo" class="form-control" placeholder="Ketik nomor ID secara manual (opsional)" autocomplete="off">
-                    </div>
-                    <!-- Masa berlaku identitas perorangan (SIM/Paspor/KITAS), acuan notifikasi pengkinian data di Kasir (&#64;2026-Alifiandra) -->
-                    <div class="form-group" id="modalCustIdExpiryGroup" style="display:none;">
-                            <label for="modalCustIdExpiry">Masa Berlaku Identitas</label>
-                            <input type="date" id="modalCustIdExpiry" class="form-control">
-                            <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Untuk SIM, Paspor, KITAS. Bila lewat, Kasir diminta pengkinian data.</small>
                     </div>
 
                     <!-- Row 6: Gender, WN, Pekerjaan -->
@@ -5055,6 +5055,12 @@
                                 <input type="date" id="update_modalCustExpiry" class="form-control">
                                 <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Kosongkan bila berlaku tanpa batas.</small>
                             </div>
+                            <!-- Perorangan: masa berlaku identitas di samping Tanggal Lahir -->
+                            <div id="update_idExpiryGroup" style="display:none;">
+                                <label for="update_modalCustIdExpiry">Masa Berlaku Identitas</label>
+                                <input type="date" id="update_modalCustIdExpiry" class="form-control">
+                                <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Kosongkan bila seumur hidup (KTP).</small>
+                            </div>
                             <div class="upd-full">
                                 <label>Alamat (Sesuai ID)</label>
                                 <textarea id="update_modalCustAddress" class="form-control" rows="2" placeholder="Alamat lengkap..."></textarea>
@@ -5100,12 +5106,6 @@
                             <div>
                                 <label>Nomor ID (Lainnya)</label>
                                 <input type="text" id="update_modalCustIdNo" class="form-control" placeholder="No Passport/SIM">
-                            </div>
-                            <!-- Masa berlaku identitas perorangan (SIM/Paspor/KITAS) -->
-                            <div id="update_idExpiryGroup" style="display:none;">
-                                <label for="update_modalCustIdExpiry">Masa Berlaku Identitas</label>
-                                <input type="date" id="update_modalCustIdExpiry" class="form-control">
-                                <small style="display:block;font-size:.74rem;opacity:.75;margin-top:4px;">Untuk SIM, Paspor, KITAS.</small>
                             </div>
                             <div>
                                 <label>NPWP (Jika ada)</label>

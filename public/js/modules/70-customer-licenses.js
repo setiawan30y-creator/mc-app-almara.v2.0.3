@@ -26,8 +26,8 @@
     };
     var REMIND_OPTIONS = [7, 14, 30, 60, 90];
     var POPUP_STOP_OPTIONS = [3, 7, 14, 30, 0]; // 0 = popup tidak berhenti
-    // Identitas perorangan yang punya masa berlaku (KTP berlaku seumur hidup).
-    var ID_EXPIRY_TYPES = { SIM: 'SIM', PASSPORT: 'Paspor', KITAS: 'KITAS / KITAP' };
+    // Label identitas perorangan (masa berlaku diisi di form nasabah; kosong = seumur hidup).
+    var ID_LABELS = { KTP: 'KTP', SIM: 'SIM', PASSPORT: 'Paspor', KITAS: 'KITAS / KITAP' };
     var STATE = {
         expired: { t: 'Kedaluwarsa', c: 'bad', i: 'fa-circle-xmark' },
         soon: { t: 'Segera habis', c: 'warn', i: 'fa-hourglass-half' },
@@ -507,14 +507,13 @@
         var c = customers().filter(function (x) { return String(x.id_nasabah) === String(cid); })[0];
         if (!c || isCorporate(c)) return null;
         var t = String(c.jenis_id || c.identity_type || '').trim().toUpperCase();
-        if (!ID_EXPIRY_TYPES[t]) return null;
         var exp = String(c.masa_berlaku_identitas || '').slice(0, 10);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(exp)) return null;
         var days = Math.round((Date.parse(exp + 'T00:00:00') - Date.parse(today() + 'T00:00:00')) / 86400000);
         var remind = Number((S.alerts && S.alerts.remind_days) || S.remind) || 30;
         if (isNaN(days) || days > remind) return null;
         var no = String(c.selain_ktp || '').trim();
-        return { state: days < 0 ? 'expired' : 'soon', days_left: days, label: ID_EXPIRY_TYPES[t], number: no && no !== '-' ? no : '', expires_at: exp, customer_name: c.nama || cid, personal: true };
+        return { state: days < 0 ? 'expired' : 'soon', days_left: days, label: ID_LABELS[t] || t || 'Identitas', number: no && no !== '-' ? no : '', expires_at: exp, customer_name: c.nama || cid, personal: true };
     }
 
     /* Kasir: peringatan saat nasabah dengan izin/identitas bermasalah dipilih. */
