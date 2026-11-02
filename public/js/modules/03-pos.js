@@ -1772,6 +1772,8 @@ async function processPaymentCore() {
     }
 
     const customerIdForLimit = document.getElementById('trxCustomer').value;
+    // Nasabah PT: pastikan perwakilan yang hadir sudah dipilih (71-pos-pt-rep.js). @2026-Alifiandra
+    if (typeof window.mcPosRepresentativeCheck === 'function' && !(await window.mcPosRepresentativeCheck(customerIdForLimit))) return;
     const pendingJualTotalForLimit = currentCart
         .filter(item => item.type === 'JUAL')
         .reduce((sum, item) => sum + item.totalIdr, 0);
@@ -2141,6 +2143,17 @@ async function processPaymentCore() {
     if (fee > 0) notesList.push(`Biaya Lain: ${almaraUtils.formatIdr(fee)}`);
     const finalKeterangan = notesList.join(' | ');
 
+    // Perwakilan PT yang hadir (data internal; nasabah yang dilaporkan tetap PT-nya)
+    const posRep = (typeof window.mcPosRepresentative === 'function') ? window.mcPosRepresentative(customerId) : null;
+    const posRepFields = posRep ? {
+        representativeId: posRep.id,
+        representativeName: posRep.name,
+        representativeRole: posRep.role_label,
+        representativePosition: posRep.position || null,
+        representativeAuthority: posRep.authority_ref || null,
+        representativeValidUntil: posRep.valid_until || null
+    } : {};
+
     const newTransactionRows = [];
     // Pembayaran per item dikirim bersama transaksi; server mencatat kas/bank/stok dalam satu langkah.
     const erpPaymentsByIndex = checkoutType === 'BOOKING'
@@ -2192,7 +2205,8 @@ async function processPaymentCore() {
             limitApprovedBy: limitApproval && item.type === 'JUAL' ? limitApproval.approvedBy : null,
             limitApprovedByRole: limitApproval && item.type === 'JUAL' ? limitApproval.approvedByRole : null,
             limitApprovedAt: limitApproval && item.type === 'JUAL' ? limitApproval.approvedAt : null,
-            erpPayments: erpPaymentsByIndex[index] || null
+            erpPayments: erpPaymentsByIndex[index] || null,
+            ...posRepFields
         };
         if (bkImp) {
             transactionRow.bookingId = bkImp.bookingId;
@@ -2306,7 +2320,9 @@ async function processPaymentCore() {
         timestamp: finalTimestamp,
         kasir: currentUser && currentUser.fullName ? currentUser.fullName : 'Admin Kasir',
         bookingId: bkImp ? bkImp.bookingId : null,
-        dpAmount: bkImp ? bkDpUsed : 0
+        dpAmount: bkImp ? bkDpUsed : 0,
+        representativeName: posRep ? posRep.name : null,
+        representativeRole: posRep ? posRep.role_label : null
     };
     window._posLastProcessedCustomerId = customerId && customerId !== '-' ? customerId : '';
     setActivePosDraftPrintContext(printCart, printSummary);
@@ -2474,7 +2490,8 @@ function printReceipt(cart, summary) {
     
     const recIdToUse = summary.receiverId || summary.customerId;
     const rec = recIdToUse === summary.customerId ? cust : (customers.find(c => c.id_nasabah === recIdToUse) || {});
-    const recName = summary.receiverManualName || (recIdToUse === summary.customerId ? custName : (rec.nama || 'Pengunjung Biasa'));
+    const repName = summary.representativeName || '';
+    const recName = summary.receiverManualName || (recIdToUse === summary.customerId ? (repName || custName) : (rec.nama || 'Pengunjung Biasa'));
 
     const printWindow = window.open('', '_blank', 'width=400,height=600');
     
@@ -2615,6 +2632,7 @@ function printReceipt(cart, summary) {
             <div class="row"><span>${labelInvoice}:</span><span>${summary.receiptId || '-'}</span></div>
             ${rc.showCif ? `<div class="row"><span>No. CIF:</span><span>${cust.no_cif || '-'}</span></div>` : ''}
             <div class="row"><span>Nama:</span><span>${custName}</span></div>
+            ${repName ? `<div class="row"><span>Diwakili:</span><span>${window.mcReceiptEsc(repName)}</span></div>` : ''}
             ${rc.showCustPhone ? `<div class="row"><span>Telp:</span><span>${custPhone}</span></div>` : ''}
             <div class="divider-double"></div>
             ${itemsHtml}
@@ -2660,7 +2678,8 @@ function printInvoice(cart, summary) {
     
     const recIdToUse = summary.receiverId || summary.customerId;
     const rec = recIdToUse === summary.customerId ? cust : (customers.find(c => c.id_nasabah === recIdToUse) || {});
-    const recName = summary.receiverManualName || (recIdToUse === summary.customerId ? custName : (rec.nama || 'Pengunjung Biasa'));
+    const repName = summary.representativeName || '';
+    const recName = summary.receiverManualName || (recIdToUse === summary.customerId ? (repName || custName) : (rec.nama || 'Pengunjung Biasa'));
 
     const profile = almaraStore.getProfile();
     const rc = window.mcReceiptConfig(profile);
@@ -2772,6 +2791,10 @@ function printInvoice(cart, summary) {
                 <span>Nama:</span>
                 <span class="font-weight-bold">${custName}</span>
             </div>
+            ${repName ? `<div class="row-flex">
+                <span>Diwakili:</span>
+                <span>${window.mcReceiptEsc(repName)}${summary.representativeRole ? ' (' + window.mcReceiptEsc(summary.representativeRole) + ')' : ''}</span>
+            </div>` : ''}
             ${rc.showCustPhone ? `<div class="row-flex">
                 <span>Telp:</span>
                 <span>${custPhone}</span>

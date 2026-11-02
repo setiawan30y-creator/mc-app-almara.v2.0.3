@@ -5655,7 +5655,7 @@
             '38-pos-queue.js',
             '39-pos-payment.js',
             '40-pickup.js',
-            '41-kurs-hari-ini.js','42-booking.js','43-koin-uang-lama.js','44-iso-picker.js','45-currency-form.js','46-kurs-sync.js','47-kurs-page.js','48-session-guard.js','49-popup-style.js','50-vision-key.js','51-wa-gateway.js','52-wa-template.js','53-profile-form.js','54-login-page-settings.js','55-sidebar-brand.js','56-coretax.js','57-goaml.js','58-ai-settings.js','59-hris.js','60-documents.js','61-ai-assistant.js','62-translator.js','63-assets.js','64-mobile-focus.js','65-dashboard-ui.js','66-sidebar-ui.js','67-sipesat.js','68-pt-reps.js','69-kurs-history.js','70-customer-licenses.js',
+            '41-kurs-hari-ini.js','42-booking.js','43-koin-uang-lama.js','44-iso-picker.js','45-currency-form.js','46-kurs-sync.js','47-kurs-page.js','48-session-guard.js','49-popup-style.js','50-vision-key.js','51-wa-gateway.js','52-wa-template.js','53-profile-form.js','54-login-page-settings.js','55-sidebar-brand.js','56-coretax.js','57-goaml.js','58-ai-settings.js','59-hris.js','60-documents.js','61-ai-assistant.js','62-translator.js','63-assets.js','64-mobile-focus.js','65-dashboard-ui.js','66-sidebar-ui.js','67-sipesat.js','68-pt-reps.js','69-kurs-history.js','70-customer-licenses.js','71-pos-pt-rep.js',
         ];
     @endphp
     <script src="{{ asset('js/sync.js') }}?v={{ time() }}"></script>

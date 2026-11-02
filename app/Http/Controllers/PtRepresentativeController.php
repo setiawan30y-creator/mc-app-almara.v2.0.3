@@ -20,6 +20,42 @@ class PtRepresentativeController extends Controller
         return response()->json(['status' => 'success', 'data' => $q->get()->map(fn ($r) => $this->present($r))->values()]);
     }
 
+    /**
+     * Daftar ringkas untuk Kasir (semua peran yang login): perwakilan PT yang boleh hadir bertransaksi.
+     * Nomor identitas hanya 4 digit terakhir; telepon & alamat tidak dikirim.
+     */
+    public function posList(Request $request): JsonResponse
+    {
+        $cid = trim((string) $request->query('customer_id', ''));
+        if ($cid === '') {
+            return response()->json(['status' => 'success', 'data' => []]);
+        }
+        $rows = PtRepresentative::query()
+            ->where('customer_id', $cid)
+            ->whereIn('role_type', ['executor', 'signatory', 'courier'])
+            ->orderBy('name')
+            ->get()
+            ->map(function (PtRepresentative $r) {
+                $idNo = (string) ($r->id_number ?? '');
+
+                return [
+                    'id' => $r->id,
+                    'role_type' => $r->role_type,
+                    'name' => $r->name,
+                    'position' => $r->position,
+                    'id_type' => $r->id_type,
+                    'id_last4' => $idNo !== '' ? mb_substr($idNo, -4) : '',
+                    'authority_ref' => $r->authority_ref,
+                    'valid_from' => $r->valid_from?->format('Y-m-d'),
+                    'valid_until' => $r->valid_until?->format('Y-m-d'),
+                    'status' => $r->status,
+                    'photo_url' => $r->photo_url,
+                ];
+            })->values();
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $data = $this->validated($request);

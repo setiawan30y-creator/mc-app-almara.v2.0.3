@@ -130,6 +130,7 @@ Route::post('/goaml/alerts/{alert}/ltkm', [GoamlComplianceController::class, 'cr
     Route::post('/hris/pins', [HrisPinController::class, 'set'])->middleware(['role:owner,superadmin,admin,supervisor', 'throttle:30,1']);
     Route::delete('/hris/pins', [HrisPinController::class, 'destroy'])->middleware('role:owner,superadmin,admin,supervisor');
     Route::post('/hris/pins/verify', [HrisPinController::class, 'verify'])->middleware('throttle:30,1');
+    Route::get('/pt-representatives/pos', [PtRepresentativeController::class, 'posList']); // Kasir: semua peran yang login
     Route::get('/pt-representatives', [PtRepresentativeController::class, 'index'])->middleware('role:owner,superadmin,admin,supervisor');
     Route::post('/pt-representatives', [PtRepresentativeController::class, 'store'])->middleware('role:owner,superadmin,admin,supervisor');
     Route::put('/pt-representatives/{representative}', [PtRepresentativeController::class, 'update'])->middleware('role:owner,superadmin,admin,supervisor');

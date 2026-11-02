@@ -586,6 +586,7 @@
             try { refreshPosWarning(); } catch (e) { /* abaikan */ }
             return r;
         };
+        Object.keys(fn).forEach(function (k) { wrapped[k] = fn[k]; }); // pertahankan penanda modul lain
         wrapped.__lic = true;
         window.updateModernCustomerProfileCard = wrapped;
     }
