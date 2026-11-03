@@ -180,9 +180,9 @@ class AiChatController extends Controller
                 'temperature' => 0.4
             ];
 
-            $response = Http::withToken($apiKey)
+            $response = \App\Support\GeminiModel::http(40)
+                ->withToken($apiKey)
                 ->withHeaders(['Content-Type' => 'application/json'])
-                ->timeout(45)
                 ->post('https://api.openai.com/v1/chat/completions', $payload);
 
             if (!$response->successful()) {

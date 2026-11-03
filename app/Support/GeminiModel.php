@@ -18,6 +18,22 @@ class GeminiModel
 {
     public const BASE = 'https://generativelanguage.googleapis.com/v1beta/';
     public const FALLBACK = 'gemini-flash-latest';
+    /** Batas total waktu satu permintaan (detik): harus selesai sebelum proxy (nginx/Cloudflare) memutus dengan 504. */
+    public const BUDGET = 40;
+
+    /**
+     * Klien HTTP ke Google: batas waktu sambung pendek dan paksa IPv4.
+     * Di banyak server, rute IPv6 tidak tersambung sehingga permintaan menggantung sampai timeout.
+     * Matikan dengan GEMINI_FORCE_IPV4=false di .env bila tidak diperlukan.
+     */
+    public static function http(int $timeout)
+    {
+        $c = Http::connectTimeout(8)->timeout(max(5, $timeout));
+        if (filter_var(env('GEMINI_FORCE_IPV4', true), FILTER_VALIDATE_BOOLEAN)) {
+            $c = $c->withOptions(['force_ip_resolve' => 'v4']);
+        }
+        return $c;
+    }
 
     /** Daftar model yang bisa dipakai, urut dari yang paling disarankan. @return string[] */
     public static function candidates(string $key, bool $fresh = false): array
@@ -34,7 +50,7 @@ class GeminiModel
         $flash = [];
         $lite = [];
         try {
-            $res = Http::timeout(15)->get(self::BASE . 'models', ['pageSize' => 200, 'key' => $key]);
+            $res = self::http(12)->get(self::BASE . 'models', ['pageSize' => 200, 'key' => $key]);
             if ($res->successful()) {
                 foreach ((array) $res->json('models') as $m) {
                     $name = (string) ($m['name'] ?? '');
@@ -75,7 +91,9 @@ class GeminiModel
      */
     public static function post(string $key, array $body, int $timeout = 45): Response
     {
-        $send = fn (string $model) => Http::timeout($timeout)
+        $start = microtime(true);
+        $left = fn () => (int) floor(self::BUDGET - (microtime(true) - $start));
+        $send = fn (string $model) => self::http(min($timeout, max(5, $left())))
             ->post(self::BASE . 'models/' . $model . ':generateContent?key=' . rawurlencode($key), $body);
         $busy = function (Response $r): bool {
             $m = (string) $r->json('error.message');
@@ -89,6 +107,10 @@ class GeminiModel
         foreach (array_slice($models, 0, 3) as $idx => $model) {
             $tries = $idx === 0 ? 3 : 1;
             for ($t = 0; $t < $tries; $t++) {
+                if ($left() < 8) {
+                    $lastError = $lastError ?? 'timeout';
+                    break 2; // waktu habis: berhenti sebelum proxy memutus koneksi
+                }
                 if ($attempt++ > 0) {
                     usleep(($t > 0 ? 1500000 : 400000));
                 }
@@ -97,6 +119,9 @@ class GeminiModel
                 } catch (\Throwable $e) {
                     // Timeout / jaringan: coba model berikutnya. Pesan asli memuat URL berisi key, jadi tidak diteruskan.
                     $lastError = $e instanceof \Illuminate\Http\Client\ConnectionException ? 'timeout' : 'network';
+                    if ($lastError === 'timeout' && $res === null && $idx === 0) {
+                        break 2; // tidak tersambung sama sekali: model lain juga tidak akan tersambung
+                    }
                     break;
                 }
                 if ($res->successful()) {
@@ -120,7 +145,7 @@ class GeminiModel
         }
         if (!$res) {
             throw new \RuntimeException($lastError === 'timeout'
-                ? 'Gemini tidak menjawab dalam batas waktu (layanan lambat atau padat). Coba lagi beberapa saat.'
+                ? 'Server aplikasi tidak bisa tersambung ke Gemini dalam batas waktu. Periksa koneksi internet / firewall server, atau coba lagi beberapa saat.'
                 : 'Server tidak dapat menghubungi Gemini. Periksa koneksi internet server.');
         }
         return $res;
