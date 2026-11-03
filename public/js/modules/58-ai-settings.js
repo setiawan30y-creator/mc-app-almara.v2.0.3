@@ -29,10 +29,26 @@
     function set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
     // Buang spasi, karakter tak terlihat, dan tanda kutip yang ikut tersalin bersama key.
     function cleanKey(v) { return String(v || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim().replace(/^["'\u201C\u2018`]+|["'\u201D\u2019`]+$/g, '').trim(); }
-    [K.gemini, K.openai].forEach(function (k) { var o = get(k), c = cleanKey(o); if (o && o !== c) set(k, c); });
     function csrf() { var m = document.querySelector('meta[name="csrf-token"]'); return m ? m.content : ''; }
     function mask(k) { return k ? '\u2022\u2022\u2022\u2022' + k.slice(-4) : ''; }
     function validKey(p, k) { return p === 'gemini' ? /^(AIza[\w-]{20,}|AQ\.[\w.-]{20,})$/.test(k) : /^sk-[\w-]{20,}$/.test(k); }
+    // Key milik penyedia lain? (key Gemini di kolom OpenAI atau sebaliknya)
+    function otherOf(p) { return p === 'gemini' ? 'openai' : 'gemini'; }
+    function wrongProvider(p, k) { return !!k && !validKey(p, k) && validKey(otherOf(p), k); }
+
+    /* Rapikan data lama: buang tanda kutip, pisahkan key yang tertukar / tercampur. */
+    (function normalize() {
+        var g = cleanKey(get(K.gemini)), o = cleanKey(get(K.openai));
+        if (g && o && g === o) { if (validKey('openai', o)) g = ''; else o = ''; }       // key sama di dua kolom
+        if (wrongProvider('gemini', g) && !o) { o = g; g = ''; }                          // key OpenAI di kolom Gemini
+        if (wrongProvider('openai', o) && !g) { g = o; o = ''; }                          // key Gemini di kolom OpenAI
+        if (wrongProvider('openai', o)) o = '';
+        if (wrongProvider('gemini', g)) g = '';
+        if (get(K.gemini) !== g) set(K.gemini, g);
+        if (get(K.openai) !== o) set(K.openai, o);
+        var m = cleanKey(get(K.model)); if (get(K.model) && get(K.model) !== m) set(K.model, m);
+        var pv = cleanKey(get(K.provider)); if (get(K.provider) && get(K.provider) !== pv) set(K.provider, pv === 'openai' ? 'openai' : 'gemini');
+    })();
 
     function injectStyle() {
         if ($('aic-style')) return;
@@ -77,7 +93,7 @@
 
     function card(p) {
         var gem = p === 'gemini', saved = get(gem ? K.gemini : K.openai), on = S.provider === p;
-        var model = get(K.model) || MODELS[0], isCustom = MODELS.indexOf(model) < 0;
+        var model = cleanKey(get(K.model)) || MODELS[0], isCustom = MODELS.indexOf(model) < 0;
         return '<div class="aic-card ' + (on ? 'on' : '') + '" data-card="' + p + '"><div class="aic-top"><div class="aic-ic"><i class="fa-solid ' + (gem ? 'fa-gem' : 'fa-bolt') + '"></i></div><div><b>' + (gem ? 'Google Gemini' : 'ChatGPT / OpenAI') + '</b>' +
             '<span class="s">' + (gem ? 'Disarankan: ada kuota gratis, bisa membaca PDF & gambar' : 'Alternatif untuk tanya jawab teks') + '</span></div>' +
             '<button type="button" class="aic-use" data-act="use" data-p="' + p + '">' + (on ? '<i class="fa-solid fa-circle-check"></i> Aktif' : 'Jadikan aktif') + '</button></div>' +
@@ -96,23 +112,24 @@
             injectStyle(); root.className = 'aic'; root.setAttribute('data-ready', '1');
             root.addEventListener('click', onClick); root.addEventListener('input', onInput); root.addEventListener('change', onChange);
         }
-        S.provider = get(K.provider) === 'openai' ? 'openai' : 'gemini'; S.dirty = false;
+        S.provider = cleanKey(get(K.provider)) === 'openai' ? 'openai' : 'gemini'; S.dirty = false;
         root.innerHTML = '<div class="aic-head"><h2>Konfigurasi Asisten AI</h2><p>Atur sekali di sini, dipakai oleh seluruh fitur AI di aplikasi. Pilih penyedia, tempel API key, tekan <b>Tes koneksi</b>, lalu <b>Simpan</b>.</p></div>' +
             '<input type="hidden" id="settingsAiProvider" value="' + S.provider + '">' +
             '<div class="aic-prov">' + card('gemini') + card('openai') + '</div>' +
             '<div class="aic-box"><h3>Fitur yang memakai pengaturan ini</h3><div class="aic-uses">' + USES.map(function (u) { return '<div class="aic-u"><i class="fa-solid ' + u[0] + '"></i><div><b>' + u[1] + '</b><span>' + u[2] + '</span></div></div>'; }).join('') + '</div></div>' +
             '<details><summary>Cara mendapatkan API key Gemini (gratis)</summary><ol><li>Buka <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a> dan login dengan akun Google.</li><li>Klik <b>Create API key</b>, lalu salin key yang muncul.</li><li>Tempel di kolom API Key Gemini di atas dan tekan <b>Tes koneksi</b>.</li><li>Tekan <b>Simpan Pengaturan AI</b>.</li></ol></details>' +
-            '<div class="aic-foot"><button type="button" class="aic-btn pri" data-act="save"><i class="fa-solid fa-floppy-disk"></i> Simpan Pengaturan AI</button><div class="grow" id="aicNote">Key disimpan di peramban perangkat ini saja, tidak dikirim ke server kami. Isi ulang bila memakai perangkat atau peramban lain, dan jangan menyimpan key di komputer bersama.</div></div>';
+            '<div class="aic-foot"><button type="button" class="aic-btn pri" data-act="save"><i class="fa-solid fa-floppy-disk"></i> Simpan Pengaturan AI</button><div class="grow" id="aicNote">Key disimpan di peramban perangkat ini saja dan tidak disinkronkan ke server. Isi ulang bila memakai perangkat atau peramban lain, dan jangan menyimpan key di komputer bersama.</div></div>';
         ['gemini', 'openai'].forEach(function (p) { hint(p); });
     }
 
     function val(id) { var e = $(id); return e ? e.value.trim() : ''; }
     function curKey(p) { return cleanKey(val(p === 'gemini' ? 'settingsGeminiKey' : 'settingsOpenAiKey')); }
-    function curModel() { var s = $('aicModelSel'); if (s && s.value !== '__custom') return s.value; return val('settingsOpenAiModel') || MODELS[0]; }
+    function curModel() { var s = $('aicModelSel'); if (s && s.value !== '__custom') return s.value; return cleanKey(val('settingsOpenAiModel')) || MODELS[0]; }
 
     function hint(p) {
         var el = $('aicHint-' + p); if (!el) return; var k = curKey(p);
         if (!k) { el.innerHTML = '<small class="h">' + (p === 'gemini' ? 'Dapatkan gratis di Google AI Studio.' : 'Dapatkan di platform.openai.com (berbayar).') + '</small>'; return; }
+        if (wrongProvider(p, k)) { el.innerHTML = '<small class="h" style="color:#f87171"><i class="fa-solid fa-circle-xmark"></i> Ini key ' + (p === 'gemini' ? 'OpenAI' : 'Gemini') + ', bukan key ' + (p === 'gemini' ? 'Gemini' : 'OpenAI') + '. Tempel di kartu ' + (p === 'gemini' ? 'ChatGPT / OpenAI' : 'Google Gemini') + '.</small>'; return; }
         el.innerHTML = validKey(p, k) ? '<small class="h" style="color:#34d399"><i class="fa-solid fa-check"></i> Format key terlihat benar.</small>'
             : '<small class="h" style="color:#fbbf24"><i class="fa-solid fa-triangle-exclamation"></i> Format tidak biasa (' + (p === 'gemini' ? 'biasanya diawali AIza atau AQ.' : 'biasanya diawali sk-') + '). Pastikan tidak ada spasi atau karakter tambahan.</small>';
     }
@@ -123,6 +140,8 @@
 
     function save() {
         var gem = curKey('gemini'), oa = curKey('openai');
+        if (wrongProvider('gemini', gem) || wrongProvider('openai', oa)) { toast('Key tertukar: key Gemini harus di kartu Gemini dan key OpenAI di kartu OpenAI.', true); return; }
+        if (gem && oa && gem === oa) { toast('Key Gemini dan OpenAI tidak boleh sama. Kosongkan kartu yang tidak dipakai.', true); return; }
         var ok = set(K.provider, S.provider) && set(K.gemini, gem) && set(K.openai, oa) && set(K.model, curModel());
         if (!ok) { toast('Gagal menyimpan: penyimpanan peramban diblokir.', true); return; }
         var active = S.provider === 'gemini' ? gem : oa;
@@ -157,7 +176,7 @@
         else if (a === 'eye') { var inp = $(p === 'gemini' ? 'settingsGeminiKey' : 'settingsOpenAiKey'); inp.type = inp.type === 'password' ? 'text' : 'password'; b.firstElementChild.className = 'fa-solid ' + (inp.type === 'password' ? 'fa-eye' : 'fa-eye-slash'); }
         else if (a === 'paste') {
             if (!navigator.clipboard || !navigator.clipboard.readText) { toast('Peramban tidak mengizinkan tempel otomatis. Gunakan Ctrl+V.', true); return; }
-            navigator.clipboard.readText().then(function (t) { var inp = $(p === 'gemini' ? 'settingsGeminiKey' : 'settingsOpenAiKey'); inp.value = String(t || '').trim(); hint(p); markDirty(); }, function () { toast('Akses papan klip ditolak. Gunakan Ctrl+V.', true); });
+            navigator.clipboard.readText().then(function (t) { var inp = $(p === 'gemini' ? 'settingsGeminiKey' : 'settingsOpenAiKey'); inp.value = cleanKey(t); hint(p); markDirty(); }, function () { toast('Akses papan klip ditolak. Gunakan Ctrl+V.', true); });
         }
         else if (a === 'test') test(p, b);
         else if (a === 'clear') { var i2 = $(p === 'gemini' ? 'settingsGeminiKey' : 'settingsOpenAiKey'); i2.value = ''; hint(p); $('aicTest-' + p).innerHTML = ''; markDirty(); }

@@ -13,6 +13,9 @@ use Illuminate\Http\Request;
 
 class DatastoreController extends Controller
 {
+    /** Pengaturan AI per perangkat: tidak pernah disimpan / dibagikan lewat datastore. */
+    public const DEVICE_ONLY_KEYS = ['mc_gemini_api_key', 'mc_openai_api_key', 'mc_openai_model', 'mc_ai_provider'];
+
     public function index()
     {
         $stores = Datastore::all();
@@ -20,6 +23,10 @@ class DatastoreController extends Controller
         foreach ($stores as $item) {
             // Rahasia integrasi tidak boleh sampai ke browser.
             if (str_starts_with((string) $item->store_key, 'security_') || in_array($item->store_key, ['mc_vision_api_key', 'mc_wa_gateway'], true)) {
+                continue;
+            }
+            // Pengaturan AI per perangkat (API key) tidak boleh dibagikan lewat datastore. @2026-Alifiandra
+            if (in_array($item->store_key, self::DEVICE_ONLY_KEYS, true)) {
                 continue;
             }
             $raw = $item->json_data;
@@ -130,6 +137,11 @@ class DatastoreController extends Controller
         // mengirimnya: simpan terenkripsi (hanya bila pengirim admin) dan buang dari data.
         if (in_array($validated['store_key'], ['mc_vision_api_key', 'mc_wa_gateway'], true)) {
             return response()->json(['status' => 'success', 'message' => 'Diabaikan (key dikelola server).']);
+        }
+        // API key AI disimpan di peramban masing-masing perangkat, tidak di server.
+        if (in_array($validated['store_key'], self::DEVICE_ONLY_KEYS, true)) {
+            Datastore::where('store_key', $validated['store_key'])->delete();
+            return response()->json(['status' => 'success', 'message' => 'Diabaikan (pengaturan per perangkat).']);
         }
         if ($validated['store_key'] === 'mc_profile') {
             $incoming = $validated['json_data'];

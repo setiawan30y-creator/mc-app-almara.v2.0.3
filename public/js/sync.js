@@ -59,7 +59,9 @@ if (!window.__almaraRealtimeStoragePatch) {
         // Tab/form POS adalah preferensi lokal; tidak boleh dipulihkan oleh
         // snapshot datastore dari perangkat atau sesi lama.
         'mc_pos_draft_sessions_v1',
-        'mc_pos_active_draft_id_v1'
+        'mc_pos_active_draft_id_v1',
+        // Pengaturan AI (API key) per perangkat: tidak dikirim ke server. @2026-Alifiandra
+        'mc_gemini_api_key', 'mc_openai_api_key', 'mc_openai_model', 'mc_ai_provider'
     ]);
     const mysqlTableKeys = new Set(['mc_currencies', 'mc_transactions', 'mc_customers']);
 
@@ -417,6 +419,8 @@ async function syncUniversalDatastore(options = {}) {
                     // lokal pengguna, bukan data aplikasi bersama.
                     if (String(key).startsWith('mc_seen_transaction_keys_v1_')) continue;
                     if (key === 'mc_pos_draft_sessions_v1' || key === 'mc_pos_active_draft_id_v1') continue;
+                    // Pengaturan AI per perangkat: jangan pernah menimpa dari server.
+                    if (key === 'mc_gemini_api_key' || key === 'mc_openai_api_key' || key === 'mc_openai_model' || key === 'mc_ai_provider') continue;
                     if (key === 'mc_customers') {
                         console.log('[Sync-Skip] mc_customers dikelola oleh tabel mc_customers, bukan Universal Datastore.');
                         continue;
@@ -556,7 +560,8 @@ async function syncUniversalDatastore(options = {}) {
                     'mc_master_jobs_seed_version',
                     'mc_master_citizens_seed_version',
                     'mc_pos_draft_sessions_v1',
-                    'mc_pos_active_draft_id_v1'
+                    'mc_pos_active_draft_id_v1',
+                    'mc_gemini_api_key', 'mc_openai_api_key', 'mc_openai_model', 'mc_ai_provider'
                 ]);
                 const mysqlTableKeys = new Set(['mc_currencies', 'mc_transactions', 'mc_customers']);
 
