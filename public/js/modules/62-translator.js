@@ -90,10 +90,10 @@
     }
     var langName = function (code) { var l = code === 'auto' ? null : byShort(code); return l ? l[2].replace(/\s*\(.*\)\s*$/, '') : null; };
     // Terjemahan lewat AI yang sudah diatur di Pengaturan (Gemini/OpenAI) melalui api/ai/chat.
-    async function translate(text, sl, tl) {
+    async function translate(text, sl, tl, signal) {
         text = String(text || '').trim().slice(0, MAX_CHARS); if (!text) return { ok: true, text: '' }; if (sl === tl) return { ok: true, text: text };
         var ck = 's|' + sl + '>' + tl + '|' + text; if (cache[ck]) return { ok: true, text: cache[ck] };
-        var r = await translateViaServer(text, sl, tl);
+        var r = await translateViaServer(text, sl, tl, signal);
         if (r.ok) { var ks = Object.keys(cache); if (ks.length > 200) delete cache[ks[0]]; cache[ck] = r.text; return r; }
         if (r.keyMissing) {
             if (aiCfg().ready) return translateViaBrowserKey(text, sl, tl);
@@ -102,8 +102,9 @@
         return r;
     }
     // Jalur utama: server yang memegang kunci AI (berlaku untuk semua perangkat).
-    async function translateViaServer(text, sl, tl) {
-        var ctrl = new AbortController(), timer = setTimeout(function () { ctrl.abort(); }, 35000);
+    async function translateViaServer(text, sl, tl, signal) {
+        var ctrl = new AbortController(), timer = setTimeout(function () { ctrl.abort(); }, 25000);
+        if (signal) { if (signal.aborted) ctrl.abort(); else signal.addEventListener('abort', function () { ctrl.abort(); }); } // permintaan lama dibatalkan saat teks berubah
         try {
             var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
             var res = await fetch('api/translate', { method: 'POST', signal: ctrl.signal, credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf }, body: JSON.stringify({ text: text, source: sl, target: tl }) });
@@ -256,7 +257,9 @@
         var text = S.text.trim(); var id = ++S.reqId;
         if (!text) { S.out = ''; S.status = ''; S.statusErr = false; paintOut(); return; }
         S.status = 'Menerjemahkan...'; S.statusErr = false; paintOut();
-        var r = await translate(text, S.src, S.tgt); if (id !== S.reqId) return;
+        if (S.textCtrl) S.textCtrl.abort();
+        var ctrl = S.textCtrl = new AbortController();
+        var r = await translate(text, S.src, S.tgt, ctrl.signal); if (id !== S.reqId) return;
         if (!r.ok) { S.out = ''; S.status = r.error; S.statusErr = true; paintOut(); return; }
         S.out = r.text; S.status = ''; S.statusErr = false; paintOut();
         clearTimeout(S.speakTimer);
@@ -305,7 +308,7 @@
     }
     function copy(v) { if (!v) return; var ok = function () { toast('Terjemahan disalin.'); }; if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(ok, function () { toast('Gagal menyalin.'); }); else toast('Penyalinan tidak didukung browser ini.'); }
     function onInput(e) {
-        if (e.target.id === 'trcSrc') { S.text = e.target.value; var c = $('trcCnt'); if (c) c.textContent = S.text.length + ' / ' + MAX_CHARS; clearTimeout(S.speakTimer); if (window.speechSynthesis) window.speechSynthesis.cancel(); if (S.autoText) { clearTimeout(S.timer); S.timer = setTimeout(function () { doText(false); }, 700); } }
+        if (e.target.id === 'trcSrc') { S.text = e.target.value; var c = $('trcCnt'); if (c) c.textContent = S.text.length + ' / ' + MAX_CHARS; clearTimeout(S.speakTimer); if (window.speechSynthesis) window.speechSynthesis.cancel(); if (S.autoText) { clearTimeout(S.timer); S.timer = setTimeout(function () { doText(false); }, 500); } }
     }
     function onChange(e) {
         var id = e.target.id, v = e.target.value;

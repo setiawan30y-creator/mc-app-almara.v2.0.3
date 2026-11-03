@@ -117,31 +117,47 @@ class GeminiModel
      * - Model tidak tersedia (404): daftar model diperbarui lalu dicoba lagi.
      * - Layanan padat (503/429/"high demand"): coba ulang dengan jeda, lalu pindah ke model lain.
      */
-    public static function post(string $key, array $body, int $timeout = 45): Response
+    /**
+     * @param bool $fast Mode cepat (mis. penerjemah): model "flash-lite" didahulukan, mode berpikir dimatikan,
+     *                   tanpa coba ulang berjeda, dan batas waktu total lebih pendek.
+     */
+    public static function post(string $key, array $body, int $timeout = 45, bool $fast = false): Response
     {
         $start = microtime(true);
-        $left = fn () => (int) floor(self::BUDGET - (microtime(true) - $start));
-        $send = fn (string $model) => self::http(min($timeout, max(5, $left())))
-            ->post(self::BASE . 'models/' . $model . ':generateContent?key=' . rawurlencode($key), $body);
+        $budget = $fast ? min(self::BUDGET, 20) : self::BUDGET;
+        $left = fn () => (int) floor($budget - (microtime(true) - $start));
+        $send = function (string $model) use ($key, $body, $timeout, $left, $fast) {
+            $b = $body;
+            // Model 2.5 Flash "berpikir" dulu sebelum menjawab (lambat); untuk tugas sederhana dimatikan.
+            if ($fast && preg_match('/^gemini-2\.5-flash/', $model)) {
+                $b['generationConfig']['thinkingConfig'] = ['thinkingBudget' => 0];
+            }
+            return self::http(min($timeout, max(5, $left())))
+                ->post(self::BASE . 'models/' . $model . ':generateContent?key=' . rawurlencode($key), $b);
+        };
         $busy = function (Response $r): bool {
             $m = (string) $r->json('error.message');
             return in_array($r->status(), [429, 500, 502, 503, 504], true) || (bool) preg_match('/high demand|overloaded|try again later/i', $m);
         };
 
         $models = self::candidates($key);
+        if ($fast) {
+            // flash-lite paling cepat untuk terjemahan singkat
+            usort($models, fn ($a, $b) => (int) !str_contains($a, '-lite') <=> (int) !str_contains($b, '-lite'));
+        }
         $res = null;
         $lastError = null;
         $detail = '';
         $attempt = 0;
         foreach (array_slice($models, 0, 3) as $idx => $model) {
-            $tries = $idx === 0 ? 3 : 1;
+            $tries = ($idx === 0 && !$fast) ? 3 : 1;
             for ($t = 0; $t < $tries; $t++) {
-                if ($left() < 8) {
+                if ($left() < ($fast ? 4 : 8)) {
                     $lastError = $lastError ?? 'timeout';
                     break 2; // waktu habis: berhenti sebelum proxy memutus koneksi
                 }
                 if ($attempt++ > 0) {
-                    usleep(($t > 0 ? 1500000 : 400000));
+                    usleep($fast ? 200000 : ($t > 0 ? 1500000 : 400000));
                 }
                 try {
                     $res = $send($model);
