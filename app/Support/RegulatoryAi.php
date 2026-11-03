@@ -135,17 +135,7 @@ class RegulatoryAi
     private static function fail(string $name, int $status, $json): array
     {
         $raw = is_array($json) ? (string) ($json['error']['message'] ?? '') : '';
-        if ($status === 400 && preg_match('/API key not valid/i', $raw)) {
-            $msg = "API Key {$name} tidak valid. Periksa di Pengaturan > Asisten AI.";
-        } elseif ($status === 401 || $status === 403) {
-            $msg = "Akses ke {$name} ditolak. Periksa API Key dan izin proyeknya.";
-        } elseif ($status === 503 || preg_match('/high demand|overloaded/i', $raw)) {
-            $msg = "Layanan {$name} sedang padat. Sudah dicoba ulang otomatis; coba lagi beberapa saat.";
-        } elseif ($status === 429) {
-            $msg = "Kuota {$name} habis atau terlalu banyak permintaan. Coba lagi beberapa saat.";
-        } else {
-            $msg = "{$name} menolak permintaan (HTTP {$status}).";
-        }
+        $msg = AiErrorText::friendly($name, $status, $json);
         Log::warning("RegulatoryAi {$name} HTTP {$status}: " . substr($raw, 0, 200));
         return ['ok' => false, 'text' => '', 'message' => $msg];
     }

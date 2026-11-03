@@ -100,10 +100,11 @@ class AiChatController extends Controller
                     $errMessage = 'Layanan Gemini sedang padat. Sudah dicoba ulang otomatis; coba lagi beberapa saat.';
                 }
                 Log::warning('Gemini API Error: ' . json_encode($errData));
+                // Kode 422 (bukan status asli) agar 401/403 dari Google tidak dibaca sebagai sesi login habis.
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Gemini API Error: ' . $errMessage
-                ], $response->status());
+                    'message' => \App\Support\AiErrorText::friendly('Gemini', $response->status(), $errData)
+                ], 422);
             }
 
             $result = $response->json();
@@ -191,8 +192,8 @@ class AiChatController extends Controller
                 Log::warning('OpenAI API Error: ' . json_encode($errData));
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'OpenAI API Error: ' . $errMessage
-                ], $response->status());
+                    'message' => \App\Support\AiErrorText::friendly('OpenAI', $response->status(), $errData)
+                ], 422);
             }
 
             $result = $response->json();
