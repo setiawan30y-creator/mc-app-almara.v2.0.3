@@ -79,6 +79,34 @@ class GeminiModel
         return $list;
     }
 
+    /** Pesan galat jaringan tanpa URL/key, mis. "cURL error 28: Connection timed out after 8001 milliseconds". */
+    public static function safeDetail(string $msg): string
+    {
+        $msg = preg_replace('#https?://\S+#i', '[url]', $msg);
+        $msg = preg_replace('/key=[^\s&"\']+/i', 'key=***', (string) $msg);
+        if (preg_match('/cURL error \d+:[^(]*/i', (string) $msg, $m)) {
+            $msg = $m[0];
+        }
+        return trim(mb_substr((string) $msg, 0, 180));
+    }
+
+    /** Penjelasan yang bisa ditindaklanjuti berdasarkan kode galat cURL. */
+    public static function explain(string $detail, ?string $kind): string
+    {
+        $code = preg_match('/cURL error (\d+)/i', $detail, $m) ? (int) $m[1] : 0;
+        $why = match (true) {
+            in_array($code, [60, 77, 35], true) => 'Sertifikat SSL server tidak dikenali (CA bundle PHP belum diatur, sering terjadi di Laragon/Windows).',
+            $code === 6 => 'Nama domain Google tidak bisa di-resolve (DNS server bermasalah).',
+            $code === 7 => 'Koneksi ke Google ditolak / diblokir (firewall atau jaringan).',
+            $code === 28 => 'Koneksi ke Google habis waktu (internet server lambat, firewall, atau rute IPv6/IPv4 bermasalah).',
+            $code === 5 => 'Proxy server tidak bisa di-resolve.',
+            default => $kind === 'timeout'
+                ? 'Server aplikasi tidak bisa tersambung ke Gemini dalam batas waktu.'
+                : 'Server tidak dapat menghubungi Gemini.',
+        };
+        return $why . ($detail !== '' ? ' [' . $detail . ']' : '');
+    }
+
     public static function resolve(string $key, bool $fresh = false): string
     {
         return self::candidates($key, $fresh)[0];
@@ -103,6 +131,7 @@ class GeminiModel
         $models = self::candidates($key);
         $res = null;
         $lastError = null;
+        $detail = '';
         $attempt = 0;
         foreach (array_slice($models, 0, 3) as $idx => $model) {
             $tries = $idx === 0 ? 3 : 1;
@@ -119,6 +148,7 @@ class GeminiModel
                 } catch (\Throwable $e) {
                     // Timeout / jaringan: coba model berikutnya. Pesan asli memuat URL berisi key, jadi tidak diteruskan.
                     $lastError = $e instanceof \Illuminate\Http\Client\ConnectionException ? 'timeout' : 'network';
+                    $detail = self::safeDetail($e->getMessage());
                     if ($lastError === 'timeout' && $res === null && $idx === 0) {
                         break 2; // tidak tersambung sama sekali: model lain juga tidak akan tersambung
                     }
@@ -144,9 +174,7 @@ class GeminiModel
             }
         }
         if (!$res) {
-            throw new \RuntimeException($lastError === 'timeout'
-                ? 'Server aplikasi tidak bisa tersambung ke Gemini dalam batas waktu. Periksa koneksi internet / firewall server, atau coba lagi beberapa saat.'
-                : 'Server tidak dapat menghubungi Gemini. Periksa koneksi internet server.');
+            throw new \RuntimeException(self::explain($detail, $lastError));
         }
         return $res;
     }
