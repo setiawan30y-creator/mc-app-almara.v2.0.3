@@ -210,6 +210,11 @@
             s: ['Unggah file (PDF, Word, Excel, teks, gambar) atau tempel teks.', 'Isi penerbit, jenis, nomor, tanggal berlaku, dan status (berlaku / diubah / dicabut).'],
             p: ['Tandai regulasi yang dicabut agar AI memakai yang terbaru.']
         },
+        'doc-search-view': {
+            t: 'Pencarian Dokumen', f: 'Mencari isi Sumber Regulasi, Penyimpanan Berkas, dan arsip Nomor Surat sekaligus, tanpa Gemini/ChatGPT. Hasilnya selalu kutipan asli dokumen.',
+            s: ['Ketik pertanyaan atau kata kunci, lalu tekan Cari.', 'Baca "Ringkasan dari dokumen": kalimat paling relevan beserta label sumbernya [S1], [S2].', 'Klik label atau "Lihat bagian lengkap" untuk membaca konteksnya, dan "Buka berkas" untuk membuka file aslinya.', 'Persempit dengan filter sumber, tahun, atau abaikan regulasi yang dicabut.'],
+            p: ['Kata berimbuhan dikenali (melaporkan, pelaporan, laporan), begitu juga singkatan seperti LTKT, CDD, dan KYC.', 'Berkas baru terindeks otomatis tiap 5 menit. Lihat "Status indeks" untuk berkas yang belum terbaca.', 'Dokumen hasil scan/foto hanya terbaca bila OCR (Tesseract) dipasang di server.']
+        },
         'ai-chat-view': {
             t: 'Tanya AI / Deteksi Valas', f: 'Asisten AI untuk tanya-jawab seputar valas dan deteksi foto uang kertas / koin.',
             s: ['Ketik pertanyaan, atau ambil / unggah foto uang untuk dianalisis.'],

@@ -522,6 +522,7 @@
                     </button>
                     <div class="sidebar-group-items" data-sidebar-group-items="tools">
                     <a href="#" class="nav-item" data-target="ai-chat-view" data-sidebar-group="tools"><i class="fa-solid fa-robot"></i> Tanya AI / Deteksi Valas</a>
+                    <a href="#" class="nav-item" data-target="doc-search-view" data-sidebar-group="tools"><i class="fa-solid fa-magnifying-glass-chart"></i> Pencarian Dokumen</a>
                     <a href="#" class="nav-item" data-target="translator-view" data-sidebar-group="tools"><i class="fa-solid fa-language"></i> Penerjemah Bahasa</a>
                     <a href="#" class="nav-item" data-target="user-chat-view" data-sidebar-group="tools"><i class="fa-solid fa-comments"></i> Chat</a>
                     </div>
@@ -3871,6 +3872,10 @@
                     <div id="ptRepRoot"></div>
                 </section>
                 <!-- Perizinan Nasabah (&#64;2026-Alifiandra): dirender oleh public/js/modules/70-customer-licenses.js -->
+                <!-- Pencarian Dokumen tanpa AI (&#64;2026-Alifiandra): dirender oleh public/js/modules/73-doc-search.js -->
+                <section id="doc-search-view" class="view-section hidden">
+                    <div id="docSearchRoot"></div>
+                </section>
                 <section id="customer-license-view" class="view-section hidden">
                     <div id="custLicRoot"></div>
                 </section>
@@ -5678,7 +5683,7 @@
             '38-pos-queue.js',
             '39-pos-payment.js',
             '40-pickup.js',
-            '41-kurs-hari-ini.js','42-booking.js','43-koin-uang-lama.js','44-iso-picker.js','45-currency-form.js','46-kurs-sync.js','47-kurs-page.js','48-session-guard.js','49-popup-style.js','50-vision-key.js','51-wa-gateway.js','52-wa-template.js','53-profile-form.js','54-login-page-settings.js','55-sidebar-brand.js','56-coretax.js','57-goaml.js','58-ai-settings.js','59-hris.js','60-documents.js','61-ai-assistant.js','62-translator.js','63-assets.js','64-mobile-focus.js','65-dashboard-ui.js','66-sidebar-ui.js','67-sipesat.js','68-pt-reps.js','69-kurs-history.js','70-customer-licenses.js','71-pos-pt-rep.js','72-page-help.js',
+            '41-kurs-hari-ini.js','42-booking.js','43-koin-uang-lama.js','44-iso-picker.js','45-currency-form.js','46-kurs-sync.js','47-kurs-page.js','48-session-guard.js','49-popup-style.js','50-vision-key.js','51-wa-gateway.js','52-wa-template.js','53-profile-form.js','54-login-page-settings.js','55-sidebar-brand.js','56-coretax.js','57-goaml.js','58-ai-settings.js','59-hris.js','60-documents.js','61-ai-assistant.js','62-translator.js','63-assets.js','64-mobile-focus.js','65-dashboard-ui.js','66-sidebar-ui.js','67-sipesat.js','68-pt-reps.js','69-kurs-history.js','70-customer-licenses.js','71-pos-pt-rep.js','72-page-help.js','73-doc-search.js',
         ];
     @endphp
     <script src="{{ asset('js/sync.js') }}?v={{ time() }}"></script>

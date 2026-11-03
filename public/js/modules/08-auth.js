@@ -351,6 +351,9 @@ function applyRoleAccess(role) {
     // Perizinan Nasabah (pengingat jatuh tempo izin PT/Yayasan): role pengelola.
     if (['owner', 'superadmin', 'admin', 'supervisor'].includes(accessRole)) visibleMenus.add('customer-license-view');
 
+    // Pencarian Dokumen (tanpa AI): role pengelola.
+    if (['owner', 'superadmin', 'admin', 'supervisor'].includes(accessRole)) visibleMenus.add('doc-search-view');
+
     // Riwayat Kurs (audit BI): role pengelola.
     if (['owner', 'superadmin', 'admin', 'supervisor'].includes(accessRole)) visibleMenus.add('kurs-history-view');
 

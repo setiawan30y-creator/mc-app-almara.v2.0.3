@@ -34,6 +34,7 @@ use App\Http\Controllers\InvestorController;
 use App\Http\Controllers\PickupController;
 use App\Http\Controllers\PosDocumentController;
 use App\Http\Controllers\RateHistoryController;
+use App\Http\Controllers\DocSearchController;
 use App\Http\Controllers\CustomerLicenseController;
 use App\Http\Controllers\GoamlComplianceController;
 use App\Http\Controllers\DashboardAnalyticsController;
@@ -235,6 +236,10 @@ Route::post('/goaml/alerts/{alert}/ltkm', [GoamlComplianceController::class, 'cr
     Route::delete('/customer-licenses/{license}', [CustomerLicenseController::class, 'destroy'])->middleware('role:owner,superadmin,admin');
 
     // Riwayat Kurs (audit BI) - @2026-Alifiandra
+    // Pencarian Dokumen tanpa AI (Regulasi, Penyimpanan Berkas, arsip Nomor Surat). @2026-Alifiandra
+    Route::get('/doc-search', [DocSearchController::class, 'search'])->middleware(['role:owner,superadmin,admin,supervisor', 'throttle:60,1']);
+    Route::get('/doc-search/status', [DocSearchController::class, 'status'])->middleware('role:owner,superadmin,admin,supervisor');
+    Route::post('/doc-search/reindex', [DocSearchController::class, 'reindex'])->middleware(['role:owner,superadmin,admin,supervisor', 'throttle:6,1']);
     Route::get('/rate-history', [RateHistoryController::class, 'index'])->middleware('role:owner,superadmin,admin,supervisor');
     Route::get('/rate-history/status', [RateHistoryController::class, 'status'])->middleware('role:owner,superadmin,admin,supervisor');
     Route::post('/rate-history/settings', [RateHistoryController::class, 'saveSettings'])->middleware('role:owner,superadmin,admin');

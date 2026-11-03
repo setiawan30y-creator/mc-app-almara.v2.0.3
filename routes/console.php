@@ -17,3 +17,8 @@ Schedule::command('mc:backup --automatic')
 Schedule::command('mc:rate-snapshot')
     ->everyMinute()
     ->withoutOverlapping();
+
+// Pencarian Dokumen: indeks teks berkas baru/berubah (OCR hanya bila Tesseract terpasang), dibatasi 50 detik per putaran.
+Schedule::command('mc:search-index')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
