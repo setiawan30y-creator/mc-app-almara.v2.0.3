@@ -118,6 +118,14 @@
             '<div class="aic-prov">' + card('gemini') + card('openai') + '</div>' +
             '<div class="aic-box"><h3>Fitur yang memakai pengaturan ini</h3><div class="aic-uses">' + USES.map(function (u) { return '<div class="aic-u"><i class="fa-solid ' + u[0] + '"></i><div><b>' + u[1] + '</b><span>' + u[2] + '</span></div></div>'; }).join('') + '</div></div>' +
             '<details><summary>Cara mendapatkan API key Gemini (gratis)</summary><ol><li>Buka <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a> dan login dengan akun Google.</li><li>Klik <b>Create API key</b>, lalu salin key yang muncul.</li><li>Tempel di kolom API Key Gemini di atas dan tekan <b>Tes koneksi</b>.</li><li>Tekan <b>Simpan Pengaturan AI</b>.</li></ol></details>' +
+            '<details><summary>Cara mendapatkan API key ChatGPT / OpenAI (berbayar)</summary><ol>' +
+            '<li>Buka <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">platform.openai.com/api-keys</a> dan login atau daftar akun OpenAI.</li>' +
+            '<li>Isi saldo terlebih dahulu di <a href="https://platform.openai.com/settings/organization/billing" target="_blank" rel="noopener noreferrer">Settings &rsaquo; Billing</a> (tambahkan kartu, lalu beli kredit). Tanpa saldo, key akan ditolak.</li>' +
+            '<li>Kembali ke halaman API keys, klik <b>Create new secret key</b>, beri nama (misalnya nama cabang), lalu klik <b>Create</b>.</li>' +
+            '<li>Salin key yang muncul (diawali <b>sk-</b>). Key hanya ditampilkan sekali, jadi simpan di tempat aman.</li>' +
+            '<li>Tempel di kolom API Key kartu <b>ChatGPT / OpenAI</b>, pilih model (gpt-4o-mini paling hemat), lalu tekan <b>Tes koneksi</b>.</li>' +
+            '<li>Klik <b>Jadikan aktif</b> pada kartu OpenAI bila ingin memakainya, lalu tekan <b>Simpan Pengaturan AI</b>.</li>' +
+            '</ol><small class="h">Catatan: membaca PDF/gambar di Sumber Regulasi hanya tersedia dengan Gemini. Pemakaian OpenAI ditagih sesuai jumlah pemakaian.</small></details>' +
             '<div class="aic-foot"><button type="button" class="aic-btn pri" data-act="save"><i class="fa-solid fa-floppy-disk"></i> Simpan Pengaturan AI</button><div class="grow" id="aicNote">Key disimpan di peramban perangkat ini saja dan tidak disinkronkan ke server. Isi ulang bila memakai perangkat atau peramban lain, dan jangan menyimpan key di komputer bersama.</div></div>';
         ['gemini', 'openai'].forEach(function (p) { hint(p); });
     }
