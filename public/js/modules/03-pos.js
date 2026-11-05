@@ -121,8 +121,10 @@ function updateAddToCartState() {
     const amount = parseFloat(document.getElementById('trxAmount') ? document.getElementById('trxAmount').value : '');
     const rate = parseFloat(document.getElementById('trxRate') ? document.getElementById('trxRate').value : '');
 
-    const isReady = Boolean(currency) && amount > 0 && rate > 0;
+    const type = document.getElementById('trxType') ? document.getElementById('trxType').value : '';
+    const isReady = Boolean(type) && Boolean(currency) && amount > 0 && rate > 0;
     addBtn.disabled = !isReady;
+    addBtn.title = type ? '' : 'Pilih dulu Kita Beli atau Kita Jual';
     addBtn.classList.toggle('disabled', !isReady);
 }
 
@@ -163,7 +165,7 @@ function makePosDraftSession(label = '') {
             invoice: '',
             date: now.toISOString().split('T')[0],
             time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
-            trxType: 'BELI',
+            trxType: '', // form baru: kasir wajib memilih Kita Beli / Kita Jual
             currency: '',
             valasSearch: '',
             rateMode: 'AUTO',
@@ -381,7 +383,7 @@ function collectPosDraftFromForm() {
             invoice: get('posTrxIdPreviewModern')?.value || '',
             date: get('trxCheckoutDate')?.value || '',
             time: get('posTrxTimePreviewModern')?.value || '',
-            trxType: get('trxType')?.value || 'BELI',
+            trxType: get('trxType')?.value || '',
             currency: get('trxCurrency')?.value || '',
             valasSearch: get('posValasSearchModern')?.value || '',
             rateMode: get('trxRateMode')?.value || 'AUTO',
@@ -441,7 +443,8 @@ function applyPosDraftToForm(session) {
     setVal('posTrxIdPreviewModern', f.invoice && f.invoice !== '[Otomatis]' ? f.invoice : '[Dibuat saat proses]');
     setVal('trxCheckoutDate', f.date);
     setVal('posTrxTimePreviewModern', f.time);
-    setSelectValue('trxType', f.trxType || 'BELI');
+    setSelectValue('trxType', f.trxType || '');
+    if (typeof window.syncPosTypeButtons === 'function') window.syncPosTypeButtons();
     setSelectValue('trxCurrency', f.currency || '');
     setVal('posValasSearchModern', f.valasSearch);
     setSelectValue('trxRateMode', f.rateMode || 'AUTO');
@@ -761,8 +764,10 @@ function updatePosSummary() {
         const rateMode = document.getElementById('trxRateMode') ? document.getElementById('trxRateMode').value : 'AUTO';
 
         // Auto fill rate if currency is selected and mode is AUTO
-        if(cur && rateMode !== 'MANUAL' && document.activeElement !== document.getElementById('trxRate')) {
+        if(cur && type && rateMode !== 'MANUAL' && document.activeElement !== document.getElementById('trxRate')) {
             document.getElementById('trxRate').value = type === 'BELI' ? cur.buy : cur.sell;
+        } else if (!type && rateMode !== 'MANUAL') {
+            document.getElementById('trxRate').value = '';
         }
         
         const rate = parseFloat(document.getElementById('trxRate').value) || 0;
@@ -771,7 +776,7 @@ function updatePosSummary() {
         // Update UI Summary
         const masterCurrencies = almaraStore.getMasterCurrencies() || [];
         const mc = masterCurrencies.find(m => m && m.code === curCode) || { flag: '' };
-        document.getElementById('summaryType').textContent = type;
+        document.getElementById('summaryType').textContent = type || '-';
         document.getElementById('summaryType').className = type === 'BELI' ? 'text-green' : 'text-red';
         document.getElementById('summaryCurrency').textContent = curCode ? `${mc.flag || ''} ${curCode}` : '-';
         document.getElementById('summaryRate').textContent = almaraUtils.formatRate(rate);
@@ -819,6 +824,9 @@ function resetPosForm(clearPhoto = false) {
         if (underlyingFileEl) underlyingFileEl.value = '';
     }
 
+    if (clearPhoto && typeof window.setPosTransactionType === 'function') {
+        window.setPosTransactionType(''); // transaksi berikutnya: pilih Beli/Jual lagi
+    }
     if (clearPhoto) {
         const trxIdPreviewEl = document.getElementById('posTrxIdPreviewModern');
         if (trxIdPreviewEl && !window.editingTrxId) {
@@ -1585,6 +1593,11 @@ async function addToCart() {
     const amount = parseFloat(document.getElementById('trxAmount').value);
     const rate = parseFloat(document.getElementById('trxRate').value);
 
+    if (type !== 'BELI' && type !== 'JUAL') {
+        alert("Pilih dulu jenis transaksi: Kita Beli Valas atau Kita Jual Valas.");
+        updateAddToCartState();
+        return;
+    }
     if(!curCode || !amount || !rate) {
         alert("Mohon lengkapi form transaksi untuk dimasukkan ke keranjang.");
         updateAddToCartState();
@@ -3223,20 +3236,18 @@ window.setPosTransactionType = function(type) {
     const select = document.getElementById('trxType');
     if (!select) return;
 
-    select.value = type;
+    select.value = type || '';
     select.dispatchEvent(new Event('change'));
+    window.syncPosTypeButtons();
+};
 
-    // Update active button state
+// Tombol Kita Beli / Kita Jual mengikuti pilihan; kosong = belum dipilih (form baru). @2026-Alifiandra
+window.syncPosTypeButtons = function() {
+    const type = document.getElementById('trxType')?.value || '';
     const beliBtn = document.getElementById('posTypeBeliBtnModern');
     const jualBtn = document.getElementById('posTypeJualBtnModern');
-
-    if (type === 'BELI') {
-        beliBtn.classList.add('active');
-        jualBtn.classList.remove('active');
-    } else {
-        beliBtn.classList.remove('active');
-        jualBtn.classList.add('active');
-    }
+    if (beliBtn) beliBtn.classList.toggle('active', type === 'BELI');
+    if (jualBtn) jualBtn.classList.toggle('active', type === 'JUAL');
 };
 
 window.setPosAmountSheet = function(val) {

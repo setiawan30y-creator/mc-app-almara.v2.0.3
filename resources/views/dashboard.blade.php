@@ -874,6 +874,7 @@
                     <div class="pos-layout-modern pos-flow-layout">
                         <div style="display: none !important;">
                             <select id="trxType" class="form-control">
+                                <option value="" selected>-</option>
                                 <option value="BELI">BELI</option>
                                 <option value="JUAL">JUAL</option>
                             </select>
@@ -936,7 +937,7 @@
                                         <span><i class="fa-solid fa-money-bill-transfer"></i> Pilih Valas</span>
                                     </div>
                                     <div class="pos-type-toggle">
-                                        <button type="button" id="posTypeBeliBtnModern" class="pos-type-btn active beli" onclick="window.setPosTransactionType('BELI')">Kita Beli Valas</button>
+                                        <button type="button" id="posTypeBeliBtnModern" class="pos-type-btn beli" onclick="window.setPosTransactionType('BELI')">Kita Beli Valas</button>
                                         <button type="button" id="posTypeJualBtnModern" class="pos-type-btn jual" onclick="window.setPosTransactionType('JUAL')">Kita Jual Valas</button>
                                     </div>
                                     <div class="pos-valas-search-container">

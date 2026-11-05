@@ -71,10 +71,25 @@
         window.recalculatePosChange = wrapped;
     }
 
+    // Split: isi salah satu kolom, kolom lainnya otomatis = sisa tagihan. @2026-Alifiandra
+    function splitFill(fromId) {
+        const cashEl = $('splitCashAmount'), trfEl = $('splitTransferAmount');
+        if (!cashEl || !trfEl) return;
+        const due = amountDue();
+        const src = fromId === 'splitTransferAmount' ? trfEl : cashEl;
+        const other = src === trfEl ? cashEl : trfEl;
+        if (src.value === '') { other.value = ''; return; }
+        let v = parseFloat(src.value) || 0;
+        if (v > due) { v = due; src.value = String(Number(due.toFixed(2))); }
+        other.value = String(Number(Math.max(0, due - v).toFixed(2)));
+        if (typeof window.recalculatePosChange === 'function') { try { window.recalculatePosChange(); } catch (e) { /* abaikan */ } }
+    }
+
     document.addEventListener('input', (ev) => {
         const id = ev.target && ev.target.id;
         if (id === 'posCashReceivedModern' && ev.isTrusted) dirty = true;
         else if (id === 'dpAmount') autofill();
+        else if ((id === 'splitCashAmount' || id === 'splitTransferAmount') && ev.isTrusted) splitFill(id);
     });
     document.addEventListener('change', (ev) => {
         const id = ev.target && ev.target.id;
