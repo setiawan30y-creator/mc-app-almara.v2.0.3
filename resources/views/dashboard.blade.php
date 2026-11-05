@@ -434,6 +434,7 @@
                     </button>
                     <div class="sidebar-group-items" data-sidebar-group-items="transaksi">
                     <a href="#" class="nav-item" data-target="pos-view" data-sidebar-group="transaksi" id="navPosReal"><i class="fa-solid fa-cash-register"></i> Transaksi / POS</a>
+                    <a href="#" class="nav-item" data-target="reports-view" data-sidebar-group="transaksi"><i class="fa-solid fa-clock-rotate-left"></i> Riwayat Transaksi</a>
                     <a href="#" class="nav-item" data-target="demo-pos-view" data-sidebar-group="transaksi"><i class="fa-solid fa-flask"></i> Demo Transaksi</a>
                     <a href="#" class="nav-item" data-target="kurs-hari-ini-view" data-sidebar-group="transaksi"><i class="fa-solid fa-money-bill-trend-up"></i> Kurs Hari Ini</a>
                     <a href="#" class="nav-item" data-target="booking-view" data-sidebar-group="transaksi"><i class="fa-solid fa-book-bookmark"></i> Daftar Booking</a>
@@ -492,7 +493,6 @@
                     <div class="sidebar-group-items" data-sidebar-group-items="laporan">
                     <a href="#" class="nav-item" data-target="harian-view" data-sidebar-group="laporan"><i class="fa-solid fa-calendar-day"></i> Laporan Harian</a>
                     <a href="#" class="nav-item" data-target="laporan-posisi-valuta-view" data-sidebar-group="laporan"><i class="fa-solid fa-table-list"></i> Rekap Valuta</a>
-                    <a href="#" class="nav-item" data-target="reports-view" data-sidebar-group="laporan"><i class="fa-solid fa-clock-rotate-left"></i> Riwayat Transaksi</a>
                     <a href="#" class="nav-item" data-target="laporan-aset-view" data-sidebar-group="laporan"><i class="fa-solid fa-building"></i> Aset & Penyusutan</a>
                     <a href="#" class="nav-item" data-target="laporan-bukubesar-view" data-sidebar-group="laporan"><i class="fa-solid fa-book"></i> Buku Besar</a>
                     <a href="#" class="nav-item" data-target="laporan-coretax-view" data-sidebar-group="laporan"><i class="fa-solid fa-file-invoice-dollar"></i> CoreTax</a>
