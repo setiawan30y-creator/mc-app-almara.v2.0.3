@@ -110,6 +110,8 @@ Route::post('/goaml/alerts/{alert}/ltkm', [GoamlComplianceController::class, 'cr
     Route::get('/session-policy', [SessionPolicyController::class, 'show']);
     Route::post('/session-policy', [SessionPolicyController::class, 'update'])->middleware('role:owner,superadmin,admin');
     Route::post('/session/ping', [SessionPolicyController::class, 'ping'])->middleware('throttle:60,1');
+    // Tanda perubahan data untuk pembaruan otomatis antar akun. @2026-Alifiandra
+    Route::get('/live/version', [\App\Http\Controllers\LiveSyncController::class, 'version'])->middleware('throttle:120,1');
 
     Route::post('/uploads', [UploadController::class, 'store']);
     Route::post('/ocr/vision', [OcrController::class, 'vision'])->middleware('throttle:20,1');

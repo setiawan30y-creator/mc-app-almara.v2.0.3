@@ -179,12 +179,15 @@ async function saveMutation() {
     let warn = '';
     if (typeof window.__postBankMutSync === 'function') {
         try {
-            const res = await window.__postBankMutSync([], mutations);
+            // Hanya mutasi yang disimpan ini yang dikirim. Daftar lain di browser bisa saja sudah usang
+            // (diubah/dihapus dari akun lain), jadi tidak boleh ikut dikirim ulang. @2026-Alifiandra
+            const res = await window.__postBankMutSync([], mutations.filter(x => String(x.id_mutasi) === String(targetId)));
             const rej = (res.rejected || []).find(r => String(r.id_mutasi) === String(targetId));
             if (rej) { alert('Mutasi belum disimpan.\n\n' + rej.message); return; }
             warn = window.__bankMutRejectText(res.rejected, targetId);
         } catch (err) {
             if (!confirm('Server tidak dapat dihubungi (' + err.message + ').\n\nSimpan di browser dulu dan coba catat ke server nanti?')) return;
+            window.__bankMutPending('upsert', targetId);
         }
     }
 
@@ -203,11 +206,12 @@ window.deleteMutation = async function(id) {
     if(confirm('Yakin ingin menghapus mutasi ini? Saldo Bank akan disesuaikan kembali secara otomatis.')) {
         if (typeof window.__postBankMutSync === 'function') {
             try {
-                const res = await window.__postBankMutSync([id], getMutations().filter(x => x.id_mutasi !== id));
+                const res = await window.__postBankMutSync([id], []);
                 const rej = (res.rejected || []).find(r => String(r.id_mutasi) === String(id));
                 if (rej) { alert('Mutasi belum dihapus.\n\n' + rej.message); return; }
             } catch (err) {
                 if (!confirm('Server tidak dapat dihubungi (' + err.message + ').\n\nHapus di browser dulu dan catat ke server nanti?')) return;
+                window.__bankMutPending('delete', id);
             }
         }
         let mutations = getMutations();
@@ -2275,7 +2279,13 @@ window.__postBankMutSync = async function(deletedIds, proposedList) {
         window.__bankMutSyncSig = (jsonP.rejected || []).length ? '' : JSON.stringify(rowsP);
         return jsonP;
     }
-    const rows = (typeof getRealBankMutations === 'function' ? getRealBankMutations() : []).map(m => ({
+    // Sinkron latar belakang: hanya mutasi yang tertunda di browser ini (disimpan/dihapus saat server
+    // tidak bisa dihubungi). Daftar lengkap tidak dikirim ulang agar mutasi yang sudah dihapus dari
+    // akun lain tidak muncul kembali. @2026-Alifiandra
+    const pending = window.__bankMutPending();
+    const rows = (typeof getRealBankMutations === 'function' ? getRealBankMutations() : [])
+        .filter(m => pending.upsert.includes(String(m.id_mutasi)))
+        .map(m => ({
         id_mutasi: String(m.id_mutasi),
         bank: m.bank || 'BCA',
         tipe: m.tipe,
@@ -2283,9 +2293,9 @@ window.__postBankMutSync = async function(deletedIds, proposedList) {
         keterangan: m.keterangan || '',
         timestamp: m.timestamp || null
     })).filter(m => m.id_mutasi && m.nominal > 0 && (m.tipe === 'MASUK' || m.tipe === 'KELUAR'));
-    const deleted = (deletedIds || []).map(String);
+    const deleted = Array.from(new Set([...(deletedIds || []).map(String), ...pending.del]));
+    if (!deleted.length && !rows.length) return;
     const sig = JSON.stringify(rows);
-    if (!deleted.length && sig === window.__bankMutSyncSig) return;
 
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const doFetch = window.authFetch || window.fetch;
@@ -2298,7 +2308,24 @@ window.__postBankMutSync = async function(deletedIds, proposedList) {
     const json = await response.json().catch(() => ({}));
     if (!response.ok || json.status !== 'success') throw new Error(json.message || 'Server menolak mutasi');
     window.__bankMutSyncSig = (json.rejected || []).length ? '' : sig;
+    window.__bankMutPending('clear', null, [...rows.map(r => r.id_mutasi), ...deleted]);
     return json;
+};
+
+// Antrean mutasi yang belum terkirim (hanya di browser ini, tidak ikut disinkronkan).
+window.__bankMutPending = function(action, id, ids) {
+    const KEY = 'almara_bankmut_pending';
+    let p;
+    try { p = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { p = {}; }
+    p.upsert = Array.isArray(p.upsert) ? p.upsert : [];
+    p.del = Array.isArray(p.del) ? p.del : [];
+    if (!action) return p;
+    const sid = id === null || id === undefined ? null : String(id);
+    if (action === 'upsert' && sid) { p.del = p.del.filter(x => x !== sid); if (!p.upsert.includes(sid)) p.upsert.push(sid); }
+    if (action === 'delete' && sid) { p.upsert = p.upsert.filter(x => x !== sid); if (!p.del.includes(sid)) p.del.push(sid); }
+    if (action === 'clear') { const done = new Set((ids || []).map(String)); p.upsert = p.upsert.filter(x => !done.has(x)); p.del = p.del.filter(x => !done.has(x)); }
+    try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) {}
+    return p;
 };
 
 // Daftar mutasi yang ditolak server (mis. saldo tidak cukup) -> pesan untuk pengguna.

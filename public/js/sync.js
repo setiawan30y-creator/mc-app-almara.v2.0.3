@@ -23,12 +23,55 @@ function refreshActiveRealtimeViews(options = {}) {
         if (isActive('laporan-posisi-valuta-view') && typeof loadLaporanPosisiValuta === 'function') loadLaporanPosisiValuta();
         if (isActive('old-money-view') && typeof loadOldMoneyDashboard === 'function') loadOldMoneyDashboard();
         if (isActive('gantungan-view') && typeof window.initGantunganView === 'function') window.initGantunganView();
+        if (options.live) refreshMoreRealtimeViews(isActive);
         if (typeof window.updateHeaderNotificationBadge === 'function') window.updateHeaderNotificationBadge();
     } catch (error) {
         console.warn('Realtime refresh view gagal:', error);
     }
 }
 window.refreshActiveRealtimeViews = refreshActiveRealtimeViews;
+
+// Halaman lain yang ikut diperbarui saat data dari akun lain berubah. Halaman dengan form
+// tidak diperbarui selama pengguna sedang mengetik di halaman itu (agar isian tidak hilang).
+// @2026-Alifiandra
+(function trackRealtimeTyping() {
+    if (window.__almaraTypingTracker) return;
+    window.__almaraTypingTracker = true;
+    window.__almaraTypingAt = {};
+    document.addEventListener('input', (e) => {
+        const view = e.target && e.target.closest ? e.target.closest('.view-section') : null;
+        if (view && view.id) window.__almaraTypingAt[view.id] = Date.now();
+    }, true);
+})();
+function isUserEditingView(id) {
+    const view = document.getElementById(id);
+    if (!view) return false;
+    const el = document.activeElement;
+    if (el && view.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return true;
+    return Date.now() - ((window.__almaraTypingAt || {})[id] || 0) < 20000;
+}
+function refreshMoreRealtimeViews(isActive) {
+    const run = (id, fn, guard) => {
+        if (!isActive(id) || typeof fn !== 'function') return;
+        if (guard && isUserEditingView(id)) return;
+        try { fn(); } catch (e) { console.warn('Refresh ' + id + ' gagal:', e); }
+    };
+    run('mutation-view', () => window.loadBankMutationCards && window.loadBankMutationCards(true));
+    run('settings-view', window.loadSettingsProfile || (typeof loadSettingsProfile === 'function' ? loadSettingsProfile : null), true);
+    run('closing-view', window.initClosingView, true);
+    run('adjustment-view', typeof loadAdjustmentsTable === 'function' ? loadAdjustmentsTable : null);
+    run('booking-view', typeof loadBookingsTable === 'function' ? loadBookingsTable : null);
+    run('kurs-hari-ini-view', typeof loadKursHariIniTable === 'function' ? loadKursHariIniTable : null, true);
+    run('investor-view', window.loadInvestorTable, true);
+    run('pt-rep-view', window.initPtReps, true);
+    run('pickup-view', typeof initPickupView === 'function' ? initPickupView : null, true);
+    run('laporan-granular-view', typeof loadLaporanGranular === 'function' ? loadLaporanGranular : null);
+    run('laporan-bukubesar-view', typeof loadBukuBesar === 'function' ? loadBukuBesar : null);
+    run('laporan-labarugi-view', typeof loadLabaRugi === 'function' ? loadLabaRugi : null);
+    run('laporan-neraca-view', typeof loadNeraca === 'function' ? loadNeraca : null);
+    run('laporan-aset-view', typeof loadAssetReport === 'function' ? loadAssetReport : null);
+}
+window.isUserEditingView = isUserEditingView;
 
 function parseRealtimeStorageValue(value) {
     if (typeof value !== 'string') return value;
@@ -79,6 +122,7 @@ if (!window.__almaraRealtimeStoragePatch) {
 
         clearTimeout(window.__almaraRealtimePushTimers?.[key]);
         window.__almaraRealtimePushTimers = window.__almaraRealtimePushTimers || {};
+        window.__almaraLastLocalDatastoreWriteAt = Date.now();
         window.__almaraRealtimePushTimers[key] = setTimeout(() => {
             pushToUniversalDatastore(key, parseRealtimeStorageValue(value));
         }, 250);
@@ -609,6 +653,7 @@ async function pushToUniversalDatastore(storeKey, jsonData) {
         return { status: 'skipped' };
     }
 
+    window.__almaraDatastorePushes = (window.__almaraDatastorePushes || 0) + 1;
     try {
         const response = await fetch('api/datastore', {
             method: 'POST',
@@ -631,6 +676,8 @@ async function pushToUniversalDatastore(storeKey, jsonData) {
         console.log(`Update ${storeKey} ke MySQL:`, result.message);
     } catch (error) {
         console.error(`Gagal menyimpan ${storeKey} ke MySQL:`, error);
+    } finally {
+        window.__almaraDatastorePushes = Math.max(0, (window.__almaraDatastorePushes || 1) - 1);
     }
 }
 
@@ -1623,18 +1670,67 @@ function startAlmaraRealtimeSync() {
     window.__transactionRealtimeSyncStarted = true;
     window.__globalRealtimeSyncStarted = true;
 
-    window.__almaraRealtimeSyncTimer = setInterval(async () => {
+    // Pembaruan otomatis antar akun. @2026-Alifiandra
+    // Setiap 3 detik browser hanya menanyakan "tanda perubahan" ke server (sangat ringan).
+    // Bila ada input/edit/hapus dari akun lain, data yang berubah ditarik dan halaman yang
+    // sedang dibuka diperbarui tanpa refresh. Bila endpoint belum tersedia, kembali ke cara lama.
+    const live = window.__almaraLive = window.__almaraLive || { version: null, parts: {}, lastFull: 0, fallback: false };
+
+    const fullSync = async () => {
+        await syncFromMySQL_Transactions({ pushLocal: false, refreshUi: true, silent: true });
+        await syncFromMySQL_Currencies({ refreshUi: true, silent: true });
+        await syncFromMySQL_Customers({ refreshUi: true, silent: true });
+        await syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
+    };
+
+    const tick = async (force) => {
         if (window.__almaraRealtimeSyncBusy) return;
+        if (document.hidden && !force) return;
+        // Jangan menarik data server saat simpanan dari browser ini belum selesai terkirim.
+        if ((window.__almaraDatastorePushes || 0) > 0 || Date.now() - (window.__almaraLastLocalDatastoreWriteAt || 0) < 1500) return;
         window.__almaraRealtimeSyncBusy = true;
         try {
-            await syncFromMySQL_Transactions({ pushLocal: false, refreshUi: true, silent: true });
-            await syncFromMySQL_Currencies({ refreshUi: true, silent: true });
-            await syncFromMySQL_Customers({ refreshUi: true, silent: true });
-            await syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
+            if (live.fallback) { await fullSync(); return; }
+            let res;
+            try {
+                res = await fetch(`api/live/version?t=${Date.now()}`, { cache: 'no-store', credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+            } catch (e) { return; }
+            if (res.status === 404) { live.fallback = true; await fullSync(); return; }
+            if (!res.ok) return;
+            const json = await res.json().catch(() => null);
+            if (!json || !json.version) return;
+
+            const first = live.version === null;
+            const changed = !first && json.version !== live.version;
+            const stale = Date.now() - live.lastFull > 60000;
+            if (!first && !changed && !stale) return;
+
+            const prev = live.parts || {};
+            const parts = json.parts || {};
+            const diff = (k) => first || stale || prev[k] !== parts[k];
+            // Pemeriksaan berkala (tanpa tanda berubah): halaman hanya diperbarui bila datanya memang beda.
+            const ru = !changed;
+            if (diff('transactions')) await syncFromMySQL_Transactions({ pushLocal: false, refreshUi: ru, silent: true });
+            if (diff('currencies') || diff('ledger')) await syncFromMySQL_Currencies({ refreshUi: ru, silent: true });
+            if (diff('customers')) await syncFromMySQL_Customers({ refreshUi: ru, silent: true });
+            if (diff('datastore') || diff('ledger')) await syncUniversalDatastore({ preferRemote: true, refreshUi: ru, silent: true });
+
+            live.version = json.version;
+            live.parts = parts;
+            live.lastFull = Date.now();
+            if (changed) {
+                refreshActiveRealtimeViews({ live: true });
+                try { document.dispatchEvent(new CustomEvent('almara:data-changed', { detail: { parts: Object.keys(parts).filter(diff) } })); } catch (e) {}
+            }
         } finally {
             window.__almaraRealtimeSyncBusy = false;
         }
-    }, 4000);
+    };
+    window.almaraLiveCheckNow = () => tick(true);
+
+    window.__almaraRealtimeSyncTimer = setInterval(() => tick(false), 3000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(true); });
+    window.addEventListener('focus', () => tick(true));
 }
 
 function stopAlmaraRealtimeSync() {
