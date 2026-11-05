@@ -1144,6 +1144,47 @@
         load(S.date);
     };
 
+    // Ringkasan selisih rekonsiliasi (kas + valas + bank) untuk tanggal tertentu, dihitung PERSIS
+    // seperti halaman Closing Harian: data server + hitungan fisik yang tersimpan / draft terbaru.
+    // Dipakai kartu "Selisih Rekons" di Dashboard. @2026-Alifiandra
+    window.mcClosingSummary = async function (date) {
+        date = date || todayStr();
+        const res = await api(`api/closing/day?date=${encodeURIComponent(date)}`, { cache: 'no-store' });
+        const d = res.data || {};
+        const c = d.closing || null;
+        let denoms = {}, stock = {}, bank = {};
+        if (c && Array.isArray(c.denominations)) c.denominations.forEach((r) => { denoms[r.denomination] = r.quantity; });
+        (d.stocks || []).forEach((x) => { if (x.physical_qty !== null && x.physical_qty !== undefined) stock[x.currency_code] = x.physical_qty; });
+        (d.banks || []).forEach((b) => { if (b.statement_balance !== null && b.statement_balance !== undefined) bank[b.id] = b.statement_balance; });
+        if (!c || c.status !== 'CLOSED') {
+            let draft = null;
+            try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY(date)) || 'null'); } catch (e) { draft = null; }
+            const lastLog = c && c.logs && c.logs[0] ? Date.parse(c.logs[0].created_at) || 0 : 0;
+            if (draft && (!c || draft.at > lastLog)) {
+                denoms = draft.denoms || denoms; stock = draft.stock || stock; bank = draft.bank || bank;
+            }
+        }
+        const cashInfo = d.cash || { expected: 0, hanging: 0 };
+        const physical = DENOMS.reduce((sum, den) => sum + den * (parseInt(denoms[den], 10) || 0), 0);
+        const cashCounted = physical > 0;
+        const cash = cashCounted ? (physical + (cashInfo.hanging || 0)) - (cashInfo.expected || 0) : 0;
+        let valSum = 0, valCount = 0, bankSum = 0, bankCount = 0;
+        (d.stocks || []).forEach((x) => {
+            const v = stock[x.currency_code];
+            if (v === undefined || v === null || v === '') return;
+            valCount++; valSum += (Number(v) - x.system_qty) * (x.rate || 0);
+        });
+        (d.banks || []).forEach((b) => {
+            const v = bank[b.id];
+            if (v === undefined || v === null || v === '') return;
+            bankCount++; bankSum += Number(v) - b.closing;
+        });
+        return {
+            date, status: closingStatusKey(c), statusLabel: (STATUS[closingStatusKey(c)] || {}).label || '',
+            cashCounted, cash, valSum, valCount, bankSum, bankCount, total: cash + valSum + bankSum
+        };
+    };
+
     window.refreshClosingView = function () {
         if (!S.dirty) load(S.date, { silent: true });
     };

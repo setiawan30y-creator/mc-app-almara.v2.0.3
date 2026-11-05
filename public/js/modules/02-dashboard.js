@@ -294,6 +294,26 @@ async function loadDashboard() {
     const selisihHint = document.getElementById('dashTotalSelisihHint');
     if(selisihHint) selisihHint.textContent = reconciliationSummary.source;
 
+    // Selisih dihitung langsung dari Closing Harian (data server terbaru), bukan riwayat closing lama,
+    // sehingga input biaya/transaksi baru langsung terlihat di kartu ini. @2026-Alifiandra
+    if (typeof window.mcClosingSummary === 'function') {
+        window.mcClosingSummary(isFiltered ? targetDate : undefined).then(sum => {
+            if (!sum || !selisihEl) return;
+            const v = Math.round(sum.total);
+            selisihEl.textContent = (v > 0 ? '+' : v < 0 ? '-' : '') + utils.formatIdr(Math.abs(v));
+            selisihEl.style.color = v < 0 ? '#ef4444' : v > 0 ? '#10b981' : '#8b5cf6';
+            if (selisihHint) {
+                const parts = [];
+                if (sum.cashCounted) parts.push('Kas ' + (sum.cash >= 0 ? '+' : '-') + utils.formatIdr(Math.abs(Math.round(sum.cash))));
+                if (sum.valCount) parts.push('Valas ' + (sum.valSum >= 0 ? '+' : '-') + utils.formatIdr(Math.abs(Math.round(sum.valSum))));
+                if (sum.bankCount) parts.push('Bank ' + (sum.bankSum >= 0 ? '+' : '-') + utils.formatIdr(Math.abs(Math.round(sum.bankSum))));
+                selisihHint.textContent = parts.length
+                    ? 'Closing ' + window.formatDateToDMY(sum.date) + ' (' + (sum.statusLabel || 'Draft') + '): ' + parts.join(' · ')
+                    : 'Closing ' + window.formatDateToDMY(sum.date) + ': belum ada hitungan fisik';
+            }
+        }).catch(() => {});
+    }
+
     // Update text labels for dynamic date
     const labelsToUpdate = [
         { id: '#dashTotalPurchases', text: 'Total Pembelian' },
