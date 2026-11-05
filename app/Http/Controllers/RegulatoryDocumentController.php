@@ -271,7 +271,48 @@ class RegulatoryDocumentController extends Controller
         $count = RegulatoryIndex::reindex($doc, $text);
         $doc->forceFill([
             'status' => 'ready', 'processing_error' => null, 'extracted_text' => $text, 'chunk_count' => $count, 'extracted_at' => now(),
-        ])->save();
+        ] + self::guessMeta($doc, $text))->save();
+    }
+
+    /**
+     * Form unggah dibuat sederhana (hanya file), jadi penerbit, jenis, nomor, dan tanggal
+     * ditebak dari awal isi dokumen. Hanya mengisi kolom yang masih kosong. @2026-Alifiandra
+     */
+    private static function guessMeta(RegulatoryDocument $doc, string $text): array
+    {
+        $head = mb_substr($text, 0, 5000);
+        $up = mb_strtoupper($head);
+        $out = [];
+        $types = [
+            'PERKA_PPATK' => '/PERATURAN\s+KEPALA\s+PPATK|PERKA\s*PPATK|PERATURAN\s+KEPALA\s+PUSAT\s+PELAPORAN/u',
+            'PADG' => '/\bPADG\b|PERATURAN ANGGOTA DEWAN GUBERNUR/u', 'PBI' => '/\bPBI\b|PERATURAN BANK INDONESIA/u',
+            'SEBI' => '/\bSEBI\b|SURAT EDARAN BANK INDONESIA/u', 'POJK' => '/\bPOJK\b|PERATURAN OTORITAS JASA KEUANGAN/u',
+            'PMK' => '/\bPMK\b|PERATURAN MENTERI KEUANGAN/u', 'PERPRES' => '/PERATURAN PRESIDEN|\bPERPRES\b/u',
+            'PP' => '/PERATURAN PEMERINTAH/u', 'UU' => '/UNDANG-UNDANG\s+(REPUBLIK INDONESIA\s+)?NOMOR/u', 'SE' => '/SURAT EDARAN/u',
+        ];
+        if (!$doc->doc_type) {
+            foreach ($types as $t => $re) {
+                if (preg_match($re, $up)) { $out['doc_type'] = $t; break; }
+            }
+        }
+        if (!$doc->issuer) {
+            $type = $out['doc_type'] ?? $doc->doc_type;
+            if (preg_match('/\bPPATK\b|PUSAT PELAPORAN DAN ANALISIS TRANSAKSI KEUANGAN/u', $up)) $out['issuer'] = 'PPATK';
+            elseif (preg_match('/BANK INDONESIA|\bPBI\b|\bPADG\b|\bSEBI\b/u', $up)) $out['issuer'] = 'BI';
+            elseif (preg_match('/OTORITAS JASA KEUANGAN|\bPOJK\b/u', $up)) $out['issuer'] = 'OJK';
+            elseif (preg_match('/MENTERI KEUANGAN|\bPMK\b/u', $up)) $out['issuer'] = 'KEMENKEU';
+            elseif ($type && isset(['PADG' => 1, 'PBI' => 1, 'SEBI' => 1][$type])) $out['issuer'] = 'BI';
+        }
+        if (!$doc->regulation_number && preg_match('/NOMOR\s+([0-9]{1,4}(?:\/[A-Z0-9.\-]+)*)\s+TAHUN\s+(\d{4})/u', $up, $m)) {
+            $out['regulation_number'] = 'Nomor ' . $m[1] . ' Tahun ' . $m[2];
+        }
+        if (!$doc->effective_date && preg_match('/(?:DITETAPKAN|BERLAKU)\D{0,60}?(\d{1,2})\s+(JANUARI|FEBRUARI|MARET|APRIL|MEI|JUNI|JULI|AGUSTUS|SEPTEMBER|OKTOBER|NOVEMBER|DESEMBER)\s+(\d{4})/u', mb_strtoupper(mb_substr($text, 0, 60000)), $m)) {
+            $mon = ['JANUARI' => 1, 'FEBRUARI' => 2, 'MARET' => 3, 'APRIL' => 4, 'MEI' => 5, 'JUNI' => 6, 'JULI' => 7, 'AGUSTUS' => 8, 'SEPTEMBER' => 9, 'OKTOBER' => 10, 'NOVEMBER' => 11, 'DESEMBER' => 12][$m[2]];
+            if (checkdate($mon, (int) $m[1], (int) $m[3])) {
+                $out['effective_date'] = sprintf('%04d-%02d-%02d', $m[3], $mon, $m[1]);
+            }
+        }
+        return $out;
     }
 
     private function brief(RegulatoryDocument $d): array

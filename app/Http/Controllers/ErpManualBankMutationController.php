@@ -38,26 +38,41 @@ class ErpManualBankMutationController extends Controller
         $actorId = optional($request->user())->id;
         $actorId = is_numeric($actorId) ? (int) $actorId : null;
         $created = 0;
+        $rejected = [];
 
-        try {
-            DB::transaction(function () use ($data, $actorId, &$created) {
-                foreach ($data['mutations'] ?? [] as $row) {
-                    $account = $this->resolveAccount($row['bank']);
-                    $signed = ($row['tipe'] === 'MASUK' ? 1 : -1) * (float) $row['nominal'];
-                    $created += $this->applyTarget($row['id_mutasi'], [$account->id => $signed], $row, $actorId);
-                }
-                foreach ($data['deleted'] ?? [] as $id) {
-                    $created += $this->applyTarget($id, [], ['keterangan' => null, 'timestamp' => null], $actorId);
-                }
-            });
-        } catch (ValidationException $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => collect($e->errors())->flatten()->first() ?: 'Mutasi ditolak.',
-            ], 422);
+        // Setiap mutasi diproses sendiri-sendiri: satu mutasi yang ditolak (mis. saldo kurang) tidak lagi
+        // menggagalkan mutasi lain. Hapus & mutasi masuk diproses dulu, lalu keluar, urut waktu. @2026-Alifiandra
+        $rows = $data['mutations'] ?? [];
+        usort($rows, function ($a, $b) {
+            $ka = $a['tipe'] === 'MASUK' ? 0 : 1;
+            $kb = $b['tipe'] === 'MASUK' ? 0 : 1;
+            return $ka <=> $kb ?: strcmp((string) ($a['timestamp'] ?? ''), (string) ($b['timestamp'] ?? ''));
+        });
+        $jobs = [];
+        foreach ($data['deleted'] ?? [] as $id) {
+            $jobs[] = [(string) $id, null];
+        }
+        foreach ($rows as $row) {
+            $jobs[] = [(string) $row['id_mutasi'], $row];
         }
 
-        return response()->json(['status' => 'success', 'created' => $created]);
+        foreach ($jobs as [$id, $row]) {
+            try {
+                DB::transaction(function () use ($id, $row, $actorId, &$created) {
+                    if ($row === null) {
+                        $created += $this->applyTarget($id, [], ['keterangan' => null, 'timestamp' => null], $actorId);
+                        return;
+                    }
+                    $account = $this->resolveAccount($row['bank']);
+                    $signed = ($row['tipe'] === 'MASUK' ? 1 : -1) * (float) $row['nominal'];
+                    $created += $this->applyTarget($id, [$account->id => $signed], $row, $actorId);
+                });
+            } catch (ValidationException $e) {
+                $rejected[] = ['id_mutasi' => $id, 'message' => collect($e->errors())->flatten()->first() ?: 'Mutasi ditolak.'];
+            }
+        }
+
+        return response()->json(['status' => 'success', 'created' => $created, 'rejected' => $rejected]);
     }
 
     /**
@@ -88,10 +103,13 @@ class ErpManualBankMutationController extends Controller
             }
 
             $account = ErpBankAccount::query()->whereKey($accountId)->lockForUpdate()->first();
-            $balance = $this->balanceOf($account) + $diff;
+            $now = $this->balanceOf($account);
+            $balance = $now + $diff;
             if ($diff < 0 && $balance < -0.005) {
+                $fmt = fn ($v) => 'Rp ' . number_format($v, 0, ',', '.');
                 throw ValidationException::withMessages([
-                    'nominal' => "Saldo bank {$account->bank_name} tidak mencukupi untuk mutasi ini.",
+                    'nominal' => "Saldo {$account->bank_name} tercatat {$fmt($now)}, tidak cukup untuk mutasi keluar {$fmt(abs($diff))}. "
+                        . 'Catat dulu mutasi masuknya, atau periksa saldo awal bank di Pengaturan › Saldo Awal.',
                 ]);
             }
 

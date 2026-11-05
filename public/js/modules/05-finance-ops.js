@@ -89,7 +89,7 @@ function closeMutationModal() {
     document.getElementById('mutationModal').classList.remove('show');
 }
 
-function saveMutation() {
+async function saveMutation() {
     const idElem = document.getElementById('modalMutId');
     const id = idElem ? idElem.value : '';
     const type = document.getElementById('modalMutType').value;
@@ -124,11 +124,7 @@ function saveMutation() {
             }
             
             currentBank = bankTgt === 'BCA' ? bankBCA : bankMandiri;
-
-            if(type === 'KELUAR' && currentBank < amount) {
-                alert(`Saldo Bank ${bankTgt} tidak mencukupi untuk mutasi keluar ini. Edit dibatalkan.`);
-                return;
-            }
+            // Kecukupan saldo diperiksa oleh server (ledger) sebelum disimpan, lihat di bawah.
 
             if(type === 'MASUK') currentBank += amount;
             else currentBank -= amount;
@@ -145,11 +141,6 @@ function saveMutation() {
             mutations[index].editBy = currUser;
         }
     } else {
-        if(type === 'KELUAR' && currentBank < amount) {
-            alert(`Saldo Bank ${bankTgt} tidak mencukupi untuk mutasi keluar ini.`);
-            return;
-        }
-
         if(type === 'MASUK') currentBank += amount;
         else currentBank -= amount;
         
@@ -176,18 +167,42 @@ function saveMutation() {
         });
     }
 
+    // Catat ke server DULU; hanya bila diterima, simpan di browser. Data browser & server tetap sama. @2026-Alifiandra
+    const targetId = id || mutations[mutations.length - 1].id_mutasi;
+    let warn = '';
+    if (typeof window.__postBankMutSync === 'function') {
+        try {
+            const res = await window.__postBankMutSync([], mutations);
+            const rej = (res.rejected || []).find(r => String(r.id_mutasi) === String(targetId));
+            if (rej) { alert('Mutasi belum disimpan.\n\n' + rej.message); return; }
+            warn = window.__bankMutRejectText(res.rejected, targetId);
+        } catch (err) {
+            if (!confirm('Server tidak dapat dihubungi (' + err.message + ').\n\nSimpan di browser dulu dan coba catat ke server nanti?')) return;
+        }
+    }
+
     saveMutations(mutations);
     saveBankBCA(bankBCA);
     saveBankMandiri(bankMandiri);
     closeMutationModal();
     loadMutationsTable();
-    if (typeof window.syncBankMutationsToLedger === 'function') window.syncBankMutationsToLedger([], true);
+    if (typeof window.loadBankMutationCards === 'function') window.loadBankMutationCards(true);
+    if (typeof window.syncUniversalDatastore === 'function') window.syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
     if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
-    alert("Mutasi bank berhasil disimpan!");
+    alert("Mutasi bank berhasil disimpan!" + (warn ? '\n\n' + warn : ''));
 }
 
-window.deleteMutation = function(id) {
+window.deleteMutation = async function(id) {
     if(confirm('Yakin ingin menghapus mutasi ini? Saldo Bank akan disesuaikan kembali secara otomatis.')) {
+        if (typeof window.__postBankMutSync === 'function') {
+            try {
+                const res = await window.__postBankMutSync([id], getMutations().filter(x => x.id_mutasi !== id));
+                const rej = (res.rejected || []).find(r => String(r.id_mutasi) === String(id));
+                if (rej) { alert('Mutasi belum dihapus.\n\n' + rej.message); return; }
+            } catch (err) {
+                if (!confirm('Server tidak dapat dihubungi (' + err.message + ').\n\nHapus di browser dulu dan catat ke server nanti?')) return;
+            }
+        }
         let mutations = getMutations();
         let bankBCA = getBankBCA();
         let bankMandiri = getBankMandiri();
@@ -210,7 +225,7 @@ window.deleteMutation = function(id) {
             saveBankBCA(bankBCA);
             saveBankMandiri(bankMandiri);
             loadMutationsTable();
-            if (typeof window.syncBankMutationsToLedger === 'function') window.syncBankMutationsToLedger([id], true);
+            if (typeof window.loadBankMutationCards === 'function') window.loadBankMutationCards(true);
             if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
         }
     }
@@ -2205,7 +2220,30 @@ function renderBankMutationDetail(code) {
 }
 
 window.__bankMutSyncSig = '';
-window.__postBankMutSync = async function(deletedIds) {
+window.__bankMutRows = function(list) {
+    return (list || []).filter(m => !(typeof isSystemBankAdjustmentMutation === 'function' && isSystemBankAdjustmentMutation(m))).map(m => ({
+        id_mutasi: String(m.id_mutasi),
+        bank: m.bank || 'BCA',
+        tipe: m.tipe,
+        nominal: Number(m.nominal),
+        keterangan: m.keterangan || '',
+        timestamp: m.timestamp || null
+    })).filter(m => m.id_mutasi && m.nominal > 0 && (m.tipe === 'MASUK' || m.tipe === 'KELUAR'));
+};
+window.__postBankMutSync = async function(deletedIds, proposedList) {
+    if (proposedList) {
+        const rowsP = window.__bankMutRows(proposedList);
+        const csrfP = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const resP = await (window.authFetch || window.fetch)('/api/erp/bank-mutations/sync', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfP },
+            body: JSON.stringify({ mutations: rowsP, deleted: (deletedIds || []).map(String) })
+        });
+        const jsonP = await resP.json().catch(() => ({}));
+        if (!resP.ok || jsonP.status !== 'success') { const er = new Error(jsonP.message || 'Server menolak mutasi'); er.server = resP.status > 0; throw er; }
+        window.__bankMutSyncSig = (jsonP.rejected || []).length ? '' : JSON.stringify(rowsP);
+        return jsonP;
+    }
     const rows = (typeof getRealBankMutations === 'function' ? getRealBankMutations() : []).map(m => ({
         id_mutasi: String(m.id_mutasi),
         bank: m.bank || 'BCA',
@@ -2228,12 +2266,23 @@ window.__postBankMutSync = async function(deletedIds) {
     });
     const json = await response.json().catch(() => ({}));
     if (!response.ok || json.status !== 'success') throw new Error(json.message || 'Server menolak mutasi');
-    window.__bankMutSyncSig = sig;
+    window.__bankMutSyncSig = (json.rejected || []).length ? '' : sig;
+    return json;
+};
+
+// Daftar mutasi yang ditolak server (mis. saldo tidak cukup) -> pesan untuk pengguna.
+window.__bankMutRejectText = function(rejected, skipId) {
+    const list = (rejected || []).filter(r => String(r.id_mutasi) !== String(skipId || ''));
+    if (!list.length) return '';
+    return 'Mutasi berikut belum tercatat di server:\n' + list.map(r => '• ' + r.id_mutasi + ': ' + r.message).join('\n') +
+        '\n\nUbah nominal/bank atau hapus mutasi tersebut agar data browser dan server sama.';
 };
 
 window.syncBankMutationsToLedger = async function(deletedIds, alertOnError) {
     try {
-        await window.__postBankMutSync(deletedIds);
+        const res = await window.__postBankMutSync(deletedIds);
+        const warn = res && window.__bankMutRejectText(res.rejected);
+        if (warn && alertOnError) alert(warn);
         await window.loadBankMutationCards(true);
         if (typeof window.syncUniversalDatastore === 'function') window.syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
         return true;

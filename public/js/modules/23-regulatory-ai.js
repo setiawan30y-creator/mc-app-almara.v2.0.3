@@ -27,7 +27,7 @@
 
     var S = {
         docs: [], stats: null, page: 1, last: 1, total: 0, q: '', issuer: '', state: '', validity: '', loading: false, err: '',
-        mode: 'file', file: null, busy: false, ready: false, timer: null
+        mode: 'file', file: null, files: [], prog: '', busy: false, ready: false, timer: null
     };
 
     function $(id) { return document.getElementById(id); }
@@ -95,6 +95,7 @@
             '.ra-card{border:1px solid var(--bd);border-radius:16px;padding:16px 18px;min-width:0}.ra-card>h3{margin:0 0 4px;font-size:.98rem}.ra-card>.sub{margin:0 0 12px;color:var(--mut);font-size:.8rem;line-height:1.45}',
             '.ra-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;border:1px solid var(--bd);border-radius:11px;padding:3px;margin-bottom:12px}',
             '.ra-seg button{border:0;background:none;color:var(--mut);font:inherit;font-weight:700;font-size:.82rem;padding:8px;border-radius:8px;cursor:pointer}.ra-seg button.on{background:var(--pri);color:var(--mc-primary-contrast,#fff)}',
+            '.ra-flist{margin-top:10px;border:1px solid var(--bd,rgba(148,163,184,.3));border-radius:12px;max-height:220px;overflow:auto}.ra-flist div{display:flex;gap:9px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--bd,rgba(148,163,184,.2));font-size:.84rem}.ra-flist div:last-child{border-bottom:0}.ra-flist span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ra-flist small{opacity:.7;white-space:nowrap}.ra-x{background:none;border:0;color:inherit;opacity:.6;cursor:pointer;padding:2px 6px;border-radius:6px}.ra-x:hover{opacity:1;color:#f87171}',
             '.ra-drop{border:2px dashed var(--bd);border-radius:14px;padding:22px 14px;text-align:center;cursor:pointer;transition:.15s;margin-bottom:12px}',
             '.ra-drop:hover,.ra-drop.over{border-color:var(--pri);background:rgba(16,185,129,.07)}.ra-drop i{font-size:1.6rem;color:var(--pri)}.ra-drop b{display:block;margin-top:6px;font-size:.88rem}.ra-drop span{display:block;color:var(--mut);font-size:.76rem;margin-top:3px;overflow-wrap:anywhere}',
             '.ra-f{display:grid;grid-template-columns:1fr 1fr;gap:10px}.ra-f .full{grid-column:1/-1}',
@@ -204,22 +205,20 @@
             box.innerHTML = '<div class="ra-card"><h3>Tambah Sumber</h3><p class="sub">Akun Anda hanya dapat melihat sumber regulasi. Penambahan sumber dilakukan oleh owner, superadmin, admin, atau supervisor.</p></div>';
             return;
         }
-        var keep = {}; ['raTitle', 'raIssuer', 'raType', 'raNumber', 'raDate', 'raValidity', 'raUrl', 'raNotes', 'raText'].forEach(function (id) { if ($(id)) keep[id] = $(id).value; });
-        box.innerHTML = '<form class="ra-card" id="raUpload" novalidate><h3>Tambah Sumber Regulasi</h3><p class="sub">Isi dari file resmi atau tempel teksnya. Data penerbit dan nomor membantu AI memilih aturan yang paling tepat.</p>' +
+        // Form sederhana: cukup unggah. Penerbit, jenis, dan nomor dikenali otomatis; detail lain bisa diubah nanti lewat tombol Ubah.
+        var keep = {}; ['raTitle', 'raText'].forEach(function (id) { if ($(id)) keep[id] = $(id).value; });
+        var files = S.files || [];
+        var list = files.length ? '<div class="ra-flist">' + files.map(function (f, i) {
+            return '<div><i class="fa-regular fa-file-lines"></i><span>' + esc(f.name) + '</span><small>' + fmtSize(f.size) + '</small>' + (S.busy ? '' : '<button type="button" class="ra-x" data-act="unpick" data-i="' + i + '" aria-label="Hapus dari daftar"><i class="fa-solid fa-xmark"></i></button>') + '</div>';
+        }).join('') + '</div>' : '';
+        box.innerHTML = '<form class="ra-card" id="raUpload" novalidate><h3>Tambah Sumber Regulasi</h3><p class="sub">Cukup unggah file regulasinya. Penerbit, jenis, dan nomor dikenali otomatis; detail lain bisa dilengkapi nanti lewat tombol <b>Ubah</b>.</p>' +
             '<div class="ra-seg"><button type="button" data-mode="file" class="' + (S.mode === 'file' ? 'on' : '') + '"><i class="fa-solid fa-file-arrow-up"></i> Unggah File</button><button type="button" data-mode="text" class="' + (S.mode === 'text' ? 'on' : '') + '"><i class="fa-solid fa-paste"></i> Tempel Teks</button></div>' +
             (S.mode === 'file'
-                ? '<div class="ra-drop" id="raDrop" data-act="pick" tabindex="0" role="button"><i class="fa-solid fa-cloud-arrow-up"></i><b>' + (S.file ? esc(S.file.name) : 'Tarik file ke sini atau klik untuk memilih') + '</b><span>' + (S.file ? fmtSize(S.file.size) : 'PDF, Word, Excel, PowerPoint, TXT, HTML, gambar. Maks. 20 MB') + '</span></div><input type="file" id="raFile" hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.zip,.xml,.json,.html">'
-                : '<div style="margin-bottom:12px"><label class="l" for="raText">Isi regulasi</label><textarea class="form-control" id="raText" rows="8" placeholder="Tempel teks peraturan di sini (pasal demi pasal)."></textarea><small class="h">Cocok bila PDF hasil pindai tidak terbaca otomatis.</small></div>') +
-            '<div class="ra-f">' +
-            '<div class="full"><label class="l" for="raTitle">Judul</label><input class="form-control" id="raTitle" maxlength="255" placeholder="Judul resmi peraturan"></div>' +
-            '<div><label class="l" for="raIssuer">Penerbit</label><select class="form-control" id="raIssuer">' + selectOpts(ISSUERS, '', 'Pilih penerbit') + '</select></div>' +
-            '<div><label class="l" for="raType">Jenis (kosongkan bila berisi banyak peraturan)</label><select class="form-control" id="raType">' + selectOpts(TYPES, '', 'Pilih jenis') + '</select></div>' +
-            '<div class="full"><label class="l" for="raNumber">Nomor regulasi</label><input class="form-control" id="raNumber" maxlength="150" placeholder="Kosongkan bila berisi banyak peraturan"></div>' +
-            '<div><label class="l" for="raDate">Tanggal berlaku</label><input class="form-control" type="date" id="raDate"></div>' +
-            '<div><label class="l" for="raValidity">Status</label><select class="form-control" id="raValidity">' + selectOpts([['berlaku', 'Berlaku'], ['diubah', 'Telah diubah'], ['dicabut', 'Dicabut']], 'berlaku') + '</select></div>' +
-            '<div class="full"><label class="l" for="raUrl">Tautan resmi (opsional)</label><input class="form-control" type="url" id="raUrl" maxlength="500" placeholder="https://"><small class="h">Bila hanya tautan yang diisi, sumber tersimpan sebagai referensi dan belum bisa dijadikan dasar jawaban AI.</small></div>' +
-            '<div class="full"><label class="l" for="raNotes">Catatan (opsional)</label><input class="form-control" id="raNotes" maxlength="2000" placeholder="Misal: berlaku untuk KUPVA bukan bank"></div></div>' +
-            '<div id="raFormErr"></div><div class="ra-mf" style="margin-top:14px"><button type="submit" class="ra-btn pri" id="raSubmit"' + (S.busy ? ' disabled' : '') + '><i class="fa-solid ' + (S.busy ? 'fa-spinner fa-spin' : 'fa-circle-plus') + '"></i> ' + (S.busy ? 'Membaca dokumen...' : 'Simpan & Indeks') + '</button></div></form>';
+                ? '<div class="ra-drop" id="raDrop" data-act="pick" tabindex="0" role="button"><i class="fa-solid fa-cloud-arrow-up"></i><b>' + (files.length ? files.length + ' file dipilih · klik untuk menambah' : 'Tarik file ke sini atau klik untuk memilih') + '</b><span>Bisa beberapa file sekaligus. PDF, Word, Excel, PowerPoint, TXT, HTML, gambar. Maks. 20 MB per file</span></div><input type="file" id="raFile" hidden multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.zip,.xml,.json,.html">' + list
+                : '<div style="margin-bottom:12px"><label class="l" for="raTitle">Judul</label><input class="form-control" id="raTitle" maxlength="255" placeholder="Judul peraturan"></div>' +
+                  '<div><label class="l" for="raText">Isi regulasi</label><textarea class="form-control" id="raText" rows="8" placeholder="Tempel teks peraturan di sini (pasal demi pasal)."></textarea><small class="h">Cocok bila PDF hasil pindai tidak terbaca otomatis.</small></div>') +
+            '<div id="raFormErr"></div><div class="ra-mf" style="margin-top:14px"><button type="submit" class="ra-btn pri" id="raSubmit"' + (S.busy ? ' disabled' : '') + '><i class="fa-solid ' + (S.busy ? 'fa-spinner fa-spin' : 'fa-cloud-arrow-up') + '"></i> ' +
+            (S.busy ? esc(S.prog || 'Mengunggah...') : (S.mode === 'file' && files.length > 1 ? 'Unggah ' + files.length + ' file' : 'Unggah')) + '</button></div></form>';
         Object.keys(keep).forEach(function (id) { if ($(id) && keep[id] !== '') $(id).value = keep[id]; });
     }
 
@@ -320,7 +319,7 @@
 
     function onClick(e) {
         var seg = e.target.closest('[data-mode]');
-        if (seg) { S.mode = seg.dataset.mode; S.file = null; paintForm(); return; }
+        if (seg) { S.mode = seg.dataset.mode; S.files = []; paintForm(); return; }
         var chip = e.target.closest('[data-issuer]');
         if (chip) { S.issuer = chip.dataset.issuer; load(1); return; }
         var b = e.target.closest('[data-act]'); if (!b) return;
@@ -329,6 +328,7 @@
         else if (act === 'reload') load(1);
         else if (act === 'more') load(S.page + 1, true);
         else if (act === 'pick') { var f = $('raFile'); if (f) f.click(); }
+        else if (act === 'unpick') { S.files.splice(+e.target.closest('[data-i]').dataset.i, 1); paintForm(); }
         else if (act === 'detail') showDetail(id);
         else if (act === 'chat') { var nav = document.querySelector('[data-target="almara-regulatory-chat-view"]'); if (nav) nav.click(); }
         else if (act === 'ask') { var doc = S.docs.filter(function (x) { return String(x.id) === String(id); })[0]; goChat(id, doc ? doc.title : window.__raDocTitle); }
@@ -348,19 +348,18 @@
 
     function onInput(e) {
         if (e.target.id === 'raSearch') { clearTimeout(S.timer); S.q = e.target.value.trim(); S.timer = setTimeout(function () { load(1); }, 320); }
-        else if (e.target.id === 'raText' && !$('raTitle').value.trim() && !$('raNumber').value.trim()) { /* tebak setelah selesai mengetik */ clearTimeout(S.gt); S.gt = setTimeout(function () { applyGuess(e.target.value.slice(0, 1500), true); }, 700); }
     }
     function onChange(e) {
         if (e.target.id === 'raState') { S.state = e.target.value; load(1); }
         else if (e.target.id === 'raValidityF') { S.validity = e.target.value; load(1); }
-        else if (e.target.id === 'raFile') { setFile(e.target.files && e.target.files[0]); }
+        else if (e.target.id === 'raFile') { addFiles(e.target.files); e.target.value = ''; }
     }
     function onDrag(e) {
         var drop = e.target.closest && e.target.closest('#raDrop'); if (!drop) return;
         e.preventDefault();
         if (e.type === 'dragover') drop.classList.add('over');
         else if (e.type === 'dragleave') drop.classList.remove('over');
-        else { drop.classList.remove('over'); setFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); }
+        else { drop.classList.remove('over'); addFiles(e.dataTransfer && e.dataTransfer.files); }
     }
 
     function applyGuess(src, fromText) {
@@ -369,15 +368,14 @@
         if (g.doc_type && $('raType') && !$('raType').value) $('raType').value = g.doc_type;
         if (g.regulation_number && $('raNumber') && !$('raNumber').value) $('raNumber').value = g.regulation_number;
     }
-    function setFile(f) {
-        if (!f) return;
-        if (f.size > 20 * 1024 * 1024) { toast('Ukuran file melebihi 20 MB.', true); return; }
-        S.file = f;
-        var name = f.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ');
-        var keepTitle = $('raTitle') && $('raTitle').value.trim();
+    function addFiles(list) {
+        var arr = Array.prototype.slice.call(list || []), big = 0;
+        arr.forEach(function (f) {
+            if (f.size > 20 * 1024 * 1024) { big++; return; }
+            if (!S.files.some(function (x) { return x.name === f.name && x.size === f.size; })) S.files.push(f);
+        });
+        if (big) toast(big + ' file melebihi 20 MB dan dilewati.', true);
         paintForm();
-        if (!keepTitle && $('raTitle')) $('raTitle').value = name;
-        applyGuess(f.name);
     }
 
     function onSubmit(e) {
@@ -385,28 +383,51 @@
         else if (e.target.id === 'raEdit') { e.preventDefault(); doEdit(e.target); }
     }
 
-    function doUpload() {
+    // Metadata otomatis dari nama file / awal teks (judul, penerbit, jenis, nomor).
+    function autoMeta(title, sample) {
+        var fd = new FormData();
+        title = String(title || '').replace(/\.[^.]{1,5}$/, '').replace(/[_]+/g, ' ').trim();
+        var g = guess(title + '\n' + (sample || ''));
+        if (title) fd.append('title', title.slice(0, 255));
+        if (g.issuer) fd.append('issuer', g.issuer);
+        if (g.doc_type) fd.append('doc_type', g.doc_type);
+        if (g.regulation_number) fd.append('regulation_number', g.regulation_number);
+        return fd;
+    }
+
+    async function doUpload() {
         if (S.busy) return;
         var err = $('raFormErr'); err.innerHTML = '';
-        var text = S.mode === 'text' ? ($('raText').value || '').trim() : '';
-        var url = ($('raUrl').value || '').trim();
-        if (S.mode === 'file' && !S.file && !url) { err.innerHTML = '<div class="ra-err">Pilih file, atau isi tautan resmi sebagai referensi.</div>'; return; }
-        if (S.mode === 'text' && !text && !url) { err.innerHTML = '<div class="ra-err">Tempel teks regulasi, atau isi tautan resmi sebagai referensi.</div>'; return; }
-        if (!($('raTitle').value || '').trim() && !S.file) { err.innerHTML = '<div class="ra-err">Judul wajib diisi.</div>'; return; }
-        var fd = new FormData();
-        [['title', 'raTitle'], ['issuer', 'raIssuer'], ['doc_type', 'raType'], ['regulation_number', 'raNumber'], ['effective_date', 'raDate'], ['validity', 'raValidity'], ['source_url', 'raUrl'], ['notes', 'raNotes']]
-            .forEach(function (p) { var v = ($(p[1]).value || '').trim(); if (v) fd.append(p[0], v); });
-        if (S.mode === 'file' && S.file) fd.append('file', S.file);
-        if (text) fd.append('content', text);
-        S.busy = true; paintForm();
-        api(API, { method: 'POST', body: fd, headers: aiHeaders() }).then(function (r) {
-            toast(r.message || 'Sumber tersimpan.', r.document && r.document.status !== 'ready');
-            S.file = null; S.busy = false;
-            ['raTitle', 'raIssuer', 'raType', 'raNumber', 'raDate', 'raUrl', 'raNotes', 'raText'].forEach(function (id) { if ($(id)) $(id).value = ''; });
-            paintForm(); load(1);
-        }).catch(function (er) {
-            S.busy = false; paintForm(); var el = $('raFormErr'); if (el) el.innerHTML = '<div class="ra-err">' + esc(er.message) + '</div>';
-        });
+        if (S.mode === 'text') {
+            var text = ($('raText').value || '').trim(), title = ($('raTitle').value || '').trim();
+            if (!text) { err.innerHTML = '<div class="ra-err">Tempel teks regulasinya terlebih dahulu.</div>'; return; }
+            var fdT = autoMeta(title || text.split('\n')[0].slice(0, 150), text.slice(0, 3000));
+            fdT.append('content', text);
+            S.busy = true; S.prog = 'Membaca teks...'; paintForm();
+            try {
+                var rt = await api(API, { method: 'POST', body: fdT, headers: aiHeaders() });
+                toast(rt.message || 'Sumber tersimpan.', rt.document && rt.document.status !== 'ready');
+                S.busy = false; S.prog = ''; paintForm(); if ($('raText')) $('raText').value = ''; if ($('raTitle')) $('raTitle').value = ''; load(1);
+            } catch (er) { S.busy = false; S.prog = ''; paintForm(); var el0 = $('raFormErr'); if (el0) el0.innerHTML = '<div class="ra-err">' + esc(er.message) + '</div>'; }
+            return;
+        }
+        var files = (S.files || []).slice();
+        if (!files.length) { err.innerHTML = '<div class="ra-err">Pilih file regulasi yang akan diunggah.</div>'; return; }
+        S.busy = true;
+        var ok = 0, fail = [];
+        for (var i = 0; i < files.length; i++) {
+            S.prog = files.length > 1 ? 'Mengunggah ' + (i + 1) + ' dari ' + files.length + '...' : 'Mengunggah & membaca...'; paintForm();
+            var fd = autoMeta(files[i].name, ''); fd.append('file', files[i]);
+            try {
+                var r = await api(API, { method: 'POST', body: fd, headers: aiHeaders() });
+                ok++;
+                if (files.length === 1) toast(r.message || 'Sumber tersimpan.', r.document && r.document.status !== 'ready');
+            } catch (er) { fail.push(files[i].name + ': ' + er.message); }
+        }
+        S.busy = false; S.prog = ''; S.files = [];
+        paintForm(); load(1);
+        if (files.length > 1) toast(ok + ' dari ' + files.length + ' file tersimpan.', fail.length > 0);
+        if (fail.length) { var el = $('raFormErr'); if (el) el.innerHTML = '<div class="ra-err">' + fail.map(esc).join('<br>') + '</div>'; }
     }
 
     function doEdit(form) {
