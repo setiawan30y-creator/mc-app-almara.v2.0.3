@@ -7,6 +7,12 @@ function isSystemBankAdjustmentMutation(mutation) {
     return String(mutation?.keterangan || '').toLowerCase().includes('penyesuaian sistem (sinkronisasi modal bank');
 }
 
+// Mutasi otomatis dari Kasir (pembayaran transfer). Kas/bank-nya sudah dicatat oleh transaksi itu sendiri,
+// jadi baris ini hanya informasi: tidak dikirim ke ledger dan tidak bisa diedit/dihapus di sini. @2026-Alifiandra
+function isAutoTransactionMutation(m) {
+    return String(m?.keterangan || '').indexOf('Transaksi Valas (Ref:') === 0;
+}
+
 function getRealBankMutations() {
     const mutations = getMutations();
     const realMutations = mutations.filter(m => !isSystemBankAdjustmentMutation(m));
@@ -47,13 +53,14 @@ function loadMutationsTable() {
                 ` : ''}
             </td>
             <td>${formatIdr(m.nominal)}</td>
-            <td class="text-center" style="white-space: nowrap;">
+            <td class="text-center" style="white-space: nowrap;">${isAutoTransactionMutation(m) ? `
+                <span title="Dicatat otomatis oleh transaksinya. Ubah lewat Riwayat Transaksi." style="font-size:.72rem;color:#64748b;"><i class="fa-solid fa-link"></i> Otomatis dari transaksi</span>` : `
                 <button class="btn btn-sm" style="background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: none; padding: 4px 8px; border-radius: 4px; margin-right: 5px;" onclick="openMutationModal('${m.id_mutasi}')">
                     <i class="fa-solid fa-edit"></i>
                 </button>
                 <button class="btn btn-sm" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: none; padding: 4px 8px; border-radius: 4px;" onclick="deleteMutation('${m.id_mutasi}')">
                     <i class="fa-solid fa-trash"></i>
-                </button>
+                </button>`}
             </td>
         `;
         tbody.appendChild(tr);

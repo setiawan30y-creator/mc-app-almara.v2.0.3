@@ -215,6 +215,11 @@ class TransactionController extends Controller
     private function postToLedger(TransactionLedgerPoster $ledger, Transaction $transaction, mixed $payments): void
     {
         if (!$transaction->wasRecentlyCreated) {
+            // Transaksi yang DIEDIT: samakan ledger kas/bank & stok dengan isi terbaru lewat baris koreksi.
+            // Kiriman ulang tanpa perubahan menghasilkan selisih 0 (tidak ada baris baru). @2026-Alifiandra
+            if (\App\Services\Erp\TransactionLedgerSync::hasPostings((string) $transaction->itemId)) {
+                app(\App\Services\Erp\TransactionLedgerSync::class)->sync($transaction, is_array($payments) ? $payments : null, optional(request()->user())->id);
+            }
             return;
         }
 
@@ -255,7 +260,16 @@ class TransactionController extends Controller
                 $query->where('id', $id);
             }
 
-            $deleted = $query->delete();
+            // Batalkan efek ledger (kas/bank & stok) transaksi yang dihapus, lalu hapus barisnya.
+            $deleted = DB::transaction(function () use ($query) {
+                $sync = app(\App\Services\Erp\TransactionLedgerSync::class);
+                foreach ((clone $query)->get() as $t) {
+                    if (\App\Services\Erp\TransactionLedgerSync::hasPostings((string) $t->itemId)) {
+                        $sync->reverse($t, optional(request()->user())->id);
+                    }
+                }
+                return $query->delete();
+            });
 
             return response()->json([
                 'status' => 'success',

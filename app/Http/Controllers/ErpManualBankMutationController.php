@@ -53,6 +53,12 @@ class ErpManualBankMutationController extends Controller
             $jobs[] = [(string) $id, null];
         }
         foreach ($rows as $row) {
+            // Mutasi otomatis dari Kasir ("Transaksi Valas (Ref: ...)") hanya tampilan: transaksinya sendiri
+            // sudah mencatat kas/bank. Bila pernah tercatat di sini, dinetralkan agar saldo tidak dobel.
+            if (stripos((string) ($row['keterangan'] ?? ''), 'Transaksi Valas (Ref:') === 0) {
+                $jobs[] = [(string) $row['id_mutasi'], null];
+                continue;
+            }
             $jobs[] = [(string) $row['id_mutasi'], $row];
         }
 
