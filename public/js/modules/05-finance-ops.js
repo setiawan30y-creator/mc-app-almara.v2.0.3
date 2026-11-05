@@ -660,7 +660,7 @@ window.submitProfile = function() {
     return true;
 }
 
-window.saveInitialBalances = async function() {
+async function __saveInitialBalancesCore() {
     const cashVal = parseFloat(document.getElementById('initCash').value) || 0;
     const bankBcaVal = parseFloat(document.getElementById('initBankBCA').value) || 0;
     const bankMandiriVal = parseFloat(document.getElementById('initBankMandiri').value) || 0;
@@ -746,13 +746,48 @@ window.saveInitialBalances = async function() {
 
     if (serverError) {
         alert('Saldo awal tersimpan di browser, tetapi GAGAL disimpan ke server:\n' + serverError + '\n\nDashboard bisa menampilkan angka 0 sampai penyimpanan ke server berhasil. Coba klik tombol ini sekali lagi.');
+        return null;
+    }
+    if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
+    return { cash: cashVal, BCA: bankBcaVal, MANDIRI: bankMandiriVal };
+}
+
+// Simpan saldo awal lalu PASTIKAN server benar-benar mencatatnya (dibaca ulang dari buku besar).
+// Kesalahan apa pun ditampilkan, tidak lagi gagal diam-diam. @2026-Alifiandra
+window.saveInitialBalances = async function() {
+    let want;
+    try {
+        want = await __saveInitialBalancesCore();
+    } catch (error) {
+        console.error('Simpan saldo awal gagal:', error);
+        alert('Saldo awal BELUM tersimpan.\n\nPenyebab: ' + ((error && error.message) || error) + '\n\nKirim pesan ini ke pengembang bila terulang.');
         return;
     }
-    
-    alert('Keseluruhan aset awal berhasil diterapkan.\n\nSaldo kas dan bank diset langsung tanpa membuat mutasi penyesuaian sistem. Kurs pada tabel Pengaturan disimpan sebagai kurs modal awal terkunci.');
-    
-    if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
-}
+    if (!want) return;
+    const fmt = n => 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID');
+    let check = '';
+    try {
+        const doFetch = window.authFetch || window.fetch;
+        const response = await doFetch('/api/erp/bank-mutations', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin', cache: 'no-store' });
+        const json = await response.json();
+        const accounts = (json && json.data && json.data.accounts) || [];
+        const bad = [];
+        ['BCA', 'MANDIRI'].forEach(name => {
+            const acc = accounts.find(a => (String(a.code || '') + ' ' + String(a.bank_name || '')).toUpperCase().includes(name));
+            const got = acc ? Number(acc.opening_balance || 0) : 0;
+            if (Math.round(got) !== Math.round(want[name])) bad.push(name + ': diisi ' + fmt(want[name]) + ', tercatat di server ' + fmt(got));
+        });
+        if (bad.length) {
+            alert('Saldo awal dikirim, tetapi server mencatat angka yang berbeda:\n\n' + bad.join('\n') + '\n\nKirim pesan ini ke pengembang.');
+            return;
+        }
+        check = '\n\nTercatat di server: BCA ' + fmt(want.BCA) + ', Mandiri ' + fmt(want.MANDIRI) + ', Kas ' + fmt(want.cash) + '.';
+        if (typeof window.loadBankMutationCards === 'function') window.loadBankMutationCards(true);
+    } catch (e) {
+        check = '\n\n(Belum bisa memeriksa ulang ke server: ' + e.message + ')';
+    }
+    alert('Saldo awal berhasil diterapkan.' + check + '\n\nSaldo kas dan bank diset langsung tanpa membuat mutasi penyesuaian sistem. Kurs pada tabel Pengaturan disimpan sebagai kurs modal awal terkunci.');
+};
 
 // ==============================
 // MASTER DATA MANAGEMENT
@@ -2243,6 +2278,7 @@ function renderBankMutationDetail(code) {
             <div>
                 <h3 style="margin:0;">Rincian Mutasi ${bankMutEsc(acc.bank_name)}</h3>
                 <div style="font-size:.85rem; opacity:.75; margin-top:4px;">Saldo awal ${bankMutIdr(acc.opening_balance)} · Saldo sekarang <strong>${bankMutIdr(acc.balance)}</strong></div>
+                ${Number(acc.opening_balance || 0) === 0 ? `<div style="margin-top:8px; padding:8px 12px; border-radius:8px; background:#fef3c7; color:#92400e; font-size:.85rem; font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> Saldo awal rekening ini di server masih Rp 0. Isi di <b>Pengaturan → Saldo Awal</b> lalu klik <b>Terapkan Semua Saldo Awal ke Sistem</b>.</div>` : ''}
             </div>
             <button class="btn btn-secondary" onclick="openBankMutationDetail('${bankMutEsc(acc.code)}')"><i class="fa-solid fa-xmark"></i> Tutup</button>
         </div>
