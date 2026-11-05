@@ -252,6 +252,15 @@ async function loadDashboard() {
     document.getElementById('dashTotalBank').textContent = utils.formatIdr(totalBank);
     if(document.getElementById('dashBCA')) document.getElementById('dashBCA').textContent = utils.formatIdr(store.getBankBCA());
     if(document.getElementById('dashMandiri')) document.getElementById('dashMandiri').textContent = utils.formatIdr(store.getBankMandiri());
+    // Saldo bank diambil dari buku besar server (sama dengan halaman Mutasi Bank). @2026-Alifiandra
+    if (typeof window.mcLoadBankLedgerSummary === 'function') {
+        window.mcLoadBankLedgerSummary().then(sum => {
+            if (!sum) return;
+            document.getElementById('dashTotalBank').textContent = utils.formatIdr(sum.total);
+            if(document.getElementById('dashBCA')) document.getElementById('dashBCA').textContent = utils.formatIdr(sum.BCA);
+            if(document.getElementById('dashMandiri')) document.getElementById('dashMandiri').textContent = utils.formatIdr(sum.MANDIRI);
+        }).catch(() => {});
+    }
     document.getElementById('dashTotalValuta').textContent = utils.formatIdr(estimasiValutaIdr);
     if(document.getElementById('dashTotalValutaHint')) {
         const hasAnyBuyTransaction = trxs.some(t => String(t.tipe || t.type || '').toUpperCase() === 'BELI');

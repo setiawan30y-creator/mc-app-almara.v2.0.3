@@ -2127,6 +2127,29 @@ function bankMutDate(value) {
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Saldo bank yang benar = buku besar server. Angka di browser (mc_bank_bca / mc_bank_mandiri)
+// hanya salinan dan diselaraskan setiap kali data server dimuat. @2026-Alifiandra
+window.mcApplyBankLedger = function(data) {
+    const accounts = (data && data.accounts) || [];
+    const sum = { BCA: 0, MANDIRI: 0, total: Number((data && data.total_balance) || 0) };
+    accounts.forEach(acc => {
+        const key = (String(acc.code || '') + ' ' + String(acc.bank_name || '')).toUpperCase();
+        if (key.includes('MANDIRI')) sum.MANDIRI += Number(acc.balance || 0);
+        else if (key.includes('BCA')) sum.BCA += Number(acc.balance || 0);
+    });
+    if (!accounts.length) return null;
+    if (Math.round(getBankBCA()) !== Math.round(sum.BCA)) saveBankBCA(Math.round(sum.BCA));
+    if (Math.round(getBankMandiri()) !== Math.round(sum.MANDIRI)) saveBankMandiri(Math.round(sum.MANDIRI));
+    return sum;
+};
+window.mcLoadBankLedgerSummary = async function() {
+    const doFetch = window.authFetch || window.fetch;
+    const response = await doFetch('/api/erp/bank-mutations', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+    const json = await response.json();
+    if (!response.ok || json.status !== 'success') return null;
+    return window.mcApplyBankLedger(json.data);
+};
+
 window.loadBankMutationCards = async function(force) {
     const state = window.__bankMutationState;
     const host = document.getElementById('bankMutationCards');
@@ -2142,6 +2165,7 @@ window.loadBankMutationCards = async function(force) {
         if (!response.ok || json.status !== 'success') throw new Error(json.message || 'Gagal memuat data bank');
         state.accounts = json.data.accounts || [];
         state.total = json.data.total_balance || 0;
+        if (typeof window.mcApplyBankLedger === 'function') window.mcApplyBankLedger(json.data);
         state.loadedAt = Date.now();
         renderBankMutationCards();
         if (state.selected) renderBankMutationDetail(state.selected);
