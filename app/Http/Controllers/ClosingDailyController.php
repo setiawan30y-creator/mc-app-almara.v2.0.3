@@ -91,6 +91,9 @@ class ClosingDailyController extends Controller
             'stock_counts' => ['nullable', 'array', 'max:80'],
             'stock_counts.*.currency_code' => ['required', 'string', 'max:10'],
             'stock_counts.*.physical_qty' => ['required', 'numeric', 'min:0'],
+            'bank_counts' => ['nullable', 'array', 'max:40'],
+            'bank_counts.*.bank_account_id' => ['required', 'integer'],
+            'bank_counts.*.statement_balance' => ['required', 'numeric'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'accept_variance' => ['nullable', 'boolean'],
         ]);
@@ -123,7 +126,9 @@ class ClosingDailyController extends Controller
                 $hanging = (float) $summary['hanging_amount'];
                 $accounted = $physical + $hanging;
                 $difference = round($accounted - (float) $summary['expected_cash'], 2);
-                $balanced = abs($difference) < 0.005;
+                // Rekonsiliasi terpadu: kas, valas yang dihitung, dan saldo rekening koran harus cocok semua.
+                $otherDiffs = $this->otherDifferences($date, $data['stock_counts'] ?? [], $data['bank_counts'] ?? []);
+                $balanced = abs($difference) < 0.005 && !$otherDiffs;
 
                 $action = 'SAVE_TEMPORARY';
                 if ($mode === 'temporary') {
@@ -141,7 +146,8 @@ class ClosingDailyController extends Controller
                     $status = 'CLOSED';
                     $action = 'FINALIZE_VARIANCE';
                 } else {
-                    throw new \DomainException('Closing belum bisa dikunci karena masih ada selisih ' . number_format(abs($difference), 0, ',', '.') . '. Perbaiki hitungan atau pilih tutup dengan selisih beserta alasannya.');
+                    $parts = abs($difference) >= 0.005 ? ['kas Rp ' . number_format(abs($difference), 0, ',', '.')] : [];
+                    throw new \DomainException('Closing belum bisa dikunci karena masih ada selisih ' . implode(', ', array_merge($parts, $otherDiffs)) . '. Perbaiki hitungan atau pilih tutup dengan selisih beserta alasannya.');
                 }
 
                 $actorId = $this->actorId($user);
@@ -177,12 +183,14 @@ class ClosingDailyController extends Controller
                 }
 
                 $this->saveStockCounts($closing, $date, $data['stock_counts'] ?? []);
+                $this->saveBankCounts($closing, $date, $data['bank_counts'] ?? []);
 
                 $this->log($closing->id, $date, $action, $user, [
                     'physical' => $physical,
                     'expected' => (float) $summary['expected_cash'],
                     'hanging' => $hanging,
                     'difference' => $difference,
+                    'other_differences' => $otherDiffs,
                     'notes' => $notes,
                 ]);
             }, 3);
@@ -240,6 +248,13 @@ class ClosingDailyController extends Controller
         $closing = ErpCashClosing::with('denominations')->whereDate('closing_date', $date)->first();
 
         $banks = $this->bankSummary($date);
+        $bankCounts = ($closing && Schema::hasTable('erp_cash_closing_bank_counts'))
+            ? DB::table('erp_cash_closing_bank_counts')->where('closing_id', $closing->id)->pluck('statement_balance', 'bank_account_id')
+            : collect();
+        foreach ($banks as &$b) {
+            $b['statement_balance'] = isset($bankCounts[$b['id']]) ? (float) $bankCounts[$b['id']] : null;
+        }
+        unset($b);
         $stocks = $this->stockSummary($date, $closing, $date === $today);
         $gantungan = $this->gantunganList($date);
 
@@ -261,6 +276,7 @@ class ClosingDailyController extends Controller
             'banks' => $banks,
             'stocks' => $stocks,
             'trades' => $this->tradeSummary($date),
+            'trade_list' => $this->tradeList($date),
             'expenses' => $this->expenseList($date, $account),
             'gantungan' => $gantungan,
             'closing' => $closing ? $this->closingDetail($closing) : null,
@@ -417,6 +433,88 @@ class ClosingDailyController extends Controller
         }
 
         return $rates;
+    }
+
+    /** Daftar transaksi hari itu (untuk analisis penyebab selisih di rekonsiliasi terpadu). */
+    private function tradeList(string $date): array
+    {
+        if (!Schema::hasTable('mc_transactions')) {
+            return [];
+        }
+        $q = DB::table('mc_transactions')->whereBetween('timestamp', [$date . ' 00:00:00', $date . ' 23:59:59']);
+        if (Schema::hasColumn('mc_transactions', 'isOldMoney')) {
+            $q->where(fn ($w) => $w->whereNull('isOldMoney')->orWhere('isOldMoney', 0));
+        }
+        return $q->orderBy('timestamp')->limit(500)->get(['id', 'timestamp', 'tipe', 'valuta', 'nominal', 'rate', 'total', 'paymentMethod', 'raw_json'])
+            ->map(function ($r) {
+                $raw = is_string($r->raw_json) ? (json_decode($r->raw_json, true) ?: []) : [];
+                return [
+                    'invoice' => (string) $r->id,
+                    'time' => substr((string) $r->timestamp, 11, 5),
+                    'type' => strtoupper((string) $r->tipe),
+                    'currency' => strtoupper((string) $r->valuta),
+                    'qty' => (float) $r->nominal,
+                    'rate' => (float) $r->rate,
+                    'total' => (float) $r->total,
+                    'method' => strtoupper((string) ($r->paymentMethod ?: 'CASH')),
+                    'bank' => (string) ($raw['bank'] ?? ''),
+                ];
+            })->values()->all();
+    }
+
+    /** Selisih valas (yang dihitung) & bank (yang diisi rekening korannya), dalam bentuk teks. @return string[] */
+    private function otherDifferences(string $date, array $stockCounts, array $bankCounts): array
+    {
+        $out = [];
+        $system = collect($this->stockSummary($date, null, $date === now()->toDateString()))->keyBy('currency_code');
+        foreach ($stockCounts as $row) {
+            $code = strtoupper(trim((string) ($row['currency_code'] ?? '')));
+            if (!isset($system[$code])) {
+                continue;
+            }
+            $d = (float) $row['physical_qty'] - (float) $system[$code]['system_qty'];
+            if (abs($d) > 0.000001) {
+                $out[] = $code . ' ' . ($d > 0 ? '+' : '') . rtrim(rtrim(number_format($d, 2, ',', '.'), '0'), ',');
+            }
+        }
+        $banks = collect($this->bankSummary($date))->keyBy('id');
+        foreach ($bankCounts as $row) {
+            $b = $banks[(int) ($row['bank_account_id'] ?? 0)] ?? null;
+            if (!$b) {
+                continue;
+            }
+            $d = round((float) $row['statement_balance'] - (float) $b['closing'], 2);
+            if (abs($d) >= 0.005) {
+                $out[] = 'bank ' . $b['bank_name'] . ' Rp ' . number_format(abs($d), 0, ',', '.');
+            }
+        }
+        return $out;
+    }
+
+    private function saveBankCounts(ErpCashClosing $closing, string $date, array $counts): void
+    {
+        if (!Schema::hasTable('erp_cash_closing_bank_counts')) {
+            return;
+        }
+        DB::table('erp_cash_closing_bank_counts')->where('closing_id', $closing->id)->delete();
+        $banks = collect($this->bankSummary($date))->keyBy('id');
+        $now = now();
+        foreach ($counts as $row) {
+            $b = $banks[(int) ($row['bank_account_id'] ?? 0)] ?? null;
+            if (!$b) {
+                continue;
+            }
+            $stmt = (float) $row['statement_balance'];
+            DB::table('erp_cash_closing_bank_counts')->insert([
+                'closing_id' => $closing->id,
+                'bank_account_id' => $b['id'],
+                'system_balance' => $b['closing'],
+                'statement_balance' => $stmt,
+                'difference' => round($stmt - (float) $b['closing'], 2),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
     }
 
     private function tradeSummary(string $date): array

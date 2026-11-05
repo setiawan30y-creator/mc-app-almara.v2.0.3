@@ -30,7 +30,7 @@
 
     const S = {
         date: '', data: null, loading: false, error: '', dirty: false, busy: false,
-        denoms: {}, stock: {}, notes: '', accept: false,
+        denoms: {}, stock: {}, bank: {}, notes: '', accept: false,
         month: '', status: '', history: null
     };
 
@@ -110,11 +110,153 @@
         return { physical, hanging: cash.hanging, expected: cash.expected, accounted, diff: accounted - cash.expected };
     }
 
+    // ---------- rekonsiliasi terpadu (kas + valas + bank) @2026-Alifiandra ----------
+    // Semua saling terkait: salah input transaksi selalu meninggalkan "jejak" ganda,
+    // misalnya kas lebih ≈ valas kurang. Pola-pola itu dicari di sini.
+    const near = (a, b, pct) => Math.abs(a - b) <= Math.max(1000, Math.abs(b) * (pct || 0.02));
+    const nearQty = (a, b) => Math.abs(a - b) <= Math.max(0.01, Math.abs(b) * 0.005);
+    const qtyTxt = (n) => qf.format(n);
+    const methodTxt = (m) => (m === 'TRANSFER' ? 'transfer' : m === 'SPLIT' ? 'split' : 'tunai');
+
+    function unified() {
+        const d = S.data, r = recon();
+        const cashCounted = r.physical > 0;
+        const cash = cashCounted ? r.diff : 0;
+        const vals = [];
+        (d.stocks || []).forEach((s) => {
+            const v = S.stock[s.currency_code];
+            if (v === undefined || v === null || v === '') return;
+            const diff = Number(v) - s.system_qty;
+            vals.push({ code: s.currency_code, diff, rate: s.rate, value: diff * (s.rate || 0) });
+        });
+        const banks = [];
+        (d.banks || []).forEach((b) => {
+            const v = S.bank[b.id];
+            if (v === undefined || v === null || v === '') return;
+            banks.push({ id: b.id, name: b.bank_name, diff: Number(v) - b.closing });
+        });
+        const bankSum = banks.reduce((s, b) => s + b.diff, 0);
+        const valSum = vals.reduce((s, v) => s + v.value, 0);
+        const valDiffs = vals.filter((v) => Math.abs(v.diff) > 0.000001);
+        const bankDiffs = banks.filter((b) => Math.abs(b.diff) >= 0.5);
+        const cashDiff = Math.abs(cash) >= 0.5;
+        const balanced = cashCounted && !cashDiff && !valDiffs.length && !bankDiffs.length;
+        return { cash, cashCounted, vals, valDiffs, banks, bankDiffs, bankSum, valSum, cashDiff, total: cash + bankSum + valSum, balanced };
+    }
+
+    function diagnose(u) {
+        const out = [];
+        const trades = S.data.trade_list || [];
+        const chan = (t) => (t.method === 'TRANSFER' ? 'bank' : t.method === 'SPLIT' ? 'all' : 'cash');
+        const rpDiff = (c) => (c === 'cash' ? u.cash : c === 'bank' ? u.bankSum : u.cash + u.bankSum);
+        const used = new Set();
+        if (!u.cashDiff && !u.valDiffs.length && !u.bankDiffs.length) {
+            if (u.cashCounted) out.push({ lv: 'ok', t: 'Kas, valas yang dihitung, dan saldo bank semuanya cocok dengan sistem.' });
+            return out;
+        }
+        // 1) Salah tipe BELI <-> JUAL: valas selisih 2× jumlah, Rupiah selisih 2× nilai (arah berlawanan).
+        trades.forEach((t) => {
+            const v = u.valDiffs.find((x) => x.code === t.currency);
+            if (!v) return;
+            const s = t.type === 'JUAL' ? 1 : -1;
+            if (nearQty(v.diff, 2 * s * t.qty) && near(rpDiff(chan(t)), -2 * s * t.total)) {
+                used.add(t.currency);
+                out.push({ lv: 'bad', t: `${t.invoice} (${t.time}) ${t.currency} ${qtyTxt(t.qty)} kemungkinan SALAH TIPE: tercatat ${t.type}, seharusnya ${t.type === 'JUAL' ? 'BELI' : 'JUAL'}. Jejaknya: ${t.currency} ${v.diff > 0 ? 'lebih' : 'kurang'} ${qtyTxt(Math.abs(v.diff))} (2×) dan Rupiah ${-2 * s * t.total > 0 ? 'lebih' : 'kurang'} ${rp(2 * t.total)} (2×).` });
+            }
+        });
+        // 2) Tercatat ganda / seharusnya dibatalkan: selisih persis 1× transaksi itu (arah sistem dibalik).
+        trades.forEach((t) => {
+            const v = u.valDiffs.find((x) => x.code === t.currency);
+            if (!v || used.has(t.currency)) return;
+            const s = t.type === 'JUAL' ? 1 : -1;
+            if (nearQty(v.diff, s * t.qty) && near(rpDiff(chan(t)), -s * t.total)) {
+                used.add(t.currency);
+                out.push({ lv: 'bad', t: `${t.invoice} (${t.time}) ${t.type} ${t.currency} ${qtyTxt(t.qty)} senilai ${rp(t.total)} kemungkinan TERCATAT GANDA atau seharusnya dibatalkan: fisik ${t.currency} ${v.diff > 0 ? 'lebih' : 'kurang'} ${qtyTxt(Math.abs(v.diff))} dan Rupiah ${s > 0 ? 'kurang' : 'lebih'} ${rp(t.total)}.` });
+            }
+        });
+        // 3) Transaksi belum diinput: valas berkurang & Rupiah bertambah senilai valas itu (atau sebaliknya).
+        u.valDiffs.forEach((v) => {
+            if (used.has(v.code)) return;
+            const est = Math.abs(v.diff) * (v.rate || 0);
+            const want = v.diff < 0 ? 1 : -1; // valas kurang -> Rupiah seharusnya lebih (ada penjualan)
+            const opts = [['cash', u.cash, 'tunai'], ['bank', u.bankSum, 'transfer']];
+            const hit = est > 0 && opts.find(([, val]) => Math.sign(val) === want && near(Math.abs(val), est, 0.04));
+            if (hit) {
+                used.add(v.code);
+                out.push({ lv: 'bad', t: `Kemungkinan ada transaksi ${v.diff < 0 ? 'JUAL' : 'BELI'} ${v.code} ${qtyTxt(Math.abs(v.diff))} (≈ ${rp(est)}, bayar ${hit[2]}) yang BELUM DIINPUT: ${v.code} ${v.diff < 0 ? 'kurang' : 'lebih'} ${qtyTxt(Math.abs(v.diff))}, Rupiah ${hit[1] > 0 ? 'lebih' : 'kurang'} ${rp(Math.abs(hit[1]))}.` });
+            }
+        });
+        // 4) Salah pilih kode valas (mis. USD vs USDK): dua valas selisih sama besar, arah berlawanan.
+        for (let i = 0; i < u.valDiffs.length; i++) {
+            for (let j = i + 1; j < u.valDiffs.length; j++) {
+                const a = u.valDiffs[i], b = u.valDiffs[j];
+                if (used.has(a.code) || used.has(b.code)) continue;
+                if (Math.sign(a.diff) !== Math.sign(b.diff) && nearQty(Math.abs(a.diff), Math.abs(b.diff))) {
+                    used.add(a.code); used.add(b.code);
+                    const plus = a.diff > 0 ? a : b, minus = a.diff > 0 ? b : a;
+                    out.push({ lv: 'bad', t: `Kemungkinan SALAH PILIH VALAS: ${plus.code} lebih ${qtyTxt(plus.diff)} dan ${minus.code} kurang ${qtyTxt(-minus.diff)}. Periksa transaksi ${minus.code}/${plus.code} hari ini, mungkin tercatat dengan kode yang tertukar.` });
+                }
+            }
+        }
+        // 5) Salah metode bayar: kas & bank selisih sama besar berlawanan, valas tidak bermasalah.
+        if (u.cashDiff && u.bankDiffs.length && near(u.cash, -u.bankSum) && !u.valDiffs.some((v) => !used.has(v.code))) {
+            const amt = Math.abs(u.cash);
+            const cands = trades.filter((t) => near(t.total, amt, 0.01) || near(t.total * 2, amt, 0.01));
+            out.push({ lv: 'bad', t: `Kemungkinan SALAH METODE BAYAR: kas ${u.cash > 0 ? 'lebih' : 'kurang'} ${rp(amt)} dan bank ${u.bankSum > 0 ? 'lebih' : 'kurang'} ${rp(Math.abs(u.bankSum))} (uangnya ada, hanya beda tempat).` +
+                (cands.length ? ` Cek: ${cands.slice(0, 4).map((t) => `${t.invoice} ${t.type} ${rp(t.total)} (tercatat ${methodTxt(t.method)})`).join('; ')}.` : '') });
+            return out;
+        }
+        // 6) Sisa selisih yang belum terjelaskan.
+        const unexplainedVal = u.valDiffs.filter((v) => !used.has(v.code));
+        if (unexplainedVal.length) {
+            out.push({ lv: 'warn', t: `Selisih valas: ${unexplainedVal.map((v) => `${v.code} ${v.diff > 0 ? '+' : ''}${qtyTxt(v.diff)} (≈ ${signed(v.value)})`).join(', ')}. Hitung ulang lembar/pecahan, atau cek transaksi dengan jumlah valas yang salah ketik.` });
+        }
+        if (!used.size) {
+            if (u.cashDiff && !u.valDiffs.length) {
+                const cands = trades.filter((t) => near(t.total, Math.abs(u.cash), 0.01));
+                out.push({ lv: 'warn', t: `Selisih hanya di kas (${signed(u.cash)}), valas cocok: periksa kembalian, pengeluaran yang belum dicatat, gantungan, atau kurs/nominal Rupiah transaksi.` +
+                    (cands.length ? ` Transaksi dengan nilai sama: ${cands.slice(0, 4).map((t) => `${t.invoice} ${t.type} ${t.currency} ${rp(t.total)}`).join('; ')}.` : '') });
+            }
+            if (u.bankDiffs.length && !u.valDiffs.length && !u.cashDiff) {
+                out.push({ lv: 'warn', t: `Selisih hanya di bank (${u.bankDiffs.map((b) => `${b.name} ${signed(b.diff)}`).join(', ')}): cek mutasi bank yang belum dicatat (biaya admin, transfer masuk/keluar) atau transaksi yang salah pilih bank.` });
+            }
+        }
+        if (u.cashDiff || u.valDiffs.length || u.bankDiffs.length) {
+            if (Math.abs(u.total) <= Math.max(5000, (Math.abs(u.cash) + Math.abs(u.bankSum) + Math.abs(u.valSum)) * 0.02)) {
+                out.push({ lv: 'info', t: `Total nilai selisih ≈ ${signed(u.total)}: selisih-selisih saling menutup, artinya uang/valasnya ADA. Penyebabnya kemungkinan salah input, bukan kehilangan.` });
+            } else {
+                out.push({ lv: u.total < 0 ? 'bad' : 'info', t: `Total nilai selisih ${signed(u.total)} (kas + valas dinilai kurs modal + bank). ${u.total < 0 ? 'Ada nilai yang benar-benar KURANG.' : 'Ada nilai LEBIH yang belum tercatat.'}` });
+            }
+        }
+        return out;
+    }
+
+    function unifiedHtml() {
+        const u = unified();
+        const row = (label, val, sub) => `<div><span>${label}${sub ? `<small class="cd-mut" style="display:block">${sub}</small>` : ''}</span><b class="${Math.abs(val) < 0.5 ? 'tx-ok' : val < 0 ? 'tx-bad' : 'tx-info'}">${signed(val)}</b></div>`;
+        const valRows = u.vals.length
+            ? u.vals.map((v) => row(`Valas ${esc(v.code)} ${Math.abs(v.diff) > 0.000001 ? `(${v.diff > 0 ? '+' : ''}${esc(qtyTxt(v.diff))})` : ''}`, v.value, Math.abs(v.diff) > 0.000001 ? 'dinilai kurs modal' : 'sesuai')).join('')
+            : '<div><span class="cd-mut">Valas belum dihitung fisik</span><b class="cd-mut">-</b></div>';
+        const bankRows = u.banks.length
+            ? u.banks.map((b) => row(`Bank ${esc(b.name)}`, b.diff, Math.abs(b.diff) < 0.5 ? 'sesuai rekening koran' : 'vs rekening koran')).join('')
+            : '<div><span class="cd-mut">Saldo rekening koran belum diisi</span><b class="cd-mut">-</b></div>';
+        const icon = { ok: 'fa-circle-check', warn: 'fa-triangle-exclamation', bad: 'fa-magnifying-glass', info: 'fa-circle-info' };
+        const dx = diagnose(u);
+        return `<div class="cd-card-head"><h3><i class="fa-solid fa-diagram-project"></i> Rekonsiliasi Terpadu</h3></div>
+            <p class="cd-hint" style="margin-top:0">Kas, valas, dan bank saling terkait: bila satu lebih, biasanya ada yang kurang di tempat lain.</p>
+            <div class="cd-rows">
+                ${u.cashCounted ? row('Kas Rupiah', u.cash, 'fisik + gantungan vs ledger') : '<div><span class="cd-mut">Kas belum dihitung fisik</span><b class="cd-mut">-</b></div>'}
+                ${valRows}${bankRows}
+                <div class="cd-rows-sum"><span>Total nilai selisih</span><b class="${Math.abs(u.total) < 0.5 ? 'tx-ok' : u.total < 0 ? 'tx-bad' : 'tx-info'}">${signed(u.total)}</b></div>
+            </div>
+            ${dx.length ? `<div style="margin-top:10px"><b style="font-size:.82rem">Analisis penyebab</b><ul class="cd-checks" style="margin-top:6px">${dx.map((x) => `<li class="lv-${x.lv === 'bad' ? 'bad' : x.lv}"><i class="fa-solid ${icon[x.lv] || icon.info}"></i><div><small style="font-size:.8rem;line-height:1.5">${esc(x.t)}</small></div></li>`).join('')}</ul></div>` : ''}`;
+    }
+
     // ---------- draft lokal (hitungan belum disimpan) ----------
     function saveDraft() {
         if (!S.date || isLocked()) return;
         try {
-            localStorage.setItem(DRAFT_KEY(S.date), JSON.stringify({ denoms: S.denoms, stock: S.stock, notes: S.notes, at: Date.now() }));
+            localStorage.setItem(DRAFT_KEY(S.date), JSON.stringify({ denoms: S.denoms, stock: S.stock, bank: S.bank, notes: S.notes, at: Date.now() }));
         } catch (e) { /* abaikan */ }
     }
     function readDraft() {
@@ -147,6 +289,7 @@
     function hydrateInputs() {
         S.denoms = {};
         S.stock = {};
+        S.bank = {};
         S.notes = '';
         S.accept = false;
         S.dirty = false;
@@ -156,6 +299,7 @@
             S.notes = c.notes || '';
         }
         S.data.stocks.forEach((s) => { if (s.physical_qty !== null) S.stock[s.currency_code] = s.physical_qty; });
+        (S.data.banks || []).forEach((b) => { if (b.statement_balance !== null && b.statement_balance !== undefined) S.bank[b.id] = b.statement_balance; });
 
         if (!c || c.status !== 'CLOSED') {
             const draft = readDraft();
@@ -163,6 +307,7 @@
             if (draft && (!c || draft.at > lastLog)) {
                 S.denoms = draft.denoms || S.denoms;
                 S.stock = draft.stock || S.stock;
+                S.bank = draft.bank || S.bank;
                 S.notes = draft.notes != null ? draft.notes : S.notes;
                 S.dirty = true;
             }
@@ -257,6 +402,7 @@
                 </div>
                 <aside class="cd-side">
                     <div class="cd-card cd-recon" id="cdRecon">${reconHtml()}</div>
+                    <div class="cd-card" id="cdUnified">${unifiedHtml()}</div>
                     <div class="cd-card" id="cdChecks">${checksHtml()}</div>
                 </aside>
             </div>
@@ -357,19 +503,33 @@
 
     function bankCardHtml() {
         const banks = S.data.banks;
-        const body = banks.length ? banks.map((b) => `<tr>
+        const locked = isLocked();
+        const body = banks.length ? banks.map((b) => {
+            const v = S.bank[b.id];
+            const has = v !== undefined && v !== null && v !== '';
+            return `<tr>
             <td><b>${esc(b.bank_name)}</b><br><small class="cd-mut">${esc(b.account_number || b.code)}</small></td>
             <td class="r">${rp(b.opening)}</td><td class="r tx-ok">${rp(b.in)}</td><td class="r tx-bad">${rp(b.out)}</td>
-            <td class="r"><b>${rp(b.closing)}</b></td></tr>`).join('')
-            : '<tr><td colspan="5" class="cd-empty">Belum ada rekening bank di ledger.</td></tr>';
+            <td class="r"><b>${rp(b.closing)}</b></td>
+            <td class="r"><input type="number" step="any" inputmode="decimal" class="cd-input-sm" style="min-width:130px" data-bankstmt="${esc(b.id)}" value="${has ? esc(v) : ''}" placeholder="saldo m-banking" ${locked ? 'disabled' : ''}></td>
+            <td class="r" data-bankdiff="${esc(b.id)}">${bankDiffHtml(has ? Number(v) - b.closing : null)}</td></tr>`;
+        }).join('')
+            : '<tr><td colspan="7" class="cd-empty">Belum ada rekening bank di ledger.</td></tr>';
         const total = banks.reduce((s, b) => s + b.closing, 0);
         return `<div class="cd-card">
-            <div class="cd-card-head"><h3><i class="fa-solid fa-building-columns"></i> Rekening Bank</h3>${banks.length ? `<span class="cd-mut">Total ${rp(total)}</span>` : ''}</div>
+            <div class="cd-card-head"><h3><i class="fa-solid fa-building-columns"></i> Rekening Bank</h3>${banks.length ? `<span class="cd-mut">Total ${rp(total)}</span>` : ''}
+                ${!locked && banks.length ? '<button type="button" class="cd-linkbtn" data-act="fill-bank"><i class="fa-solid fa-check-double"></i> Semua sesuai sistem</button>' : ''}</div>
             <div class="cd-tablewrap"><table class="cd-table">
-                <thead><tr><th>Rekening</th><th class="r">Saldo awal</th><th class="r">Masuk</th><th class="r">Keluar</th><th class="r">Saldo akhir</th></tr></thead>
+                <thead><tr><th>Rekening</th><th class="r">Saldo awal</th><th class="r">Masuk</th><th class="r">Keluar</th><th class="r">Saldo sistem</th><th class="r">Rekening koran</th><th class="r">Selisih</th></tr></thead>
                 <tbody>${body}</tbody></table></div>
-            <p class="cd-hint">Cocokkan saldo akhir dengan rekening koran. Saldo bank tidak ikut dihitung dalam selisih kas.</p>
+            <p class="cd-hint">Isi saldo akhir hari dari m-banking / rekening koran. Selisihnya ikut dicocokkan di Rekonsiliasi Terpadu.</p>
         </div>`;
+    }
+
+    function bankDiffHtml(diff) {
+        if (diff === null) return '<span class="cd-mut">belum diisi</span>';
+        if (Math.abs(diff) < 0.5) return '<span class="tx-ok"><i class="fa-solid fa-check"></i> sesuai</span>';
+        return `<span class="${diff < 0 ? 'tx-bad' : 'tx-info'}">${signed(diff)}</span>`;
     }
 
     function tradesCardHtml() {
@@ -518,7 +678,11 @@
         }
 
         DENOMS.forEach((den) => set2(`[data-sub="${den}"]`, rp(den * (parseInt(S.denoms[den], 10) || 0))));
-        renderVarianceAndActions(r, balanced);
+        const u = unified();
+        const uni = $('cdUnified');
+        if (uni) uni.innerHTML = unifiedHtml();
+        // Closing final butuh kas, valas yang dihitung, dan bank yang diisi: semuanya cocok.
+        renderVarianceAndActions(r, balanced && !u.valDiffs.length && !u.bankDiffs.length, u);
 
         const checks = $('cdChecks');
         if (checks) checks.innerHTML = checksHtml();
@@ -529,7 +693,7 @@
         if (el) el.textContent = text;
     }
 
-    function renderVarianceAndActions(r, balanced) {
+    function renderVarianceAndActions(r, balanced, u) {
         const variance = $('cdVariance');
         const actions = $('cdActions');
         if (!variance || !actions) return;
@@ -551,8 +715,12 @@
         if (counted && !balanced) {
             const reasonOk = S.notes.trim().length >= 10;
             if (canVariance()) {
+                const parts = [];
+                if (Math.abs(r.diff) >= 0.5) parts.push(`kas ${signed(r.diff)}`);
+                (u ? u.valDiffs : []).forEach((v) => parts.push(`${v.code} ${v.diff > 0 ? '+' : ''}${qf.format(v.diff)}`));
+                (u ? u.bankDiffs : []).forEach((b) => parts.push(`${b.name} ${signed(b.diff)}`));
                 varianceHtml = `<label class="cd-check"><input type="checkbox" id="cdAccept" ${S.accept ? 'checked' : ''}>
-                    <span>Tutup dengan selisih <b>${esc(signed(r.diff))}</b> dan catat alasannya</span></label>`;
+                    <span>Tutup dengan selisih <b>${esc(parts.join(', '))}</b> dan catat alasannya</span></label>`;
                 finalLabel = '<i class="fa-solid fa-lock"></i> Kunci dengan Selisih';
                 finalDisabled = blocked || !S.accept || !reasonOk;
                 if (S.accept && !reasonOk) hint = 'Isi catatan minimal 10 karakter sebagai alasan selisih.';
@@ -652,6 +820,9 @@
             stock_counts: Object.entries(S.stock)
                 .filter(([, v]) => v !== '' && v !== null && v !== undefined && !Number.isNaN(Number(v)))
                 .map(([code, v]) => ({ currency_code: code, physical_qty: Number(v) })),
+            bank_counts: Object.entries(S.bank)
+                .filter(([, v]) => v !== '' && v !== null && v !== undefined && !Number.isNaN(Number(v)))
+                .map(([id, v]) => ({ bank_account_id: Number(id), statement_balance: Number(v) })),
             notes: S.notes.trim(),
             accept_variance: mode === 'final' && S.accept
         };
@@ -663,11 +834,12 @@
         if (mode === 'final') {
             const ok = await confirmBox({
                 icon: 'warning',
-                title: Math.abs(r.diff) < 0.5 ? 'Kunci closing?' : 'Kunci closing dengan selisih?',
+                title: unified().balanced ? 'Kunci closing?' : 'Kunci closing dengan selisih?',
                 html: `<div style="text-align:left;line-height:1.8;">
                     Kas seharusnya: <b>${esc(rp(r.expected))}</b><br>
                     Uang fisik + gantungan: <b>${esc(rp(r.accounted))}</b><br>
-                    Selisih: <b>${esc(signed(r.diff))}</b><br><br>
+                    Selisih kas: <b>${esc(signed(r.diff))}</b><br>
+                    Total nilai selisih (kas + valas + bank): <b>${esc(signed(unified().total))}</b><br><br>
                     Setelah dikunci, angka tidak bisa diubah kecuali dibuka kembali oleh Owner/Superadmin.</div>`,
                 confirmText: 'Ya, kunci'
             });
@@ -868,6 +1040,12 @@
                 saveDraft();
                 scope.querySelectorAll('[data-qty]').forEach((i) => { i.value = ''; });
                 updateRecon();
+            } else if (act === 'fill-bank') {
+                (S.data.banks || []).forEach((b) => { S.bank[b.id] = b.closing; });
+                S.dirty = true;
+                saveDraft();
+                scope.querySelectorAll('[data-bankstmt]').forEach((i) => { i.value = S.bank[i.dataset.bankstmt]; refreshBankRow(i.dataset.bankstmt); });
+                updateRecon();
             } else if (act === 'fill-stock') {
                 S.data.stocks.forEach((s) => { S.stock[s.currency_code] = s.system_qty; });
                 S.dirty = true;
@@ -881,6 +1059,15 @@
             if (!e.target.closest('#closingRoot')) return;
             const qty = e.target.closest('[data-qty]');
             if (qty) { setQty(qty.dataset.qty, qty.value); updateRecon(); return; }
+            const bst = e.target.closest('[data-bankstmt]');
+            if (bst) {
+                S.bank[bst.dataset.bankstmt] = bst.value === '' ? '' : Number(bst.value);
+                S.dirty = true;
+                saveDraft();
+                refreshBankRow(bst.dataset.bankstmt);
+                updateRecon();
+                return;
+            }
             const stock = e.target.closest('[data-stock]');
             if (stock) {
                 S.stock[stock.dataset.stock] = stock.value === '' ? '' : Number(stock.value);
@@ -922,6 +1109,15 @@
         const v = S.stock[code];
         const has = v !== undefined && v !== null && v !== '';
         cell.innerHTML = stockDiffHtml(has ? Number(v) - s.system_qty : null, s.rate);
+    }
+
+    function refreshBankRow(id) {
+        const b = (S.data.banks || []).find((x) => String(x.id) === String(id));
+        const cell = document.querySelector(`[data-bankdiff="${id}"]`);
+        if (!b || !cell) return;
+        const v = S.bank[id];
+        const has = v !== undefined && v !== null && v !== '';
+        cell.innerHTML = bankDiffHtml(has ? Number(v) - b.closing : null);
     }
 
     async function guardNavigate(date, scrollTop, forceReload, dateInput) {
