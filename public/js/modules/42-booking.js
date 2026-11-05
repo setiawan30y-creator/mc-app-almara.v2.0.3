@@ -226,19 +226,21 @@
 
     // ------------------------------------------------------------ uang (kas / bank / mutasi)
     // sign: +1 uang masuk ke usaha, -1 uang keluar dari usaha
-    function moveMoney(method, amount, sign, note, ref, bankName) {
-        amount = round0(amount); if (amount <= 0) return;
-        var m = String(method).toUpperCase();
-        if (m === 'CASH') { saveCash(getCash() + sign * amount); return; }
-        if (m === 'BCA') saveBankBCA(getBankBCA() + sign * amount);
-        else if (m === 'MANDIRI') saveBankMandiri(getBankMandiri() + sign * amount);
-        var muts = safeGet(window.getMutations, []) || [];
-        muts.push({
-            id_mutasi: 'MUT-' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 90 + 10),
-            timestamp: new Date().toISOString(), tipe: sign > 0 ? 'MASUK' : 'KELUAR', nominal: amount,
-            keterangan: note + ' (Ref: ' + ref + ')', bank: bankName || m
+    // DP booking dicatat LANGSUNG di buku besar kas/bank server (per nomor booking). amount 0 =
+    // pencatatan DP dibatalkan (dikembalikan). Gagal = melempar error, tidak ada yang berubah. @2026-Alifiandra
+    async function postDp(ref, method, signedAmount, note) {
+        var doFetch = window.authFetch || window.fetch;
+        var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+        var res = await doFetch('/api/erp/booking-dp', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+            body: JSON.stringify({ ref: ref, method: String(method || 'CASH').toUpperCase(), amount: round0(signedAmount), description: note + ' ' + ref, timestamp: new Date().toISOString() })
         });
-        saveMutations(muts);
+        var json = {}; try { json = await res.json(); } catch (e) { /* abaikan */ }
+        if (!res.ok || json.status !== 'success') throw new Error(json.message || ('Server merespons HTTP ' + res.status));
+        if (typeof window.syncUniversalDatastore === 'function') {
+            try { await window.syncUniversalDatastore({ preferRemote: true, refreshUi: false, silent: true }); } catch (e) { /* abaikan */ }
+        }
     }
 
     // metode bayar bawaan kasir (CASH/TRANSFER/SPLIT) -> CASH | BCA | MANDIRI
@@ -675,8 +677,14 @@
                 var ci = curs.findIndex(function (c) { return c.code === code; });
                 curs[ci].stock = num(curs[ci].stock) + (tipe === 'JUAL' ? -need[code] : need[code]);
             });
+            if (dp > 0) {
+                try {
+                    await postDp(id, method, (tipe === 'JUAL' ? 1 : -1) * dp, tipe === 'JUAL' ? 'DP Booking' : 'DP Booking (dibayarkan)');
+                } catch (e) {
+                    return showError(null, 'Booking BELUM tersimpan: DP tidak bisa dicatat di server (' + e.message + '). Tidak ada data yang berubah.');
+                }
+            }
             await saveCurrencies(curs);
-            if (dp > 0) moveMoney(method, dp, tipe === 'JUAL' ? 1 : -1, tipe === 'JUAL' ? 'DP Booking' : 'DP Booking (dibayarkan)', id);
             saveBookings(allRows().concat(rows));
             closeModal(); render();
             var lack = tipe === 'JUAL' ? Object.keys(need).map(function (code) {
@@ -813,8 +821,14 @@
                 var ci = curs.findIndex(function (c) { return c.code === r.valuta; });
                 if (ci > -1) curs[ci].stock = num(curs[ci].stock) + (String(r.tipe).toUpperCase() === 'JUAL' ? num(r.nominal) : -num(r.nominal));
             });
+            if (disp === 'REFUND') {
+                try {
+                    await postDp(b.id, normMethod(b.first), 0, 'Pengembalian DP Booking');
+                } catch (e) {
+                    return showError(null, 'Pembatalan BELUM tersimpan: pengembalian DP tidak bisa dicatat di server (' + e.message + ').');
+                }
+            }
             await saveCurrencies(curs);
-            if (disp === 'REFUND') moveMoney(normMethod(b.first), b.dp, b.dir === 'IN' ? -1 : 1, 'Pengembalian DP Booking', b.id);
 
             var nowIso = new Date().toISOString(), who = currentUserName();
             saveBookings(allRows().map(function (r) {

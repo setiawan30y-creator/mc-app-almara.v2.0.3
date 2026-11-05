@@ -56,6 +56,11 @@ class ErpOpeningBalanceController extends Controller
                 $this->bankAccount('BCA')->update(['opening_balance' => (float) $data['bank_bca']]);
                 $this->bankAccount('MANDIRI')->update(['opening_balance' => (float) $data['bank_mandiri']]);
 
+                // Angka di halaman Pengaturan ikut disimpan di database yang sama. @2026-Alifiandra
+                foreach (['mc_initial_cash' => 'cash', 'mc_initial_bank_bca' => 'bank_bca', 'mc_initial_bank_mandiri' => 'bank_mandiri'] as $key => $field) {
+                    \App\Models\Datastore::updateOrCreate(['store_key' => $key], ['json_data' => (float) $data[$field]]);
+                }
+
                 foreach (($data['currencies'] ?? []) as $row) {
                     $code = strtoupper(trim((string) $row['code']));
 
@@ -96,6 +101,21 @@ class ErpOpeningBalanceController extends Controller
             'message' => 'Saldo awal tersimpan di ledger ERP.',
             'skipped' => $skipped,
         ]);
+    }
+
+    /** GET /erp/opening-balances : saldo awal yang tercatat di buku besar server. @2026-Alifiandra */
+    public function show()
+    {
+        $cash = ErpCashAccount::query()->where('currency_code', 'IDR')->where('is_active', true)->orderBy('id')->first();
+        $find = fn (string $name) => ErpBankAccount::query()->where('currency_code', 'IDR')->where('is_active', true)
+            ->where(fn ($q) => $q->where('bank_name', 'like', '%'.$name.'%')->orWhere('code', 'like', '%'.$name.'%'))
+            ->orderBy('id')->first();
+
+        return response()->json(['status' => 'success', 'data' => [
+            'cash' => (float) ($cash->opening_balance ?? 0),
+            'bank_bca' => (float) ($find('BCA')->opening_balance ?? 0),
+            'bank_mandiri' => (float) ($find('MANDIRI')->opening_balance ?? 0),
+        ]])->header('Cache-Control', 'no-store');
     }
 
     private function bankAccount(string $bankName): ErpBankAccount

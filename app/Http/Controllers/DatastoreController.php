@@ -55,6 +55,20 @@ class DatastoreController extends Controller
         $bca = $this->erpBankBalanceLike('BCA');
         $mandiri = $this->erpBankBalanceLike('MANDIRI');
 
+        // Saldo awal juga dari buku besar (satu sumber untuk semua akun & perangkat). @2026-Alifiandra
+        $openCash = ErpCashAccount::query()->where('currency_code', 'IDR')->where('is_active', true)->orderBy('id')->first();
+        $openBank = function (string $name) {
+            $acc = ErpBankAccount::query()->where('currency_code', 'IDR')->where('is_active', true)
+                ->where(fn ($q) => $q->where('bank_name', 'like', '%'.$name.'%')->orWhere('code', 'like', '%'.$name.'%'))
+                ->orderBy('id')->first();
+            return (float) ($acc->opening_balance ?? 0);
+        };
+        if ($openCash || ErpBankAccount::query()->exists()) {
+            $data['mc_initial_cash'] = (float) ($openCash->opening_balance ?? 0);
+            $data['mc_initial_bank_bca'] = $openBank('BCA');
+            $data['mc_initial_bank_mandiri'] = $openBank('MANDIRI');
+        }
+
         $data['mc_cash'] = $cash;
         $data['mc_bank_bca'] = $bca;
         $data['mc_bank_mandiri'] = $mandiri;

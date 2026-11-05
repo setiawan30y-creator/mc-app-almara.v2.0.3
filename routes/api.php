@@ -153,6 +153,12 @@ Route::post('/goaml/alerts/{alert}/ltkm', [GoamlComplianceController::class, 'cr
     Route::get('/erp/expenses', [ErpExpenseLedgerController::class, 'index']);
     Route::get('/erp/expenses/bi-summary', [ErpExpenseLedgerController::class, 'biSummary']);
     Route::post('/erp/opening-balances', [ErpOpeningBalanceController::class, 'store'])->middleware('role:owner,superadmin,admin');
+    // Data uang selain transaksi valas langsung ke buku besar server. @2026-Alifiandra
+    Route::get('/erp/opening-balances', [ErpOpeningBalanceController::class, 'show']);
+    Route::post('/erp/adjustments/save', [\App\Http\Controllers\ErpMoneyLedgerController::class, 'saveAdjustment'])->middleware('role:owner,superadmin,admin,supervisor');
+    Route::post('/erp/adjustments/delete', [\App\Http\Controllers\ErpMoneyLedgerController::class, 'deleteAdjustment'])->middleware('role:owner,superadmin,admin,supervisor');
+    Route::post('/erp/booking-dp', [\App\Http\Controllers\ErpMoneyLedgerController::class, 'bookingDp']);
+    Route::post('/erp/money-move', [\App\Http\Controllers\ErpMoneyLedgerController::class, 'bookingDp']);
 
     // Closing Harian (ledger ERP)
     // Nomor invoice/booking dialokasikan server saat submit

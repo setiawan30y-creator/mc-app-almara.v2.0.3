@@ -152,13 +152,15 @@
             const res = await window.authFetch('api/erp/expenses');
             const json = await res.json().catch(() => ({}));
             if (!res.ok || json.status !== 'success') return;
-            const local = all();
-            const have = new Set(local.map((e) => String(e.id_pengeluaran)));
-            const add = (json.data || []).filter((r) => !have.has(String(r.id_pengeluaran))).map((r) => ({
+            // Database = sumber data: daftar di browser disamakan persis (tambah, ubah, hapus).
+            const server = (json.data || []).map((r) => ({
                 id_pengeluaran: r.id_pengeluaran, timestamp: r.timestamp, tipe: r.tipe, kategori: r.kategori, deskripsi: r.deskripsi || '',
                 sumber: r.sumber, nominal: r.nominal, inputBy: r.inputBy || '', editBy: r.editBy || ''
             }));
-            if (add.length) { localStorage.setItem('mc_expenses', JSON.stringify(local.concat(add))); render(); }
+            const local = all();
+            if (!server.length && local.length) return; // database kosong: jangan hapus data lama di browser
+            if (JSON.stringify(server) !== JSON.stringify(local)) { saveExpenses(server); render(); }
+            setSync('ok');
         } catch (e) { console.warn('Jurnal dari MySQL tidak dapat dimuat:', e.message); }
     }
 
@@ -276,7 +278,26 @@
         h.innerHTML = `Masuk ke <b>LKBU B0003 kode ${esc(String(cat.value).slice(0, 2))}</b> dan ${formType === 'PENDAPATAN' ? 'menambah' : 'mengurangi'} <b>${esc(src)}</b>. Laba/rugi periode ikut berubah di Neraca.`;
     }
 
-    function saveForm() {
+    // Database dulu: hanya jurnal yang disimpan/dihapus ini yang dikirim. Bila server menolak,
+    // tidak ada yang berubah di browser. @2026-Alifiandra
+    async function postOne(rows, deleted) {
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const doFetch = window.authFetch || window.fetch;
+        const res = await doFetch('/api/erp/expenses/sync', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+            body: JSON.stringify({ expenses: rows, deleted: deleted })
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.status !== 'success') throw new Error(json.message || ('Server merespons HTTP ' + res.status));
+        if (typeof window.syncUniversalDatastore === 'function') {
+            try { await window.syncUniversalDatastore({ preferRemote: true, refreshUi: false, silent: true }); } catch (e) { /* abaikan */ }
+        }
+        if (typeof window.loadBankMutationCards === 'function') window.loadBankMutationCards(true);
+    }
+
+    async function saveForm() {
+        if (S.saving) return;
         const err = (m) => { $('exfErr').textContent = m; };
         const amount = digits($('exfAmt').value);
         const desc = $('exfDesc').value.trim();
@@ -288,29 +309,29 @@
         if (!amount || amount <= 0) return err('Nominal harus lebih dari 0.');
         if (!category) return err('Pilih kategori akun.');
 
-        let cash = getCash(), bca = getBankBCA(), man = getBankMandiri();
-        const sign = formType === 'PENDAPATAN' ? 1 : -1;
-        if (sign < 0) {
-            if (source === 'CASH' && cash < amount) return err('Kas Tunai tidak mencukupi.');
-            if (source === 'BCA' && bca < amount) return err('Saldo Bank BCA tidak mencukupi.');
-            if (source === 'MANDIRI' && man < amount) return err('Saldo Bank Mandiri tidak mencukupi.');
-        }
-        if (source === 'CASH') cash += sign * amount; else if (source === 'BCA') bca += sign * amount; else if (source === 'MANDIRI') man += sign * amount;
-
         const now = new Date().toISOString();
         const stamp = `${date}T${now.substring(11)}`;
         const user = (typeof getCurrentUser === 'function' && getCurrentUser()) || null;
-        const list = all();
-        list.push({
+        const row = {
             id_pengeluaran: (formType === 'PENDAPATAN' ? 'INC-' : 'EXP-') + Date.now().toString().slice(-6),
             timestamp: stamp, tipe: formType, kategori: category, deskripsi: desc, sumber: source, nominal: amount,
             inputBy: user ? user.fullName : 'Admin Kasir', editBy: ''
-        });
+        };
+        S.saving = true; err('Menyimpan ke database...');
+        try {
+            await postOne([row], []); // server memeriksa saldo & mencatat ke buku besar kas/bank
+        } catch (e) {
+            S.saving = false;
+            return err('Jurnal BELUM tersimpan: ' + e.message);
+        }
+        S.saving = false;
+        const list = all();
+        if (!list.some((x) => String(x.id_pengeluaran) === row.id_pengeluaran)) list.push(row);
         saveExpenses(list);
-        if (source === 'CASH') saveCash(cash); else if (source === 'BCA') saveBankBCA(bca); else saveBankMandiri(man);
         closeForm();
         render();
-        pushToServer([], true).then((ok) => { if (ok) toast('success', 'Jurnal tersimpan dan masuk ke LKBU B0003'); });
+        setSync('ok');
+        toast('success', 'Jurnal tersimpan di database dan masuk ke LKBU B0003');
         refreshDashboard();
     }
 
@@ -321,13 +342,16 @@
         const e = list[idx];
         const ok = await confirmBox({ icon: 'warning', title: 'Hapus jurnal ini?', text: `${e.id_pengeluaran} - ${e.deskripsi}. Saldo kas/bank dikembalikan otomatis dan LKBU dihitung ulang.`, confirmText: 'Hapus' });
         if (!ok) return;
-        const src = e.sumber === 'BANK' ? 'BCA' : e.sumber;
-        const back = (e.tipe === 'PENDAPATAN' ? -1 : 1) * Number(e.nominal || 0);
-        if (src === 'CASH') saveCash(getCash() + back); else if (src === 'BCA') saveBankBCA(getBankBCA() + back); else if (src === 'MANDIRI') saveBankMandiri(getBankMandiri() + back);
-        list.splice(idx, 1);
-        saveExpenses(list);
+        try {
+            await postOne([], [String(id)]);
+        } catch (er) {
+            toast('error', 'Jurnal BELUM dihapus: ' + er.message);
+            return;
+        }
+        const fresh = all().filter((x) => String(x.id_pengeluaran) !== String(id));
+        saveExpenses(fresh);
         render();
-        pushToServer([id], true);
+        setSync('ok');
         refreshDashboard();
     }
     function refreshDashboard() {
@@ -350,7 +374,7 @@
             else if (a === 'del') remove(t.dataset.id);
             else if (a === 'print') window.print();
             else if (a === 'excel') { if (typeof window.exportTableToExcel === 'function') window.exportTableToExcel('expenseTable', 'Jurnal_Keuangan'); }
-            else if (a === 'resync') pushToServer([], true);
+            else if (a === 'resync') { S.merged = false; mergeFromServer(); }
             else if (a === 'code') { S.code = S.code === t.dataset.code ? '' : t.dataset.code; const el = $('exCode'); if (el) el.value = S.code; render(); }
         });
         document.addEventListener('input', (ev) => {
@@ -371,7 +395,8 @@
     // ---------- API publik (nama lama tetap ada) ----------
     window.loadExpensesTable = function () {
         injectStyle(); bindOnce(); shell(); render();
-        if (S.sync.state === 'idle') pushToServer([], false); // impor jurnal lama ke MySQL bila belum ada
+        // Daftar jurnal selalu dari database (tidak lagi mengirim ulang daftar dari browser). @2026-Alifiandra
+        S.merged = false;
         mergeFromServer();
     };
     window.openExpenseModal = function () { injectStyle(); bindOnce(); openForm(); };

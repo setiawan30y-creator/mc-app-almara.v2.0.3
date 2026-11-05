@@ -2107,32 +2107,24 @@ async function processPaymentCore() {
         finalTimestamp = checkoutDateEl.value + 'T' + currTime;
     }
 
-    // Log Bank Mutation if involved
-    if(Math.abs(payTransfer) > 0) {
-        // mutations sudah di-load dan disesuaikan di atas
-        mutations.push({
-            id_mutasi: 'MUT-' + Date.now().toString().slice(-6),
-            timestamp: finalTimestamp,
-            tipe: payTransfer > 0 ? 'MASUK' : 'KELUAR',
-            nominal: Math.abs(payTransfer),
-            keterangan: `Transaksi Valas (Ref: ${receiptId})`,
-            bank: bankTgt
-        });
-        almaraStore.saveMutations(mutations);
-    }
-
-    almaraStore.saveCurrencies(currencies);
-    almaraStore.saveCash(cash);
-    almaraStore.saveBankBCA(bankBCA);
-    almaraStore.saveBankMandiri(bankMandiri);
+    // Transaksi disimpan ke DATABASE DULU. Saldo/stok di browser hanya diperbarui setelah server
+    // menerima transaksi (lihat applyLocalCaches di bawah). Mutasi bank untuk transfer dicatat oleh
+    // server dari transaksinya sendiri, jadi tidak lagi dibuat di browser. @2026-Alifiandra
+    const wasEditingTrxId = window.editingTrxId;
+    const applyLocalCaches = () => {
+        if (wasEditingTrxId) almaraStore.saveMutations(mutations); // buang baris otomatis lama milik transaksi ini
+        almaraStore.saveCurrencies(currencies);
+        almaraStore.saveCash(cash);
+        almaraStore.saveBankBCA(bankBCA);
+        almaraStore.saveBankMandiri(bankMandiri);
+        window.editingTrxId = null; // edit selesai hanya bila server sudah menerima
+        window.editingTrxTimestamp = null;
+        window.editingTrxInputBy = null;
+    };
 
     const currentUser = almaraAuth.getCurrentUser();
     const inputByUser = window.editingTrxInputBy || (currentUser && currentUser.fullName ? currentUser.fullName : 'Admin Kasir');
     const editByUser = window.editingTrxId ? (currentUser && currentUser.fullName ? currentUser.fullName : 'Admin Kasir') : '';
-
-    window.editingTrxId = null; // Clear edit state after success
-    window.editingTrxTimestamp = null;
-    window.editingTrxInputBy = null;
     
     // trxs sudah di-load dan disesuaikan di atas
     const customerId = document.getElementById('trxCustomer').value;
@@ -2233,68 +2225,79 @@ async function processPaymentCore() {
         newTransactionRows.push(transactionRow);
     });
 
+    const showNotSaved = (msg) => {
+        // Nomor invoice dipertahankan agar kirim ulang memakai nomor yang sama (tidak dobel).
+        const invField = document.getElementById('posTrxIdPreviewModern');
+        if (invField && !wasEditingTrxId && receiptId) invField.value = receiptId;
+        const text = 'TRANSAKSI BELUM TERSIMPAN\n\nServer/database belum menerima transaksi ini, jadi tidak ada data, saldo, maupun stok yang berubah.\n\nPesan: ' + msg +
+            '\n\nPeriksa koneksi lalu klik proses lagi (nomor ' + receiptId + ' tetap dipakai). Bila ragu, cek dulu di Riwayat Transaksi.';
+        if (typeof Swal !== 'undefined' && Swal.fire) Swal.fire({ icon: 'error', title: 'Belum tersimpan', text }); else alert(text);
+    };
+    const postMoneyApi = async (path, body) => {
+        const doFetch = window.authFetch || window.fetch;
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        const res = await doFetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf }, body: JSON.stringify(body) });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.status !== 'success') throw new Error(json.message || ('Server merespons HTTP ' + res.status));
+        return json;
+    };
+
     if (checkoutType === 'BOOKING') {
+        // DP booking dicatat ke buku besar kas/bank di server dulu.
+        if (Math.abs(requiredPayment) > 0.005) {
+            const dpMethod = paymentMethod === 'TRANSFER' ? (bankTgt || 'BCA') : 'CASH';
+            try {
+                await postMoneyApi('/api/erp/booking-dp', { ref: receiptId, method: dpMethod, amount: requiredPayment, description: (requiredPayment > 0 ? 'DP Booking ' : 'DP Booking dibayarkan ') + receiptId, timestamp: finalTimestamp });
+            } catch (error) {
+                showNotSaved(error.message);
+                return;
+            }
+        }
         const bookings = typeof almaraStore.getBookings === 'function' ? almaraStore.getBookings() : window.safeArrayGet('mc_bookings');
         almaraStore.saveBookings([...(Array.isArray(bookings) ? bookings : []), ...newTransactionRows]);
+        applyLocalCaches();
     } else {
+        let syncResults = null;
+        try {
+            if (typeof window.pushTransactionsToMySQL !== 'function') throw new Error('Modul sinkronisasi belum termuat. Muat ulang halaman (Ctrl+F5).');
+            syncResults = await window.pushTransactionsToMySQL(newTransactionRows);
+        } catch (error) {
+            syncResults = [{ ok: false, message: (error && error.message) || String(error) }];
+        }
+        const failedSync = (syncResults || []).find(result => !result || !result.ok);
+        if (!syncResults || !syncResults.length || failedSync) {
+            showNotSaved((failedSync && failedSync.message) || 'koneksi/server belum merespons');
+            return;
+        }
+
+        // Server sudah menyimpan -> salinan di browser diperbarui, lalu ditarik ulang dari database.
         newTransactionRows.forEach(row => trxs.push(row));
         window.__almaraSuppressAutoTransactionPush = true;
         window.__almaraPendingTransactionIds = newTransactionRows.map(t => String(t.itemId || t.id));
-
         try {
             almaraStore.saveTransactions(trxs);
-            const runBackgroundTransactionSync = async () => {
-                let transactionSyncWarning = '';
-                try {
-                    if (typeof window.pushTransactionsToMySQL === 'function') {
-                        const syncResults = await window.pushTransactionsToMySQL(newTransactionRows);
-                        const failedSync = syncResults.find(result => !result || !result.ok);
-                        if (failedSync) {
-                            transactionSyncWarning = "\n\nCatatan: transaksi sudah tersimpan di browser, tetapi belum masuk database. Pesan: " + (failedSync.message || 'koneksi/server belum merespons');
-                        }
-                    } else if (typeof window.saveToMySQL_Transaction === 'function') {
-                        const syncResults = [];
-                        for (const trx of newTransactionRows) {
-                            syncResults.push(await window.saveToMySQL_Transaction(trx));
-                        }
-                        const failedSync = syncResults.find(result => !result || !result.ok);
-                        if (failedSync) {
-                            transactionSyncWarning = "\n\nCatatan: transaksi sudah tersimpan di browser, tetapi belum masuk database. Pesan: " + (failedSync.message || 'koneksi/server belum merespons');
-                        }
-                    }
-
-                    if (typeof window.syncFromMySQL_Transactions === 'function') {
-                        await window.syncFromMySQL_Transactions({ pushLocal: false, refreshUi: true, silent: true, force: true });
-                    }
-
-                    if (transactionSyncWarning) {
-                        console.warn(transactionSyncWarning.trim());
-
-                        alert(
-                            'PERINGATAN SINKRONISASI TRANSAKSI\n\n' +
-                            'Pembayaran sudah dicatat di browser, tetapi ' +
-                            'belum berhasil dikonfirmasi masuk MySQL.\n\n' +
-                            transactionSyncWarning.trim() +
-                            '\n\nJangan proses pembayaran yang sama sekali lagi. ' +
-                            'Periksa status transaksi di database sebelum mencoba sinkronisasi ulang.'
-                        );
-                    }
-                } catch (syncError) {
-                    console.warn('Background transaction sync skipped:', syncError);
-                    alert(
-                        'PERINGATAN SINKRONISASI TRANSAKSI\n\n' +
-                        'Pembayaran sudah dicatat di browser, tetapi sinkronisasi ke MySQL ' +
-                        'belum dapat dikonfirmasi.\n\n' +
-                        'Pesan: ' + (syncError && syncError.message ? syncError.message : String(syncError)) +
-                        '\n\nJangan proses pembayaran yang sama sekali lagi. ' +
-                        'Periksa status transaksi di database sebelum mencoba sinkronisasi ulang.'
-                    );
-                }
-            };
-            setTimeout(runBackgroundTransactionSync, 0);
         } finally {
             window.__almaraSuppressAutoTransactionPush = false;
             window.__almaraPendingTransactionIds = [];
+        }
+        applyLocalCaches();
+        try {
+            if (typeof window.syncFromMySQL_Transactions === 'function') {
+                await window.syncFromMySQL_Transactions({ pushLocal: false, refreshUi: true, silent: true, force: true });
+            }
+            if (typeof window.syncUniversalDatastore === 'function') {
+                await window.syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
+            }
+        } catch (e) { console.warn('Tarik ulang dari database ditunda:', e); }
+
+        // Booking yang dilunasi: DP sudah ikut dalam pembayaran transaksi ini, jadi pencatatan DP
+        // terpisah dibatalkan agar uangnya tidak terhitung dua kali.
+        if (bkImp && bkImp.bookingId && (parseFloat(bkDpUsed) || 0) > 0) {
+            try {
+                await postMoneyApi('/api/erp/booking-dp', { ref: bkImp.bookingId, method: 'CASH', amount: 0, description: 'DP ' + bkImp.bookingId + ' masuk ke pelunasan ' + receiptId });
+            } catch (error) {
+                alert('Transaksi tersimpan, tetapi pencatatan DP booking ' + bkImp.bookingId + ' belum bisa disesuaikan: ' + error.message + '\n\nLaporkan ke admin agar saldo tidak terhitung dua kali.');
+            }
         }
     }
 

@@ -717,7 +717,17 @@ window.voidTransaction = function(id) {
             bankMandiri -= oldPayTransfer;
         }
         
-        // Apply restitution
+        // Hapus di DATABASE dulu (server ikut membatalkan kas/bank & stok). Bila gagal, tidak ada
+        // yang berubah di browser. @2026-Alifiandra
+        const delRes = typeof window.deleteFromMySQL_Transaction === 'function'
+            ? await window.deleteFromMySQL_Transaction(id)
+            : { ok: false, message: 'Modul sinkronisasi belum termuat. Muat ulang halaman (Ctrl+F5).' };
+        if (!delRes || !delRes.ok) {
+            alert('Transaksi ' + id + ' BELUM dihapus.\n\nServer/database menolak atau tidak bisa dihubungi: ' + ((delRes && delRes.message) || '-') + '\n\nTidak ada data yang berubah.');
+            return false;
+        }
+
+        // Apply restitution (salinan di browser)
         saveCurrencies(currencies);
         saveCash(kasTunai);
         saveBankBCA(bankBCA);
@@ -730,10 +740,8 @@ window.voidTransaction = function(id) {
         // Filter out associated bank mutation
         const filteredMut = mutations.filter(m => !m.keterangan || (m.keterangan && !m.keterangan.includes(id)));
         saveMutations(filteredMut);
-        
-        // Delete from MySQL database
-        if (typeof window.deleteFromMySQL_Transaction === 'function') {
-            await window.deleteFromMySQL_Transaction(id);
+        if (typeof window.syncUniversalDatastore === 'function') {
+            try { await window.syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true }); } catch (e) {}
         }
         
         alert(`Transaksi ${id} sukses dihapus dan dibatalkan!`);
@@ -1236,23 +1244,15 @@ window.saveEditedTransaction = async function() {
     let rawTimestamp = document.getElementById('editTrxTimestamp').value;
     const finalTimestamp = rawTimestamp ? rawTimestamp.replace('T', ' ') + ':00' : new Date().toISOString().replace('T', ' ').substring(0, 19);
 
-    if (Math.abs(payTransfer) > 0) {
-        mutations.push({
-            id_mutasi: 'MUT-' + Date.now().toString().slice(-6),
-            timestamp: finalTimestamp,
-            tipe: payTransfer > 0 ? 'MASUK' : 'KELUAR',
-            nominal: Math.abs(payTransfer),
-            keterangan: `Transaksi Valas (Ref: ${receiptId})`,
-            bank: bankTgt
-        });
-    }
-
-    // Save state
-    almaraStore.saveCurrencies(currencies);
-    almaraStore.saveCash(cash);
-    almaraStore.saveBankBCA(bankBCA);
-    almaraStore.saveBankMandiri(bankMandiri);
-    almaraStore.saveMutations(mutations);
+    // Mutasi bank transfer dicatat server dari transaksinya; salinan di browser baru diperbarui
+    // setelah database menerima perubahan (lihat di bawah). @2026-Alifiandra
+    const applyEditLocalCaches = () => {
+        almaraStore.saveCurrencies(currencies);
+        almaraStore.saveCash(cash);
+        almaraStore.saveBankBCA(bankBCA);
+        almaraStore.saveBankMandiri(bankMandiri);
+        almaraStore.saveMutations(mutations);
+    };
 
     // Rebuild transaction array
     trxs = trxs.filter(t => t.id !== receiptId);
@@ -1316,8 +1316,28 @@ window.saveEditedTransaction = async function() {
         };
     });
 
+    // Database dulu.
+    let editResults = null;
+    try {
+        if (typeof window.pushTransactionsToMySQL !== 'function') throw new Error('Modul sinkronisasi belum termuat. Muat ulang halaman (Ctrl+F5).');
+        editResults = await window.pushTransactionsToMySQL(newTransactionRows);
+    } catch (e) {
+        editResults = [{ ok: false, message: (e && e.message) || String(e) }];
+    }
+    const editFailed = (editResults || []).find(r => !r || !r.ok);
+    if (!editResults || !editResults.length || editFailed) {
+        alert('Perubahan transaksi ' + receiptId + ' BELUM tersimpan.\n\nServer/database menolak atau tidak bisa dihubungi: ' + ((editFailed && editFailed.message) || '-') + '\n\nTidak ada data yang berubah. Coba simpan lagi.');
+        return;
+    }
+
     newTransactionRows.forEach(row => trxs.push(row));
-    almaraStore.saveTransactions(trxs);
+    window.__almaraSuppressAutoTransactionPush = true;
+    window.__almaraPendingTransactionIds = newTransactionRows.map(t => String(t.itemId || t.id));
+    try { almaraStore.saveTransactions(trxs); } finally {
+        window.__almaraSuppressAutoTransactionPush = false;
+        window.__almaraPendingTransactionIds = [];
+    }
+    applyEditLocalCaches();
 
     window.closeEditTrxModal();
 
@@ -1325,9 +1345,8 @@ window.saveEditedTransaction = async function() {
     window.__almaraPendingTransactionIds = newTransactionRows.map(t => String(t.itemId || t.id));
 
     try {
-        if (typeof window.pushTransactionsToMySQL === 'function') {
-            const syncResults = await window.pushTransactionsToMySQL(newTransactionRows);
-            console.log("Edit Sync Results:", syncResults);
+        if (typeof window.syncUniversalDatastore === 'function') {
+            await window.syncUniversalDatastore({ preferRemote: true, refreshUi: false, silent: true });
         }
         if (typeof window.syncFromMySQL_Transactions === 'function') {
             await window.syncFromMySQL_Transactions({ pushLocal: false, refreshUi: true, silent: true, force: true });

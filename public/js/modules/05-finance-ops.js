@@ -109,6 +109,8 @@ async function saveMutation() {
         return;
     }
 
+    // Ambil daftar terbaru dari database dulu agar perubahan dari akun lain tidak tertimpa. @2026-Alifiandra
+    if (typeof syncUniversalDatastore === 'function') { try { await syncUniversalDatastore({ preferRemote: true, silent: true }); } catch (e) {} }
     let mutations = getMutations();
     let bankBCA = getBankBCA();
     let bankMandiri = getBankMandiri();
@@ -214,6 +216,7 @@ window.deleteMutation = async function(id) {
                 window.__bankMutPending('delete', id);
             }
         }
+        if (typeof syncUniversalDatastore === 'function') { try { await syncUniversalDatastore({ preferRemote: true, silent: true }); } catch (e) {} }
         let mutations = getMutations();
         let bankBCA = getBankBCA();
         let bankMandiri = getBankMandiri();
@@ -330,7 +333,33 @@ function closeAdjustmentModal() {
     document.getElementById('adjustmentModal').classList.remove('show');
 }
 
-function saveAdjustment() {
+// Jurnal Ekuitas/Kewajiban disimpan LANGSUNG ke database (buku besar kas/bank + daftar jurnal).
+// Browser hanya menampilkan hasil dari server. @2026-Alifiandra
+async function postAdjustmentApi(path, body) {
+    const doFetch = window.authFetch || window.fetch;
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const res = await doFetch(path, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+        body: JSON.stringify(body)
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.status !== 'success') throw new Error(json.message || ('Server merespons HTTP ' + res.status));
+    return json.data || {};
+}
+function applyServerAdjustments(list) {
+    try {
+        window.__almaraApplyingRemoteSync = true;
+        localStorage.setItem('mc_adjustments', JSON.stringify(Array.isArray(list) ? list : []));
+    } finally { window.__almaraApplyingRemoteSync = false; }
+}
+async function afterMoneyChange() {
+    if (typeof syncUniversalDatastore === 'function') await syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
+    if (typeof window.loadBankMutationCards === 'function') window.loadBankMutationCards(true);
+    if (document.getElementById('dashboard-view')?.classList.contains('active')) loadDashboard();
+}
+
+async function saveAdjustment() {
     const category = document.getElementById('modalAdjCategory').value;
     const type = document.getElementById('modalAdjType').value;
     const impact = document.getElementById('modalAdjImpact').value;
@@ -341,84 +370,48 @@ function saveAdjustment() {
         alert("Nominal dan Deskripsi wajib diisi!");
         return;
     }
-
-    let cash = getCash();
-    let bankBCA = getBankBCA();
-    let bankMandiri = getBankMandiri();
-
-    // Check availability if cash/bank goes out
-    if(impact === 'KELUAR_CASH' && cash < amount) {
-        alert("Kas Tunai tidak mencukupi!"); return;
-    }
-    if(impact === 'KELUAR_BCA' && bankBCA < amount) {
-        alert("Saldo Bank BCA tidak mencukupi!"); return;
-    }
-    if(impact === 'KELUAR_MANDIRI' && bankMandiri < amount) {
-        alert("Saldo Bank Mandiri tidak mencukupi!"); return;
-    }
-
-    if(impact === 'MASUK_CASH') cash += amount;
-    else if(impact === 'KELUAR_CASH') cash -= amount;
-    else if(impact === 'MASUK_BCA') bankBCA += amount;
-    else if(impact === 'KELUAR_BCA') bankBCA -= amount;
-    else if(impact === 'MASUK_MANDIRI') bankMandiri += amount;
-    else if(impact === 'KELUAR_MANDIRI') bankMandiri -= amount;
-
-    const adjs = getAdjustments();
+    if (window.__adjSaving) return;
+    window.__adjSaving = true;
     const currUser = getCurrentUser() ? getCurrentUser().fullName : 'Admin Kasir';
-    adjs.push({
-        id_adj: 'ADJ-' + Date.now().toString().slice(-6),
-        timestamp: new Date().toISOString(),
-        kategori: category,
-        tipe: type,
-        impact: impact,
-        deskripsi: desc,
-        nominal: amount,
-        inputBy: currUser,
-        editBy: ''
-    });
-
-    saveAdjustments(adjs);
-    saveCash(cash);
-    saveBankBCA(bankBCA);
-    saveBankMandiri(bankMandiri);
-    
+    try {
+        const data = await postAdjustmentApi('/api/erp/adjustments/save', {
+            id_adj: 'ADJ-' + Date.now().toString().slice(-6),
+            timestamp: new Date().toISOString(),
+            kategori: category,
+            tipe: type,
+            impact: impact,
+            deskripsi: desc,
+            nominal: amount,
+            inputBy: currUser,
+            editBy: ''
+        });
+        applyServerAdjustments(data.list);
+    } catch (error) {
+        alert('Jurnal BELUM tersimpan.\n\n' + error.message);
+        return;
+    } finally {
+        window.__adjSaving = false;
+    }
     closeAdjustmentModal();
     loadAdjustmentsTable();
-    if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
-    alert("Jurnal Ekuitas/Kewajiban berhasil dicatat!");
+    await afterMoneyChange();
+    alert("Jurnal Ekuitas/Kewajiban berhasil dicatat di database!");
 }
 
-function deleteAdjustment(id) {
-    if(confirm('Hapus jurnal penyesuaian ini? Kas/Bank akan disesuaikan kembali ke saldo awal sebelum pencatatan ini.')) {
-        let adjs = getAdjustments();
-        const index = adjs.findIndex(x => x.id_adj === id);
-        if(index > -1) {
-            const a = adjs[index];
-            let cash = getCash();
-            let bankBCA = getBankBCA();
-            let bankMandiri = getBankMandiri();
-            
-            // Fallback for old 'MASUK_BANK' / 'KELUAR_BANK' entries
-            let eImpact = a.impact;
-            if(eImpact === 'MASUK_BANK') eImpact = 'MASUK_BCA';
-            if(eImpact === 'KELUAR_BANK') eImpact = 'KELUAR_BCA';
-            
-            // Revert impact
-            if(eImpact === 'MASUK_CASH') cash -= a.nominal;
-            else if(eImpact === 'KELUAR_CASH') cash += a.nominal;
-            else if(eImpact === 'MASUK_BCA') bankBCA -= a.nominal;
-            else if(eImpact === 'KELUAR_BCA') bankBCA += a.nominal;
-            else if(eImpact === 'MASUK_MANDIRI') bankMandiri -= a.nominal;
-            else if(eImpact === 'KELUAR_MANDIRI') bankMandiri += a.nominal;
-            
-            adjs.splice(index, 1);
-            saveAdjustments(adjs);
-            loadAdjustmentsTable();
-            if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
-        }
+async function deleteAdjustment(id) {
+    if(!confirm('Hapus jurnal penyesuaian ini? Kas/Bank akan disesuaikan kembali ke saldo sebelum pencatatan ini.')) return;
+    try {
+        const data = await postAdjustmentApi('/api/erp/adjustments/delete', { id_adj: id });
+        applyServerAdjustments(data.list);
+    } catch (error) {
+        alert('Jurnal BELUM dihapus.\n\n' + error.message);
+        return;
     }
+    loadAdjustmentsTable();
+    await afterMoneyChange();
 }
+window.saveAdjustment = saveAdjustment;
+window.deleteAdjustment = deleteAdjustment;
 
 // ==============================
 // SETTINGS / PROFILE
@@ -437,36 +430,30 @@ function loadSettingsProfile() {
     if (typeof window.migrateProfileWaTemplate === 'function') window.migrateProfileWaTemplate();
 
     // Load Start Balances
-    let initCash = localStorage.getItem('mc_initial_cash');
-    if (initCash === null) {
-        initCash = (getCash() || 0).toString();
-        localStorage.setItem('mc_initial_cash', initCash);
-        if (typeof pushToUniversalDatastore === 'function') {
-            pushToUniversalDatastore('mc_initial_cash', parseInt(initCash));
-        }
-    }
-    
-    let initBCA = localStorage.getItem('mc_initial_bank_bca');
-    if (initBCA === null) {
-        initBCA = (getBankBCA() || 0).toString();
-        localStorage.setItem('mc_initial_bank_bca', initBCA);
-        if (typeof pushToUniversalDatastore === 'function') {
-            pushToUniversalDatastore('mc_initial_bank_bca', parseInt(initBCA));
-        }
-    }
-
-    let initMandiri = localStorage.getItem('mc_initial_bank_mandiri');
-    if (initMandiri === null) {
-        initMandiri = (getBankMandiri() || 0).toString();
-        localStorage.setItem('mc_initial_bank_mandiri', initMandiri);
-        if (typeof pushToUniversalDatastore === 'function') {
-            pushToUniversalDatastore('mc_initial_bank_mandiri', parseInt(initMandiri));
-        }
-    }
-
+    // Saldo awal dibaca dari buku besar server (sama untuk semua akun & perangkat). @2026-Alifiandra
+    const initCash = localStorage.getItem('mc_initial_cash') || '0';
+    const initBCA = localStorage.getItem('mc_initial_bank_bca') || '0';
+    const initMandiri = localStorage.getItem('mc_initial_bank_mandiri') || '0';
     document.getElementById('initCash').value = initCash;
     document.getElementById('initBankBCA').value = initBCA;
     document.getElementById('initBankMandiri').value = initMandiri;
+    (async () => {
+        try {
+            const doFetch = window.authFetch || window.fetch;
+            const res = await doFetch('/api/erp/opening-balances', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin', cache: 'no-store' });
+            const json = await res.json();
+            if (!res.ok || json.status !== 'success') return;
+            const d = json.data || {};
+            const settingsView = document.getElementById('settings-view');
+            const editing = typeof window.isUserEditingView === 'function' && window.isUserEditingView('settings-view');
+            [['initCash', 'mc_initial_cash', d.cash], ['initBankBCA', 'mc_initial_bank_bca', d.bank_bca], ['initBankMandiri', 'mc_initial_bank_mandiri', d.bank_mandiri]].forEach(([el, key, v]) => {
+                const val = String(Math.round(Number(v) || 0));
+                try { window.__almaraApplyingRemoteSync = true; localStorage.setItem(key, val); } finally { window.__almaraApplyingRemoteSync = false; }
+                if (!editing && document.getElementById(el)) document.getElementById(el).value = val;
+            });
+            if (!editing && typeof recalcInitTotal === 'function') recalcInitTotal();
+        } catch (e) { console.warn('Saldo awal dari server belum bisa dimuat:', e); }
+    })();
     
     // Load existing valas to table
     const currencies = getCurrencies();
@@ -665,21 +652,7 @@ async function __saveInitialBalancesCore() {
     const bankBcaVal = parseFloat(document.getElementById('initBankBCA').value) || 0;
     const bankMandiriVal = parseFloat(document.getElementById('initBankMandiri').value) || 0;
     
-    // Simpan ke kunci awal (Saldo Awal Terkunci)
-    localStorage.setItem('mc_initial_cash', cashVal.toString());
-    localStorage.setItem('mc_initial_bank_bca', bankBcaVal.toString());
-    localStorage.setItem('mc_initial_bank_mandiri', bankMandiriVal.toString());
-    
-    if (typeof pushToUniversalDatastore === 'function') {
-        pushToUniversalDatastore('mc_initial_cash', cashVal);
-        pushToUniversalDatastore('mc_initial_bank_bca', bankBcaVal);
-        pushToUniversalDatastore('mc_initial_bank_mandiri', bankMandiriVal);
-    }
-    
-    saveCash(cashVal);
-    saveBankBCA(bankBcaVal);
-    saveBankMandiri(bankMandiriVal);
-
+    // Database dulu: angka hanya dipakai bila server sudah menerimanya (lihat di bawah). @2026-Alifiandra
     // Save Custom Initial Valas
     let masterCurrencies = getCurrencies();
     const rows = document.querySelectorAll('.init-valas-row');
@@ -713,8 +686,6 @@ async function __saveInitialBalancesCore() {
         }
     });
     
-    saveCurrencies(masterCurrencies);
-
     // Dashboard membaca saldo kas, bank, dan stok valuta dari ledger ERP di server.
     // Tanpa langkah ini, saldo awal hanya ada di browser lalu ditimpa angka 0 oleh sinkronisasi.
     let serverError = '';
@@ -737,20 +708,41 @@ async function __saveInitialBalancesCore() {
         const result = await response.json().catch(() => ({}));
         if (!response.ok || result.status === 'error') {
             serverError = result.message || ('HTTP ' + response.status);
-        } else if (typeof syncUniversalDatastore === 'function') {
-            await syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
+        } else {
+            // Server sudah menyimpan: barulah kurs modal awal & salinan di browser diperbarui.
+            saveCurrencies(masterCurrencies);
+            try {
+                window.__almaraApplyingRemoteSync = true;
+                localStorage.setItem('mc_initial_cash', String(cashVal));
+                localStorage.setItem('mc_initial_bank_bca', String(bankBcaVal));
+                localStorage.setItem('mc_initial_bank_mandiri', String(bankMandiriVal));
+            } finally { window.__almaraApplyingRemoteSync = false; }
+            if (typeof syncUniversalDatastore === 'function') {
+                await syncUniversalDatastore({ preferRemote: true, refreshUi: true, silent: true });
+            }
         }
     } catch (error) {
         serverError = (error && error.message) || String(error);
     }
 
     if (serverError) {
-        alert('Saldo awal tersimpan di browser, tetapi GAGAL disimpan ke server:\n' + serverError + '\n\nDashboard bisa menampilkan angka 0 sampai penyimpanan ke server berhasil. Coba klik tombol ini sekali lagi.');
+        alert('Saldo awal BELUM tersimpan (server menolak / tidak bisa dihubungi):\n' + serverError + '\n\nTidak ada data yang berubah. Coba klik tombol ini sekali lagi.');
         return null;
     }
     if(document.getElementById('dashboard-view').classList.contains('active')) loadDashboard();
     return { cash: cashVal, BCA: bankBcaVal, MANDIRI: bankMandiriVal };
 }
+
+// Terapkan saldo awal yang tertulis di Pengaturan langsung dari halaman Mutasi Bank. @2026-Alifiandra
+window.applyInitialBalancesFromSettings = async function() {
+    const fmt = n => 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID');
+    const c = parseFloat(localStorage.getItem('mc_initial_cash')) || 0;
+    const b = parseFloat(localStorage.getItem('mc_initial_bank_bca')) || 0;
+    const m = parseFloat(localStorage.getItem('mc_initial_bank_mandiri')) || 0;
+    if (!confirm('Terapkan saldo awal dari Pengaturan ke server?\n\nKas: ' + fmt(c) + '\nBCA: ' + fmt(b) + '\nMandiri: ' + fmt(m))) return;
+    if (typeof loadSettingsProfile === 'function') loadSettingsProfile(); // isi form Pengaturan (termasuk valas) dari data tersimpan
+    await window.saveInitialBalances();
+};
 
 // Simpan saldo awal lalu PASTIKAN server benar-benar mencatatnya (dibaca ulang dari buku besar).
 // Kesalahan apa pun ditampilkan, tidak lagi gagal diam-diam. @2026-Alifiandra
@@ -2278,7 +2270,7 @@ function renderBankMutationDetail(code) {
             <div>
                 <h3 style="margin:0;">Rincian Mutasi ${bankMutEsc(acc.bank_name)}</h3>
                 <div style="font-size:.85rem; opacity:.75; margin-top:4px;">Saldo awal ${bankMutIdr(acc.opening_balance)} · Saldo sekarang <strong>${bankMutIdr(acc.balance)}</strong></div>
-                ${Number(acc.opening_balance || 0) === 0 ? `<div style="margin-top:8px; padding:8px 12px; border-radius:8px; background:#fef3c7; color:#92400e; font-size:.85rem; font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> Saldo awal rekening ini di server masih Rp 0. Isi di <b>Pengaturan → Saldo Awal</b> lalu klik <b>Terapkan Semua Saldo Awal ke Sistem</b>.</div>` : ''}
+                ${Number(acc.opening_balance || 0) === 0 ? `<div style="margin-top:8px; padding:8px 12px; border-radius:8px; background:#fef3c7; color:#92400e; font-size:.85rem; font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> Saldo awal rekening ini di server masih Rp 0.${(() => { const v = parseFloat(localStorage.getItem(acc.code && String(acc.code).toUpperCase().includes('MANDIRI') || String(acc.bank_name||'').toUpperCase().includes('MANDIRI') ? 'mc_initial_bank_mandiri' : 'mc_initial_bank_bca')) || 0; return v > 0 ? ` Di Pengaturan tertulis ${bankMutIdr(v)}, tetapi belum diterapkan ke server. <button class="btn btn-sm btn-success" style="margin-left:6px;" onclick="applyInitialBalancesFromSettings()"><i class="fa-solid fa-check"></i> Terapkan sekarang</button>` : ' Isi di <b>Pengaturan → Saldo Awal</b> lalu klik <b>Terapkan Semua Saldo Awal ke Sistem</b>.'; })()}</div>` : ''}
             </div>
             <button class="btn btn-secondary" onclick="openBankMutationDetail('${bankMutEsc(acc.code)}')"><i class="fa-solid fa-xmark"></i> Tutup</button>
         </div>

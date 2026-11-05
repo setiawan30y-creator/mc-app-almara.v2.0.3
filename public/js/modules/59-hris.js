@@ -1049,7 +1049,18 @@ window.downloadHrisScheduleCalendarJpeg = function() {
         if (!n.value) { el.textContent = ''; return; }
         var d = debtOf(n.value); el.textContent = 'Sisa hutang saat ini: ' + idr(Math.max(0, d)); el.style.color = d > 0 ? '#f87171' : '#34d399';
     }
-    function saveKb(form) {
+    // Kasbon tunai/transfer dicatat LANGSUNG di buku besar kas/bank server. @2026-Alifiandra
+    async function postKasbonMove(ref, method, signedAmount, note) {
+        var doFetch = window.authFetch || window.fetch;
+        var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+        var res = await doFetch('/api/erp/money-move', { method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+            body: JSON.stringify({ kind: 'kasbon', ref: ref, method: method, amount: signedAmount, description: note, timestamp: new Date().toISOString() }) });
+        var json = {}; try { json = await res.json(); } catch (e) { /* abaikan */ }
+        if (!res.ok || json.status !== 'success') throw new Error(json.message || ('Server merespons HTTP ' + res.status));
+        if (typeof window.syncUniversalDatastore === 'function') { try { await window.syncUniversalDatastore({ preferRemote: true, refreshUi: false, silent: true }); } catch (e) { /* abaikan */ } }
+    }
+    async function saveKb(form) {
         var err = $('hrKbErr'), fail = function (m) { err.innerHTML = '<div class="hr-msg bad">' + esc(m) + '</div>'; };
         var nik = $('hrKbF_emp').value, type = $('hrKbF_type').value, date = $('hrKbF_date').value, src = $('hrKbF_src').value, amt = Math.round(num($('hrKbF_amt').value)), desc = $('hrKbF_desc').value.trim();
         if (!nik) return fail('Pilih karyawan.'); if (!date) return fail('Tanggal wajib diisi.'); if (amt <= 0) return fail('Nominal harus lebih dari 0.');
@@ -1057,17 +1068,20 @@ window.downloadHrisScheduleCalendarJpeg = function() {
         var debt = debtOf(nik);
         if (type === 'CICIL' && amt > debt) return fail('Cicilan (' + idr(amt) + ') melebihi sisa hutang (' + idr(Math.max(0, debt)) + ').');
         var emp = EMP().filter(function (e) { return e.nik === nik; })[0], name = emp ? emp.name : nik, user = actor();
+        var kbId = Date.now().toString();
         if (src !== 'POTONG_GAJI') {
             var out = type === 'PINJAM', bank = src === 'BCA' ? 'BCA' : src === 'MANDIRI' ? 'MANDIRI' : '';
-            var cur = !bank ? getCash() : (bank === 'BCA' ? getBankBCA() : getBankMandiri());
-            if (out && cur < amt && !form.dataset.lowOk) { form.dataset.lowOk = '1'; return fail('Saldo ' + (bank || 'kas tunai') + ' (' + idr(cur) + ') tidak cukup untuk pinjaman ini. Tekan Simpan sekali lagi bila tetap ingin melanjutkan.'); }
-            var nxt = out ? cur - amt : cur + amt;
-            if (!bank) saveCash(nxt); else if (bank === 'BCA') saveBankBCA(nxt); else saveBankMandiri(nxt);
-            if (bank && typeof getMutations === 'function' && typeof saveMutations === 'function') {
-                var m = getMutations(); m.push({ id_mutasi: 'MUT-' + Date.now().toString().slice(-6), waktu: new Date().toISOString(), tipe: out ? 'KELUAR' : 'MASUK', bank: bank, keterangan: (out ? 'Pemberian' : 'Cicilan') + ' Kasbon - ' + name + (desc ? ' (' + desc + ')' : ''), nominal: amt, inputBy: user }); saveMutations(m);
+            if (form.dataset.busy) return; form.dataset.busy = '1';
+            try {
+                // Server memeriksa saldo; bila tidak cukup, kasbon ditolak dan tidak ada yang berubah.
+                await postKasbonMove('KB-' + kbId, bank || 'CASH', out ? -amt : amt, (out ? 'Pemberian' : 'Cicilan') + ' Kasbon - ' + name + (desc ? ' (' + desc + ')' : ''));
+            } catch (e) {
+                delete form.dataset.busy;
+                return fail('Kasbon BELUM tersimpan: ' + e.message);
             }
+            delete form.dataset.busy;
         }
-        var kas = KAS(); kas.push({ id: Date.now().toString(), nik: nik, type: type, source: src, date: date, amount: amt, desc: desc, inputBy: user }); saveHrisKasbon(kas);
+        var kas = KAS(); kas.push({ id: kbId, nik: nik, type: type, source: src, date: date, amount: amt, desc: desc, inputBy: user }); saveHrisKasbon(kas);
         closeModal(); refresh(); toast('Kasbon tercatat' + (src === 'POTONG_GAJI' ? ' (dipotong dari gaji).' : ' dan saldo ' + (src === 'TUNAI' ? 'kas' : src) + ' disesuaikan.'));
         try { var dv = $('dashboard-view'); if (dv && dv.classList.contains('active') && typeof loadDashboard === 'function') loadDashboard(); if (window.loadMutationTable) window.loadMutationTable(); } catch (e) { /* abaikan */ }
     }
