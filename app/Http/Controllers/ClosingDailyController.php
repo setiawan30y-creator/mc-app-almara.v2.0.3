@@ -80,6 +80,128 @@ class ClosingDailyController extends Controller
         return response()->json(['status' => 'success', 'data' => ['items' => $items, 'stats' => $stats]]);
     }
 
+    /**
+     * GET /closing/report?from=YYYY-MM-DD&to=YYYY-MM-DD
+     * Laporan Rekonsiliasi Harian: setiap hari dalam rentang (maks 62 hari) dengan kas, rekening bank,
+     * dan valas (Rp): angka sistem, hitungan fisik, selisih, status closing, siapa yang mengunci & alasannya.
+     * Hari yang sudah dikunci memakai angka kas yang dibekukan saat closing. @2026-Alifiandra
+     */
+    public function report(Request $request): JsonResponse
+    {
+        $today = now()->toDateString();
+        $from = (string) $request->query('from', now()->startOfMonth()->toDateString());
+        $to = (string) $request->query('to', $today);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+            return $this->fail('Format tanggal tidak valid.');
+        }
+        if ($to > $today) {
+            $to = $today;
+        }
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+        if (Carbon::parse($from)->diffInDays(Carbon::parse($to)) > 61) {
+            return $this->fail('Rentang laporan maksimal 62 hari.');
+        }
+
+        $account = $this->cashAccount(false);
+        $closings = ErpCashClosing::query()->whereBetween('closing_date', [$from, $to])->get()
+            ->keyBy(fn ($c) => $c->closing_date->toDateString());
+        $closers = $this->closerNames($closings->pluck('id')->all());
+        $hasStock = Schema::hasTable('erp_cash_closing_stock_counts');
+        $hasBank = Schema::hasTable('erp_cash_closing_bank_counts');
+
+        $days = [];
+        $sum = ['days' => 0, 'closed' => 0, 'open' => 0, 'none' => 0, 'variance_days' => 0, 'cash' => 0.0, 'bank' => 0.0, 'valas' => 0.0, 'total' => 0.0];
+        for ($d = Carbon::parse($to); $d->toDateString() >= $from; $d->subDay()) {
+            $date = $d->toDateString();
+            $c = $closings->get($date);
+            $live = $this->cashSummary($date, $account);
+
+            // Kas: hari terkunci memakai angka saat closing; lainnya angka sistem saat ini.
+            $cash = $c && $c->status === 'CLOSED' ? [
+                'opening' => (float) $c->opening_cash, 'in' => (float) $c->cash_in, 'out' => (float) $c->cash_out,
+                'expense' => (float) $c->expense, 'expected' => (float) $c->expected_cash,
+            ] : [
+                'opening' => $live['opening_cash'], 'in' => $live['cash_in'], 'out' => $live['cash_out'],
+                'expense' => $live['expense'], 'expected' => $live['expected_cash'],
+            ];
+            $physical = $c ? (float) $c->physical_cash : 0.0;
+            $hanging = $c ? (float) $c->hanging_amount : (float) $live['hanging_amount'];
+            $cashCounted = $c && $physical > 0;
+            $cash += ['physical' => $physical, 'hanging' => $hanging, 'counted' => $cashCounted,
+                'difference' => $cashCounted ? round($physical + $hanging - $cash['expected'], 2) : 0.0];
+
+            // Rekening bank
+            $statements = ($c && $hasBank)
+                ? DB::table('erp_cash_closing_bank_counts')->where('closing_id', $c->id)->pluck('statement_balance', 'bank_account_id') : collect();
+            $bankRows = [];
+            $bank = ['system' => 0.0, 'statement' => 0.0, 'difference' => 0.0, 'counted' => 0];
+            foreach ($this->bankSummary($date) as $b) {
+                $st = isset($statements[$b['id']]) ? (float) $statements[$b['id']] : null;
+                $diff = $st === null ? null : round($st - $b['closing'], 2);
+                $bank['system'] += $b['closing'];
+                if ($st !== null) {
+                    $bank['statement'] += $st;
+                    $bank['difference'] += $diff;
+                    $bank['counted']++;
+                }
+                $bankRows[] = ['name' => $b['bank_name'], 'opening' => $b['opening'], 'in' => $b['in'], 'out' => $b['out'],
+                    'system' => $b['closing'], 'statement' => $st, 'difference' => $diff];
+            }
+            $bank['accounts'] = $bankRows;
+
+            // Valas (nilai Rp memakai kurs valuasi saat ini)
+            $valas = ['system_value' => 0.0, 'physical_value' => 0.0, 'difference' => 0.0, 'counted' => 0, 'items' => []];
+            foreach ($this->stockSummary($date, $c, $date === $today) as $s) {
+                $sys = ($c && $c->status === 'CLOSED' && $s['saved_system_qty'] !== null) ? $s['saved_system_qty'] : $s['system_qty'];
+                $phy = $s['physical_qty'];
+                $rate = (float) $s['rate'];
+                $dq = $phy === null ? null : round($phy - $sys, 6);
+                $valas['system_value'] += $sys * $rate;
+                if ($phy !== null) {
+                    $valas['physical_value'] += $phy * $rate;
+                    $valas['difference'] += $dq * $rate;
+                    $valas['counted']++;
+                }
+                $valas['items'][] = ['code' => $s['currency_code'], 'system_qty' => $sys, 'physical_qty' => $phy, 'rate' => $rate,
+                    'diff_qty' => $dq, 'diff_value' => $dq === null ? null : round($dq * $rate, 2)];
+            }
+            foreach (['system_value', 'physical_value', 'difference'] as $k) {
+                $valas[$k] = round($valas[$k], 2);
+            }
+
+            $total = round($cash['difference'] + $bank['difference'] + $valas['difference'], 2);
+            $status = $c ? (string) $c->status : 'NONE';
+            $days[] = [
+                'date' => $date,
+                'status' => $status,
+                'closing_no' => $c->closing_no ?? null,
+                'closed_by' => $c ? ($closers[$c->id] ?? null) : null,
+                'closed_at' => $c ? optional($c->closed_at)->toIso8601String() : null,
+                'notes' => $c->notes ?? null,
+                'movement_count' => (int) $live['movement_count'],
+                'cash' => $cash, 'bank' => $bank, 'valas' => $valas,
+                'total_difference' => $total,
+            ];
+
+            $sum['days']++;
+            $status === 'CLOSED' ? $sum['closed']++ : ($c ? $sum['open']++ : $sum['none']++);
+            if (abs($total) >= 0.5) {
+                $sum['variance_days']++;
+            }
+            $sum['cash'] += $cash['difference'];
+            $sum['bank'] += $bank['difference'];
+            $sum['valas'] += $valas['difference'];
+            $sum['total'] += $total;
+        }
+        foreach (['cash', 'bank', 'valas', 'total'] as $k) {
+            $sum[$k] = round($sum[$k], 2);
+        }
+
+        return response()->json(['status' => 'success', 'data' => ['from' => $from, 'to' => $to, 'summary' => $sum, 'days' => $days]]);
+    }
+
     public function save(Request $request): JsonResponse
     {
         $data = $request->validate([

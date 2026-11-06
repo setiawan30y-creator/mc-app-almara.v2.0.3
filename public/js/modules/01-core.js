@@ -376,17 +376,17 @@ const DEFAULT_MASTER_CURRENCIES = [
 
 const DEFAULT_ROLE_PERMISSIONS = {
     owner: {
-        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','pt-rep-view','mutation-view','currency-view','closing-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-coretax-view','masterdata-view','settings-view','almara-regulatory-ai-view'],
+        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','pt-rep-view','mutation-view','currency-view','closing-view','rekon-report-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-coretax-view','masterdata-view','settings-view','almara-regulatory-ai-view'],
         special: { menuKeuangan: true, menuBi: true, userManagement: true, accessSettings: true, dangerZone: true, customerImportTools: true, transactionLedgerCard: true, oldMoneySupplierManagement: true, closingHistoryReset: true },
         actions: { edit: true, delete: true, export: true, print: true, profit: true, valasProfit: true, trxDate: true, manualInvoice: true, oldMoneyEdit: true, oldMoneyDelete: true }
     },
     superadmin: {
-        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','pt-rep-view','mutation-view','currency-view','closing-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-coretax-view','masterdata-view','settings-view','almara-regulatory-ai-view'],
+        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','pt-rep-view','mutation-view','currency-view','closing-view','rekon-report-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-coretax-view','masterdata-view','settings-view','almara-regulatory-ai-view'],
         special: { menuKeuangan: true, menuBi: true, userManagement: true, accessSettings: true, dangerZone: true, customerImportTools: true, transactionLedgerCard: true, oldMoneySupplierManagement: true, closingHistoryReset: true },
         actions: { edit: true, delete: true, export: true, print: true, profit: true, valasProfit: true, trxDate: true, manualInvoice: true, oldMoneyEdit: true, oldMoneyDelete: true }
     },
     admin: {
-        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','pt-rep-view','mutation-view','currency-view','closing-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-coretax-view','masterdata-view','settings-view'],
+        menus: ['dashboard-view','pos-view','demo-pos-view','customers-view','pt-rep-view','mutation-view','currency-view','closing-view','rekon-report-view','letter-number-view','harian-view','laporan-posisi-valuta-view','reports-view','booking-view','valas-gallery-view','documents-view','ai-chat-view','gantungan-view','old-money-view','expense-view','adjustment-view','investor-view','dtott-view','hris-view','laporan-lku-view','laporan-granular-view','laporan-sipesat-view','laporan-goaml-view','laporan-sipendar-view','laporan-aset-view','laporan-bukubesar-view','laporan-labarugi-view','laporan-neraca-view','laporan-coretax-view','masterdata-view','settings-view'],
         special: { menuKeuangan: true, menuBi: true, userManagement: false, accessSettings: false, dangerZone: false, customerImportTools: true, transactionLedgerCard: true, oldMoneySupplierManagement: true, closingHistoryReset: false },
         actions: { edit: true, delete: true, export: true, print: true, profit: true, valasProfit: true, trxDate: true, manualInvoice: false, oldMoneyEdit: true, oldMoneyDelete: true }
     },
@@ -623,6 +623,20 @@ function ensureDemoPosMenuPermission(permissions) {
 
 // Restores Closing Harian after earlier role-setting snapshots accidentally
 // omitted it. It remains configurable per role after this one-time recovery.
+// Laporan Rekonsiliasi Harian: dibuka sekali untuk role pengelola, lalu bisa diatur di Hak Akses. @2026-Alifiandra
+function ensureRekonReportMenuPermission(permissions) {
+    const migrationKey = 'mc_rekon_report_menu_permission_v1';
+    if (localStorage.getItem(migrationKey) === 'true') return permissions;
+    ['owner', 'superadmin', 'admin'].forEach(role => {
+        if (!Array.isArray(permissions[role]?.menus) || permissions[role].menus.includes('rekon-report-view')) return;
+        const i = permissions[role].menus.indexOf('closing-view');
+        permissions[role].menus.splice(i >= 0 ? i + 1 : permissions[role].menus.length, 0, 'rekon-report-view');
+    });
+    localStorage.setItem('mc_role_permissions', JSON.stringify(permissions));
+    localStorage.setItem(migrationKey, 'true');
+    return permissions;
+}
+
 function ensureClosingMenuPermission(permissions) {
     const migrationKey = 'mc_closing_menu_permission_restored_v1';
     if (localStorage.getItem(migrationKey) === 'true') return permissions;
@@ -844,7 +858,7 @@ function getIso4217Reference() {
 }
 
 function getRolePermissions() {
-    const stored = ensureClosingMenuPermission(ensureDemoPosMenuPermission(ensureRekapValutaMenuPermission(JSON.parse(localStorage.getItem('mc_role_permissions')) || {})));
+    const stored = ensureRekonReportMenuPermission(ensureClosingMenuPermission(ensureDemoPosMenuPermission(ensureRekapValutaMenuPermission(JSON.parse(localStorage.getItem('mc_role_permissions')) || {}))));
     const merged = {};
     Object.keys(DEFAULT_ROLE_PERMISSIONS).forEach(role => {
         merged[role] = {
@@ -1003,17 +1017,17 @@ async function refreshTransactionsThen(renderFn) {
         if (result && typeof result.then === 'function') await result;
     }
 }
+// ATURAN TERKUNCI @2026-Alifiandra: saldo kas & bank HANYA berasal dari buku besar server.
+// Fungsi ini hanya menyimpan salinan tampilan di browser; tidak pernah dikirim ke server.
+// Perubahan uang wajib lewat endpoint server (transaksi, mutasi, jurnal, saldo awal, DP, kasbon).
 function saveCash(amount) { 
-    localStorage.setItem('mc_cash', amount.toString()); 
-    if(typeof pushToUniversalDatastore === 'function') pushToUniversalDatastore('mc_cash', amount);
+    localStorage.setItem('mc_cash', String(amount)); 
 }
 function saveBankBCA(amount) { 
-    localStorage.setItem('mc_bank_bca', amount.toString()); 
-    if(typeof pushToUniversalDatastore === 'function') pushToUniversalDatastore('mc_bank_bca', amount);
+    localStorage.setItem('mc_bank_bca', String(amount)); 
 }
 function saveBankMandiri(amount) { 
-    localStorage.setItem('mc_bank_mandiri', amount.toString()); 
-    if(typeof pushToUniversalDatastore === 'function') pushToUniversalDatastore('mc_bank_mandiri', amount);
+    localStorage.setItem('mc_bank_mandiri', String(amount)); 
 }
 function saveCustomers(data) { 
     window.__mcCustomersMemory = Array.isArray(data) ? data : [];

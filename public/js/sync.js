@@ -70,6 +70,7 @@ function refreshMoreRealtimeViews(isActive) {
     run('laporan-labarugi-view', typeof loadLabaRugi === 'function' ? loadLabaRugi : null);
     run('laporan-neraca-view', typeof loadNeraca === 'function' ? loadNeraca : null);
     run('laporan-aset-view', typeof loadAssetReport === 'function' ? loadAssetReport : null);
+    run('rekon-report-view', window.refreshRekonReport);
 }
 window.isUserEditingView = isUserEditingView;
 
@@ -104,7 +105,10 @@ if (!window.__almaraRealtimeStoragePatch) {
         'mc_pos_draft_sessions_v1',
         'mc_pos_active_draft_id_v1',
         // Pengaturan AI (API key) per perangkat: tidak dikirim ke server. @2026-Alifiandra
-        'mc_gemini_api_key', 'mc_openai_api_key', 'mc_openai_model', 'mc_ai_provider'
+        'mc_gemini_api_key', 'mc_openai_api_key', 'mc_openai_model', 'mc_ai_provider',
+        // Saldo milik buku besar server (aturan terkunci): browser tidak pernah mengirimnya. @2026-Alifiandra
+        'mc_cash', 'mc_bank_bca', 'mc_bank_mandiri', 'mc_initial_cash', 'mc_initial_bank_bca', 'mc_initial_bank_mandiri',
+        'mc_erp_payment_totals', 'mc_erp_settlement_totals'
     ]);
     const mysqlTableKeys = new Set(['mc_currencies', 'mc_transactions', 'mc_customers']);
 

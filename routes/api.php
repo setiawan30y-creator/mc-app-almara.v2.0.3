@@ -179,6 +179,7 @@ Route::post('/goaml/alerts/{alert}/ltkm', [GoamlComplianceController::class, 'cr
 
     Route::get('/closing/day', [ClosingDailyController::class, 'day']);
     Route::get('/closing/history', [ClosingDailyController::class, 'history']);
+    Route::get('/closing/report', [ClosingDailyController::class, 'report'])->middleware('role:owner,superadmin,admin,supervisor'); // Laporan Rekonsiliasi Harian @2026-Alifiandra
     Route::post('/closing', [ClosingDailyController::class, 'save']);
     Route::post('/closing/{date}/reopen', [ClosingDailyController::class, 'reopen'])->middleware('role:owner,superadmin');
     // Gantungan (catatan Rp di luar laci saat closing)

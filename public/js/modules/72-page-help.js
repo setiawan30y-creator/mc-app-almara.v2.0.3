@@ -210,6 +210,11 @@
             s: ['Unggah file (PDF, Word, Excel, teks, gambar) atau tempel teks.', 'Isi penerbit, jenis, nomor, tanggal berlaku, dan status (berlaku / diubah / dicabut).'],
             p: ['Tandai regulasi yang dicabut agar AI memakai yang terbaru.']
         },
+        'rekon-report-view': {
+            t: 'Laporan Rekonsiliasi Harian', f: 'Riwayat setiap hari: kas, rekening bank, dan valas (Rp) — angka sistem, hitungan fisik, selisih, status closing, siapa yang mengunci dan alasannya.',
+            s: ['Pilih periode (Bulan ini, Bulan lalu, 7/30 hari, atau tanggal sendiri).', 'Gunakan filter Ada selisih / Belum dikunci / Belum closing untuk menemukan hari yang perlu diperiksa.', 'Klik satu baris untuk rincian per rekening, per valuta, dan daftar transaksinya; tombol "Buka di Closing Harian" untuk memperbaiki.', 'Export Excel atau Cetak untuk arsip.'],
+            p: ['Kas hari yang sudah dikunci memakai angka saat closing.', 'Nilai valas memakai kurs valuasi (modal rata-rata) saat ini.', 'Rentang maksimal 62 hari per tampilan.']
+        },
         'doc-search-view': {
             t: 'Pencarian Dokumen', f: 'Mencari isi Sumber Regulasi, Penyimpanan Berkas, dan arsip Nomor Surat sekaligus, tanpa Gemini/ChatGPT. Hasilnya selalu kutipan asli dokumen.',
             s: ['Ketik pertanyaan atau kata kunci, lalu tekan Cari.', 'Baca "Ringkasan dari dokumen": kalimat paling relevan beserta label sumbernya [S1], [S2].', 'Klik label atau "Lihat bagian lengkap" untuk membaca konteksnya, dan "Buka berkas" untuk membuka file aslinya.', 'Persempit dengan filter sumber, tahun, atau abaikan regulasi yang dicabut.'],
