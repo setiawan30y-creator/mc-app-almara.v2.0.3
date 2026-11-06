@@ -305,6 +305,15 @@ function saveUserPermissionOverrides(data) {
     if (typeof pushToUniversalDatastore === 'function') pushToUniversalDatastore('mc_user_permissions', data || {});
 }
 
+// Boleh melihat fitur/aksi tertentu? (dipakai mis. kartu Profit di Dashboard) @2026-Alifiandra
+window.mcCanAction = function (key) {
+    try {
+        const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+        const cfg = getEffectiveAccessConfig(u) || {};
+        return !(cfg.actions && cfg.actions[key] === false);
+    } catch (e) { return true; }
+};
+
 function getEffectiveAccessConfig(user) {
     const permissions = typeof getRolePermissions === 'function' ? getRolePermissions() : {};
     const role = String(user && user.role || '').toLowerCase();
@@ -492,9 +501,12 @@ function applyRoleAccess(role) {
     }
 
     setTimeout(() => {
+        // Kartu "Profit Hari Ini" (desain dashboard baru memakai .dsh-kpi). @2026-Alifiandra
         const dp = document.getElementById('dashProfit');
-        if(dp && dp.closest('.stat-card')) {
-            dp.closest('.stat-card').style.display = actionConfig.profit === false ? 'none' : '';
+        const dpCard = dp && dp.closest('.stat-card, .dsh-kpi');
+        if(dpCard) {
+            dpCard.style.display = actionConfig.profit === false ? 'none' : '';
+            if (actionConfig.profit === false) dp.textContent = '-';
         }
         const oldp = document.getElementById('oldMoneyTotalProfit');
         if(oldp && oldp.closest('.stat-card')) {
@@ -586,7 +598,7 @@ const ROLE_ACCESS_ACTION_OPTIONS = [
     { key: 'oldMoneyDelete', label: 'Hapus Koin & Uang Lama' },
     { key: 'export', label: 'Tombol Export / Excel' },
     { key: 'print', label: 'Tombol Print / Cetak' },
-    { key: 'profit', label: 'Kartu Profit / Laba' },
+    { key: 'profit', label: 'Kartu Profit Hari Ini (Dashboard) & Profit Koin' },
     { key: 'valasProfit', label: 'Profit Transaksi Valas' },
     { key: 'trxDate', label: 'Kolom Tanggal Transaksi' },
     { key: 'manualInvoice', label: 'Manual No. Invoice Transaksi' }

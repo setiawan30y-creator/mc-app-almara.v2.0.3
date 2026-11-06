@@ -268,14 +268,25 @@ async function loadDashboard() {
             ? (hasAnyBuyTransaction ? 'Berdasarkan rata-rata kurs pembelian' : 'Berdasarkan saldo awal valas')
             : 'Belum ada stok valuta';
     }
-    document.getElementById('dashProfit').textContent = utils.formatIdr(sumProfit);
+    // Profit hanya ditulis untuk akun yang diberi hak "Kartu Profit Hari Ini" (Pengaturan > Hak Akses).
+    const canSeeProfit = typeof window.mcCanAction !== 'function' || window.mcCanAction('profit');
+    const profitEl = document.getElementById('dashProfit');
+    if (profitEl) {
+        profitEl.textContent = canSeeProfit ? utils.formatIdr(sumProfit) : '-';
+        const profitCard = profitEl.closest('.stat-card, .dsh-kpi');
+        if (profitCard) profitCard.style.display = canSeeProfit ? '' : 'none';
+    }
     if(document.getElementById('dashTotalPurchases')) document.getElementById('dashTotalPurchases').textContent = utils.formatIdr(sumBeli);
     if(document.getElementById('dashTotalSales')) document.getElementById('dashTotalSales').textContent = utils.formatIdr(sumJual);
     if(document.getElementById('dashTotalExpenses')) document.getElementById('dashTotalExpenses').textContent = utils.formatIdr(sumExp);
 
     // Hitung Selisih Rekonsiliasi terbaru dari riwayat closing.
-    const closings = store.getClosings();
-    const reconciliationSummary = getDashboardReconciliationSummary(closings, targetDate, isFiltered);
+    // Aturan terkunci: selisih hanya dari Closing Harian (server). Riwayat closing lama di browser
+    // dipakai hanya bila modul Closing belum termuat. @2026-Alifiandra
+    const liveRekons = typeof window.mcClosingSummary === 'function';
+    const reconciliationSummary = liveRekons
+        ? { value: 0, source: 'Menghitung dari Closing Harian...' }
+        : getDashboardReconciliationSummary(store.getClosings(), targetDate, isFiltered);
     const totalSelisih = reconciliationSummary.value;
 
     const selisihEl = document.getElementById('dashTotalSelisih');
