@@ -362,6 +362,52 @@ class CustomerController extends Controller
         ];
     }
 
+    /**
+     * POST /customers/photo  {id_nasabah, data_url, overwrite}
+     * Upload foto identitas satu nasabah (dipakai Upload Foto Massal). Hanya kolom foto yang diubah;
+     * data nasabah lain di raw_json tetap utuh. Disimpan di database dulu. @2026-Alifiandra
+     */
+    public function uploadPhoto(Request $request)
+    {
+        $data = $request->validate([
+            'id_nasabah' => ['required', 'string', 'max:50'],
+            'data_url' => ['required', 'string', 'max:12000000'],
+            'overwrite' => ['nullable', 'boolean'],
+        ]);
+        $customer = Customer::query()->where('internal_id', $data['id_nasabah'])->first();
+        if (!$customer) {
+            return response()->json(['status' => 'error', 'message' => 'Nasabah ' . $data['id_nasabah'] . ' tidak ditemukan di database.'], 404);
+        }
+        $raw = json_decode((string) $customer->raw_json, true);
+        $raw = is_array($raw) ? $raw : [];
+        $old = (string) ($raw['foto_id'] ?? '');
+        if ($old !== '' && !($data['overwrite'] ?? false)) {
+            return response()->json(['status' => 'skipped', 'message' => 'Nasabah sudah punya foto.', 'url' => $old]);
+        }
+        if (!preg_match('/^data:image\/(jpeg|jpg|png|webp);base64,/', $data['data_url'])) {
+            return response()->json(['status' => 'error', 'message' => 'File bukan gambar JPG/PNG/WEBP.'], 422);
+        }
+        try {
+            $url = $this->storeCustomerPhoto($data['data_url'], (string) $customer->internal_id);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+        if (!$url) {
+            return response()->json(['status' => 'error', 'message' => 'Gambar tidak bisa dibaca.'], 422);
+        }
+        $raw['foto_id'] = $url;
+        $customer->raw_json = json_encode($raw);
+        $customer->save();
+        if ($old !== '' && str_starts_with($old, '/uploads/customers/photos/')) {
+            $oldFile = PrivateUploads::path('customers/photos') . DIRECTORY_SEPARATOR . basename($old);
+            if (File::exists($oldFile)) {
+                @File::delete($oldFile);
+            }
+        }
+
+        return response()->json(['status' => 'success', 'url' => $url]);
+    }
+
     private function storeCustomerPhoto($photo, string $internalId): ?string
     {
         if (!$photo || !is_string($photo)) {

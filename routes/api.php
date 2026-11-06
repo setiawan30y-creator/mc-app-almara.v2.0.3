@@ -88,6 +88,7 @@ Route::post('/goaml/alerts/{alert}/ltkm', [GoamlComplianceController::class, 'cr
     Route::get('/customers', [CustomerController::class, 'index']);
     Route::post('/customers', [CustomerController::class, 'store']);
     Route::post('/customers/bulk', [CustomerController::class, 'bulkStore']);
+    Route::post('/customers/photo', [CustomerController::class, 'uploadPhoto'])->middleware('throttle:600,1'); // upload foto massal @2026-Alifiandra
     Route::post('/customers/clear-all', [CustomerController::class, 'clearAll'])->middleware('role:owner,superadmin');
     Route::delete('/customers', [CustomerController::class, 'destroy'])->middleware('role:owner,superadmin,admin,supervisor');
     Route::delete('/customers/clear-all', [CustomerController::class, 'clearAll'])->middleware('role:owner,superadmin');
