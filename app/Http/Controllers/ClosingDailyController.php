@@ -137,9 +137,8 @@ class ClosingDailyController extends Controller
                     $status = 'CLOSED';
                     $action = 'FINALIZE';
                 } elseif ($acceptVariance) {
-                    if (!in_array($role, self::VARIANCE_ROLES, true)) {
-                        throw new \DomainException('Role Anda tidak boleh menutup closing dengan selisih. Hubungi Supervisor atau Admin.');
-                    }
+                    // Semua akun boleh mengunci dengan selisih, WAJIB beralasan; siapa yang mengunci
+                    // dan alasannya tercatat di riwayat closing (keputusan pemilik, 2026-11-06). @2026-Alifiandra
                     if (mb_strlen($notes) < 10) {
                         throw new \DomainException('Closing dengan selisih wajib disertai alasan minimal 10 karakter.');
                     }

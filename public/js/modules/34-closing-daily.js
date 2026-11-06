@@ -713,22 +713,11 @@
         let hint = '';
 
         if (counted && !balanced) {
-            const reasonOk = S.notes.trim().length >= 10;
-            if (canVariance()) {
-                const parts = [];
-                if (Math.abs(r.diff) >= 0.5) parts.push(`kas ${signed(r.diff)}`);
-                (u ? u.valDiffs : []).forEach((v) => parts.push(`${v.code} ${v.diff > 0 ? '+' : ''}${qf.format(v.diff)}`));
-                (u ? u.bankDiffs : []).forEach((b) => parts.push(`${b.name} ${signed(b.diff)}`));
-                varianceHtml = `<label class="cd-check"><input type="checkbox" id="cdAccept" ${S.accept ? 'checked' : ''}>
-                    <span>Tutup dengan selisih <b>${esc(parts.join(', '))}</b> dan catat alasannya</span></label>`;
-                finalLabel = '<i class="fa-solid fa-lock"></i> Kunci dengan Selisih';
-                finalDisabled = blocked || !S.accept || !reasonOk;
-                if (S.accept && !reasonOk) hint = 'Isi catatan minimal 10 karakter sebagai alasan selisih.';
-                else if (!S.accept) hint = 'Periksa kembali hitungan. Jika selisih tidak bisa dijelaskan, centang opsi di atas.';
-            } else {
-                finalDisabled = true;
-                hint = 'Masih ada selisih. Hitung ulang, atau minta Supervisor/Admin untuk menutup dengan selisih.';
-            }
+            // Tetap bisa dikunci oleh semua akun, tetapi alasan selisih WAJIB diisi saat tombol diklik. @2026-Alifiandra
+            const parts = varianceParts(r, u);
+            finalLabel = '<i class="fa-solid fa-lock"></i> Kunci dengan Selisih';
+            finalDisabled = blocked;
+            hint = 'Masih ada selisih: ' + parts.join(', ') + '. Periksa dulu hitungan & diagnosis; bila tetap dikunci, Anda wajib mengisi alasannya.';
         } else if (!counted) {
             hint = 'Isi hitungan uang fisik untuk mengunci closing.';
         }
@@ -828,10 +817,52 @@
         };
     }
 
+    function varianceParts(r, u) {
+        const parts = [];
+        if (Math.abs(r.diff) >= 0.5) parts.push(`kas ${signed(r.diff)}`);
+        (u ? u.valDiffs : []).forEach((v) => parts.push(`${v.code} ${v.diff > 0 ? '+' : ''}${qf.format(v.diff)}`));
+        (u ? u.bankDiffs : []).forEach((b) => parts.push(`${b.name} ${signed(b.diff)}`));
+        return parts;
+    }
+
+    // Belum seimbang: minta alasan (wajib, min 10 karakter) sebelum mengunci.
+    async function askVarianceReason() {
+        const r = recon(), u = unified();
+        const parts = varianceParts(r, u);
+        const msg = 'Closing belum seimbang (' + parts.join(', ') + '). Tulis alasan selisih (minimal 10 karakter):';
+        if (!window.Swal) {
+            const v = window.prompt(msg, S.notes || '');
+            if (v === null) return null;
+            if (v.trim().length < 10) { alert('Alasan minimal 10 karakter.'); return null; }
+            return v.trim();
+        }
+        const res = await window.Swal.fire(swalOpts({
+            icon: 'warning',
+            title: 'Kunci dengan selisih',
+            html: `<div style="text-align:left;line-height:1.7;">Selisih: <b>${esc(parts.join(', '))}</b><br>Total nilai selisih: <b>${esc(signed(u.total))}</b><br><br>Alasan selisih <b>wajib</b> diisi dan tercatat di riwayat closing beserta nama akun yang mengunci.</div>`,
+            input: 'textarea',
+            inputValue: S.notes || '',
+            inputPlaceholder: 'Contoh: uang kurang karena salah kembalian, sudah dicek ulang',
+            showCancelButton: true,
+            confirmButtonText: 'Kunci dengan Selisih',
+            cancelButtonText: 'Batal',
+            inputValidator: (v) => (String(v || '').trim().length < 10 ? 'Alasan minimal 10 karakter.' : undefined)
+        }));
+        if (!res.isConfirmed) return null;
+        return String(res.value || '').trim();
+    }
+
     async function submit(mode) {
         if (S.busy || !S.data) return;
         const r = recon();
-        if (mode === 'final') {
+        if (mode === 'final' && !unified().balanced) {
+            const reason = await askVarianceReason();
+            if (!reason) return;
+            S.notes = reason;
+            S.accept = true;
+            const notesEl = $('cdNotes');
+            if (notesEl) notesEl.value = reason;
+        } else if (mode === 'final') {
             const ok = await confirmBox({
                 icon: 'warning',
                 title: unified().balanced ? 'Kunci closing?' : 'Kunci closing dengan selisih?',
