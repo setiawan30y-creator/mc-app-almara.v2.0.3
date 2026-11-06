@@ -175,14 +175,14 @@
                     <td><span class="rr-st ${st(d.status)[0]}">${esc(st(d.status)[1])}</span></td>
                     <td class="r gl">${esc(rp(d.cash.expected))}</td><td class="r">${d.cash.counted ? esc(rp(d.cash.physical + d.cash.hanging)) : '<span class="rr-dim">-</span>'}</td><td class="r">${cell(d.cash.difference, d.cash.counted)}</td>
                     <td class="r gl">${esc(rp(d.bank.system))}</td><td class="r">${d.bank.counted ? esc(rp(d.bank.statement)) : '<span class="rr-dim">-</span>'}</td><td class="r">${cell(d.bank.difference, d.bank.counted)}</td>
-                    <td class="r gl">${esc(rp(d.valas.system_value))}</td><td class="r">${d.valas.counted ? esc(rp(d.valas.physical_value)) : '<span class="rr-dim">-</span>'}</td><td class="r">${cell(d.valas.difference, d.valas.counted)}</td>
+                    <td class="r gl">${esc(rp(d.valas.system_value))}</td><td class="r">${d.valas.counted ? esc(rp(d.valas.physical_value)) + `<div class="rr-dim" style="font-size:.7rem">${d.valas.counted} dari ${d.valas.items.length} valuta</div>` : '<span class="rr-dim">-</span>'}</td><td class="r">${cell(d.valas.difference, d.valas.counted)}</td>
                     <td class="r gl"><span class="rr-${tone(d.total_difference)}">${esc(sg(d.total_difference))}</span></td>
                     <td>${esc(d.closed_by || '-')}</td>
                     <td><span class="rr-note" title="${esc(d.notes || '')}">${esc(d.notes || '-')}</span></td>
                 </tr>`).join('') || '<tr><td colspan="14" style="text-align:center;padding:24px;opacity:.65">Tidak ada hari di filter ini.</td></tr>'}</tbody>
             <tfoot><tr><td colspan="4">Total (${days.length} hari)</td><td class="r"><span class="rr-${tone(tot.c)}">${esc(sg(tot.c))}</span></td><td colspan="2"></td><td class="r"><span class="rr-${tone(tot.b)}">${esc(sg(tot.b))}</span></td><td colspan="2"></td><td class="r"><span class="rr-${tone(tot.v)}">${esc(sg(tot.v))}</span></td><td class="r gl"><span class="rr-${tone(tot.t)}">${esc(sg(tot.t))}</span></td><td colspan="2"></td></tr></tfoot>
         </table></div>
-        <p style="font-size:.75rem;opacity:.65;margin-top:8px">Kas pada hari yang sudah dikunci memakai angka saat closing. Nilai valas memakai kurs valuasi (modal rata-rata) saat ini. "Belum dihitung" = hitungan fisik belum diisi di Closing Harian.</p>`;
+        <p style="font-size:.75rem;opacity:.65;margin-top:8px">Kas pada hari yang sudah dikunci memakai angka saat closing. <b>Valas (Rp)</b>: Sistem = seluruh stok valas akhir hari × kurs valuasi; Fisik = valas yang dihitung × kurs valuasi; Selisih = (fisik − sistem) × kurs, hanya untuk valuta yang dihitung. Kurs valuasi = modal rata-rata (atau kurs beli). "Belum dihitung" = hitungan fisik belum diisi di Closing Harian.</p>`;
     }
 
     // ---------- rincian satu hari ----------

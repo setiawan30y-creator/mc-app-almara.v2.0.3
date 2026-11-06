@@ -478,7 +478,9 @@
                 <td class="r">${qf.format(s.system_qty)}</td>
                 <td class="r"><input type="number" min="0" step="any" inputmode="decimal" class="cd-input-sm" data-stock="${esc(s.currency_code)}" value="${has ? esc(val) : ''}" placeholder="-" ${locked ? 'disabled' : ''}></td>
                 <td class="r" data-stockdiff="${esc(s.currency_code)}">${stockDiffHtml(diff, s.rate)}</td>
-                <td class="r cd-mut">${s.value ? rp(s.value) : '-'}</td>
+                <td class="r cd-mut">${s.rate ? qf.format(s.rate) : '-'}</td>
+                <td class="r">${s.value ? rp(s.value) : '-'}</td>
+                <td class="r" data-stockphys="${esc(s.currency_code)}">${has && s.rate ? rp(Number(val) * s.rate) : '<span class="cd-mut">-</span>'}</td>
             </tr>`;
         }).join('');
         return `<div class="cd-card">
@@ -487,10 +489,29 @@
                 ${locked ? '' : '<button type="button" class="cd-linkbtn" data-act="fill-stock"><i class="fa-solid fa-check-double"></i> Semua sesuai sistem</button>'}
             </div>
             <div class="cd-tablewrap"><table class="cd-table">
-                <thead><tr><th>Valuta</th><th class="r">Sistem</th><th class="r">Fisik</th><th class="r">Selisih</th><th class="r">Nilai sistem</th></tr></thead>
-                <tbody>${rows}</tbody></table></div>
-            <p class="cd-hint">Kosongkan kolom Fisik bila valuta tidak dihitung hari ini. Nilai memakai rata-rata beli atau kurs beli.</p>
+                <thead><tr><th>Valuta</th><th class="r">Sistem</th><th class="r">Fisik</th><th class="r">Selisih</th><th class="r">Kurs valuasi</th><th class="r">Nilai sistem (Rp)</th><th class="r">Nilai fisik (Rp)</th></tr></thead>
+                <tbody>${rows}</tbody>
+                <tfoot id="cdStockTotals">${stockTotalsHtml()}</tfoot></table></div>
+            <p class="cd-hint">Kosongkan kolom Fisik bila valuta tidak dihitung hari ini. Nilai Rp = jumlah lembar × kurs valuasi (rata-rata beli, atau kurs beli bila belum ada).</p>
         </div>`;
+    }
+
+    // Total nilai valas dalam Rupiah (semua valuta) + nilai fisik & selisih untuk valuta yang dihitung. @2026-Alifiandra
+    function stockTotalsHtml() {
+        let sys = 0, sysCounted = 0, phys = 0, n = 0;
+        (S.data.stocks || []).forEach((s) => {
+            const rate = s.rate || 0;
+            sys += s.system_qty * rate;
+            const v = S.stock[s.currency_code];
+            if (v === undefined || v === null || v === '') return;
+            n++; sysCounted += s.system_qty * rate; phys += Number(v) * rate;
+        });
+        const diff = phys - sysCounted;
+        const diffHtml = !n ? '<span class="cd-mut">belum dihitung</span>'
+            : Math.abs(diff) < 0.5 ? '<span class="tx-ok"><i class="fa-solid fa-check"></i> sesuai</span>'
+            : `<span class="${diff < 0 ? 'tx-bad' : 'tx-info'}">${signed(diff)}</span>`;
+        return `<tr style="font-weight:800"><td colspan="3">Total valas (Rp)${n ? ` <small class="cd-mut">· ${n} dari ${(S.data.stocks || []).length} valuta dihitung</small>` : ''}</td>
+            <td class="r">${diffHtml}</td><td></td><td class="r">${rp(sys)}</td><td class="r">${n ? rp(phys) : '<span class="cd-mut">-</span>'}</td></tr>`;
     }
 
     function stockDiffHtml(diff, rate) {
@@ -1140,6 +1161,10 @@
         const v = S.stock[code];
         const has = v !== undefined && v !== null && v !== '';
         cell.innerHTML = stockDiffHtml(has ? Number(v) - s.system_qty : null, s.rate);
+        const pc = document.querySelector(`[data-stockphys="${code}"]`);
+        if (pc) pc.innerHTML = has && s.rate ? rp(Number(v) * s.rate) : '<span class="cd-mut">-</span>';
+        const tf = document.getElementById('cdStockTotals');
+        if (tf) tf.innerHTML = stockTotalsHtml();
     }
 
     function refreshBankRow(id) {
