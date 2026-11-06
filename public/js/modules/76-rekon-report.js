@@ -182,7 +182,7 @@
                 </tr>`).join('') || '<tr><td colspan="14" style="text-align:center;padding:24px;opacity:.65">Tidak ada hari di filter ini.</td></tr>'}</tbody>
             <tfoot><tr><td colspan="4">Total (${days.length} hari)</td><td class="r"><span class="rr-${tone(tot.c)}">${esc(sg(tot.c))}</span></td><td colspan="2"></td><td class="r"><span class="rr-${tone(tot.b)}">${esc(sg(tot.b))}</span></td><td colspan="2"></td><td class="r"><span class="rr-${tone(tot.v)}">${esc(sg(tot.v))}</span></td><td class="r gl"><span class="rr-${tone(tot.t)}">${esc(sg(tot.t))}</span></td><td colspan="2"></td></tr></tfoot>
         </table></div>
-        <p style="font-size:.75rem;opacity:.65;margin-top:8px">Kas pada hari yang sudah dikunci memakai angka saat closing. <b>Valas (Rp)</b>: Sistem = seluruh stok valas akhir hari × kurs valuasi; Fisik = valas yang dihitung × kurs valuasi; Selisih = (fisik − sistem) × kurs, hanya untuk valuta yang dihitung. Kurs valuasi = modal rata-rata (atau kurs beli). "Belum dihitung" = hitungan fisik belum diisi di Closing Harian.</p>`;
+        <p style="font-size:.75rem;opacity:.65;margin-top:8px">Kas pada hari yang sudah dikunci memakai angka saat closing. <b>Valas (Rp)</b>: Sistem = seluruh stok valas akhir hari × kurs valuasi; Fisik = valas yang dihitung × kurs valuasi; Selisih = (fisik − sistem) × kurs, hanya untuk valuta yang dihitung. Kurs valuasi = modal rata-rata dari saldo awal & pembelian (sama dengan Dashboard). Hari yang sudah dikunci memakai nilai yang dibekukan saat closing. "Belum dihitung" = hitungan fisik belum diisi di Closing Harian.</p>`;
     }
 
     // ---------- rincian satu hari ----------

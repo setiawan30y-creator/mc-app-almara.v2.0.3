@@ -392,10 +392,12 @@
             ${(() => {
                 // Total nilai valas & posisi Rupiah keseluruhan (sistem, akhir hari). @2026-Alifiandra
                 const stocks = d.stocks || [];
-                const valas = stocks.reduce((sum, x) => sum + (x.system_qty || 0) * (x.rate || 0), 0);
+                const vt = d.valuation || null;
+                const valas = vt ? vt.total : stocks.reduce((sum, x) => sum + (x.system_qty || 0) * (x.rate || 0), 0);
+                const valSub = !vt ? 'stok × modal rata-rata' : vt.source === 'closing' ? 'dibekukan saat closing dikunci' : vt.source === 'end_of_day' ? 'stok akhir hari × modal rata-rata' : 'stok saat ini × modal rata-rata';
                 const bank = (d.banks || []).reduce((sum, b) => sum + (b.closing || 0), 0);
                 return `<div class="cd-kpis" style="margin-top:12px">
-                    ${kpi('fa-coins', 'Total Nilai Valas (Rp)', valas, `${stocks.filter((x) => x.system_qty).length} valuta × kurs valuasi`, 'primary')}
+                    ${kpi('fa-coins', 'Total Nilai Valas (Rp)', valas, valSub, 'primary')}
                     ${kpi('fa-building-columns', 'Saldo Bank (Sistem)', bank, `${(d.banks || []).length} rekening`, '')}
                     ${kpi('fa-sack-dollar', 'Total Posisi (Kas + Bank + Valas)', d.cash.expected + bank + valas, 'Nilai seluruh modal hari ini', 'ok')}
                 </div>`;
@@ -503,7 +505,7 @@
                 <thead><tr><th>Valuta</th><th class="r">Sistem</th><th class="r">Fisik</th><th class="r">Selisih</th><th class="r">Kurs valuasi</th><th class="r">Nilai sistem (Rp)</th><th class="r">Nilai fisik (Rp)</th></tr></thead>
                 <tbody>${rows}</tbody>
                 <tfoot id="cdStockTotals">${stockTotalsHtml()}</tfoot></table></div>
-            <p class="cd-hint">Kosongkan kolom Fisik bila valuta tidak dihitung hari ini. Nilai Rp = jumlah lembar × kurs valuasi (rata-rata beli, atau kurs beli bila belum ada).</p>
+            <p class="cd-hint">Kosongkan kolom Fisik bila valuta tidak dihitung hari ini. Nilai Rp = jumlah lembar × modal rata-rata (dari saldo awal & pembelian) — sama dengan Dashboard dan Rekonsiliasi.</p>
         </div>`;
     }
 
@@ -512,11 +514,12 @@
         let sys = 0, sysCounted = 0, phys = 0, n = 0;
         (S.data.stocks || []).forEach((s) => {
             const rate = s.rate || 0;
-            sys += s.system_qty * rate;
+            if (!S.data.valuation) sys += s.system_qty * rate;
             const v = S.stock[s.currency_code];
             if (v === undefined || v === null || v === '') return;
             n++; sysCounted += s.system_qty * rate; phys += Number(v) * rate;
         });
+        if (S.data.valuation) sys = S.data.valuation.total;
         const diff = phys - sysCounted;
         const diffHtml = !n ? '<span class="cd-mut">belum dihitung</span>'
             : Math.abs(diff) < 0.5 ? '<span class="tx-ok"><i class="fa-solid fa-check"></i> sesuai</span>'

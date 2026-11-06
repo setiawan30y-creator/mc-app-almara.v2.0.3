@@ -92,6 +92,15 @@ function getDashboardReconciliationSummary(closings, targetDate, isFiltered) {
     };
 }
 
+// Nilai stok valas (Rp) dari server: satu perhitungan untuk semua halaman. @2026-Alifiandra
+window.mcValasValuation = async function (date) {
+    const doFetch = window.authFetch || window.fetch;
+    const res = await doFetch('/api/valas/valuation' + (date ? '?date=' + encodeURIComponent(date) : ''), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin', cache: 'no-store' });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.status !== 'success') throw new Error(json.message || ('HTTP ' + res.status));
+    return json.data;
+};
+
 async function loadDashboard() {
     const trxs = typeof getServerTransactionsLikeRwt === 'function'
         ? await getServerTransactionsLikeRwt()
@@ -261,12 +270,25 @@ async function loadDashboard() {
             if(document.getElementById('dashMandiri')) document.getElementById('dashMandiri').textContent = utils.formatIdr(sum.MANDIRI);
         }).catch(() => {});
     }
-    document.getElementById('dashTotalValuta').textContent = utils.formatIdr(estimasiValutaIdr);
-    if(document.getElementById('dashTotalValutaHint')) {
-        const hasAnyBuyTransaction = trxs.some(t => String(t.tipe || t.type || '').toUpperCase() === 'BELI');
-        document.getElementById('dashTotalValutaHint').textContent = estimasiValutaQty > 0
-            ? (hasAnyBuyTransaction ? 'Berdasarkan rata-rata kurs pembelian' : 'Berdasarkan saldo awal valas')
-            : 'Belum ada stok valuta';
+    // Nilai valas (Rp) dari SATU sumber di server (sama dengan Live Stok Valuta, Closing, Rekonsiliasi).
+    // Tanpa filter = stok saat ini; dengan filter tanggal = nilai saat closing tanggal itu. @2026-Alifiandra
+    const valEl = document.getElementById('dashTotalValuta');
+    const valHint = document.getElementById('dashTotalValutaHint');
+    if (typeof window.mcValasValuation === 'function') {
+        if (valHint) valHint.textContent = 'Menghitung...';
+        window.mcValasValuation(isFiltered ? targetDate : '').then(v => {
+            if (!v) return;
+            if (valEl) valEl.textContent = utils.formatIdr(v.total);
+            if (valHint) {
+                const tgl = window.formatDateToDMY(v.date);
+                valHint.textContent = v.source === 'closing' ? `Nilai saat closing ${tgl}`
+                    : v.source === 'end_of_day' ? `Stok akhir ${tgl} (belum dikunci)`
+                    : 'Stok saat ini × modal rata-rata';
+            }
+        }).catch(() => { if (valHint) valHint.textContent = 'Belum bisa dimuat dari server'; });
+    } else {
+        if (valEl) valEl.textContent = utils.formatIdr(estimasiValutaIdr);
+        if (valHint) valHint.textContent = estimasiValutaQty > 0 ? 'Berdasarkan rata-rata kurs pembelian' : 'Belum ada stok valuta';
     }
     // Profit hanya ditulis untuk akun yang diberi hak "Kartu Profit Hari Ini" (Pengaturan > Hak Akses).
     const canSeeProfit = typeof window.mcCanAction !== 'function' || window.mcCanAction('profit');

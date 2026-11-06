@@ -167,6 +167,10 @@ class ClosingDailyController extends Controller
                 $valas['items'][] = ['code' => $s['currency_code'], 'system_qty' => $sys, 'physical_qty' => $phy, 'rate' => $rate,
                     'diff_qty' => $dq, 'diff_value' => $dq === null ? null : round($dq * $rate, 2)];
             }
+            // Nilai sistem = total ValasValuation (sama dengan Dashboard & Closing; dibekukan bila sudah dikunci).
+            $vt = $this->valuation()->at($date === $today ? null : $date);
+            $valas['system_value'] = $vt['total'];
+            $valas['source'] = $vt['source'];
             foreach (['system_value', 'physical_value', 'difference'] as $k) {
                 $valas[$k] = round($valas[$k], 2);
             }
@@ -305,6 +309,8 @@ class ClosingDailyController extends Controller
 
                 $this->saveStockCounts($closing, $date, $data['stock_counts'] ?? []);
                 $this->saveBankCounts($closing, $date, $data['bank_counts'] ?? []);
+                // Bekukan nilai stok valas (Rp) pada saat closing disimpan/dikunci.
+                $this->valuation()->freeze($closing, $date);
 
                 $this->log($closing->id, $date, $action, $user, [
                     'physical' => $physical,
@@ -400,6 +406,7 @@ class ClosingDailyController extends Controller
             'trade_list' => $this->tradeList($date),
             'expenses' => $this->expenseList($date, $account),
             'gantungan' => $gantungan,
+            'valuation' => $this->valuation()->at($date === $today ? null : $date),
             'closing' => $closing ? $this->closingDetail($closing) : null,
             'unclosed_days' => $this->unclosedDays($date, $account),
             'checks' => $this->checks($date, $account, $closing, $stocks, $gantungan, $banks),
@@ -516,7 +523,8 @@ class ClosingDailyController extends Controller
         if ($closing && Schema::hasTable('erp_cash_closing_stock_counts')) {
             $counts = DB::table('erp_cash_closing_stock_counts')->where('closing_id', $closing->id)->get()->keyBy('currency_code');
         }
-        $rates = $this->currencyRates();
+        // Kurs valuasi dari ValasValuation (satu sumber untuk Dashboard, Closing, Rekonsiliasi). @2026-Alifiandra
+        $rates = $this->valuation()->map($isToday ? null : $date);
 
         return ErpCurrencyStock::orderBy('currency_code')->get()->map(function (ErpCurrencyStock $s) use ($end, $isToday, $counts, $rates) {
             $qty = (float) $s->quantity;
@@ -530,7 +538,7 @@ class ClosingDailyController extends Controller
                 $qty = round($qty - $after, 6);
             }
             $saved = $counts[$s->currency_code] ?? null;
-            $rate = $rates[$s->currency_code] ?? 0.0;
+            $rate = (float) ($rates[strtoupper((string) $s->currency_code)]['rate'] ?? 0.0);
 
             return [
                 'currency_code' => $s->currency_code,
@@ -543,20 +551,12 @@ class ClosingDailyController extends Controller
         })->filter(fn ($row) => abs($row['system_qty']) > 0 || $row['physical_qty'] !== null)->values()->all();
     }
 
-    /** Kurs valuasi per valuta: rata-rata beli bila ada, jika tidak kurs beli saat ini. */
-    private function currencyRates(): array
-    {
-        if (!Schema::hasTable('mc_currencies')) {
-            return [];
-        }
-        $rates = [];
-        foreach (DB::table('mc_currencies')->get(['code', 'buy', 'raw_json']) as $row) {
-            $raw = is_string($row->raw_json) ? json_decode($row->raw_json, true) : null;
-            $avg = is_array($raw) ? (float) ($raw['avg_buy_rate'] ?? 0) : 0.0;
-            $rates[strtoupper((string) $row->code)] = $avg > 0 ? $avg : (float) $row->buy;
-        }
+    private ?\App\Services\Erp\ValasValuation $valuationService = null;
 
-        return $rates;
+    /** Satu-satunya perhitungan nilai valas (Rp). */
+    private function valuation(): \App\Services\Erp\ValasValuation
+    {
+        return $this->valuationService ??= new \App\Services\Erp\ValasValuation();
     }
 
     /** Daftar transaksi hari itu (untuk analisis penyebab selisih di rekonsiliasi terpadu). */

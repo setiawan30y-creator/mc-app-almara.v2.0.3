@@ -74,7 +74,10 @@
     }
 
     async function rows() {
-        const trxs = await transactions();
+        // Modal rata-rata & nilai Rp dari server (satu sumber dengan Dashboard/Closing/Rekonsiliasi).
+        let server = null;
+        try { if (typeof window.mcValasValuation === 'function') { const v = await window.mcValasValuation(''); server = new Map((v.items || []).map((x) => [String(x.code).toUpperCase(), x])); } } catch (e) { server = null; }
+        const trxs = server ? [] : await transactions();
         const ms = masters();
         return currencies().map((c) => {
             const code = String(c.code || '').toUpperCase();
@@ -82,7 +85,9 @@
             const m = ms.find((x) => String(x.code || '').toUpperCase() === code) || ms.find((x) => String(x.code || '').toUpperCase() === base) || {};
             const stock = num(c.stock), min = num(c.alert);
             let cost = { rate: 0, value: 0 };
-            try { if (typeof calculateCurrencyAverageCost === 'function') cost = calculateCurrencyAverageCost(c, trxs) || cost; } catch (e) { /* abaikan */ }
+            const sv = server && server.get(code);
+            if (sv) cost = { rate: sv.rate, value: sv.value };
+            else if (!server) { try { if (typeof calculateCurrencyAverageCost === 'function') cost = calculateCurrencyAverageCost(c, trxs) || cost; } catch (e) { /* abaikan */ } }
             const status = stock <= 0 ? 'out' : (stock <= min ? 'low' : 'ok');
             return {
                 code, display: String(c.code || ''),
