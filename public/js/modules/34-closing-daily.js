@@ -389,6 +389,17 @@
                 ${kpi('fa-arrow-up', 'Kas Keluar', d.cash.out, d.cash.expense > 0 ? `termasuk pengeluaran ${rp(d.cash.expense)}` : `${countFlows('OUT')} mutasi`, 'bad')}
                 ${kpi('fa-scale-balanced', 'Kas Seharusnya', d.cash.expected, 'Awal + masuk - keluar', 'primary')}
             </div>
+            ${(() => {
+                // Total nilai valas & posisi Rupiah keseluruhan (sistem, akhir hari). @2026-Alifiandra
+                const stocks = d.stocks || [];
+                const valas = stocks.reduce((sum, x) => sum + (x.system_qty || 0) * (x.rate || 0), 0);
+                const bank = (d.banks || []).reduce((sum, b) => sum + (b.closing || 0), 0);
+                return `<div class="cd-kpis" style="margin-top:12px">
+                    ${kpi('fa-coins', 'Total Nilai Valas (Rp)', valas, `${stocks.filter((x) => x.system_qty).length} valuta × kurs valuasi`, 'primary')}
+                    ${kpi('fa-building-columns', 'Saldo Bank (Sistem)', bank, `${(d.banks || []).length} rekening`, '')}
+                    ${kpi('fa-sack-dollar', 'Total Posisi (Kas + Bank + Valas)', d.cash.expected + bank + valas, 'Nilai seluruh modal hari ini', 'ok')}
+                </div>`;
+            })()}
 
             <div class="cd-grid">
                 <div class="cd-main">
