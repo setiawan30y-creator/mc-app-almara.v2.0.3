@@ -400,10 +400,13 @@ class ClosingDailyController extends Controller
         return ErpCurrencyStock::orderBy('currency_code')->get()->map(function (ErpCurrencyStock $s) use ($end, $isToday, $counts, $rates) {
             $qty = (float) $s->quantity;
             if (!$isToday) {
-                $last = ErpCurrencyStockMovement::where('currency_stock_id', $s->id)
-                    ->where('posted_at', '<=', $end)
-                    ->orderByDesc('posted_at')->orderByDesc('id')->first();
-                $qty = $last ? (float) $last->balance_after : 0.0;
+                // Stok pada akhir tanggal itu = stok sekarang dikurangi mutasi SETELAH tanggal itu.
+                // (Dulu memakai balance_after mutasi terakhir, sehingga valas yang hanya berasal dari
+                // saldo awal tanpa mutasi terbaca 0 dan closing tanggal lalu tidak bisa dikunci.) @2026-Alifiandra
+                $after = (float) ErpCurrencyStockMovement::where('currency_stock_id', $s->id)
+                    ->where('posted_at', '>', $end)
+                    ->sum(DB::raw("CASE WHEN movement_type = 'IN' THEN quantity ELSE -quantity END"));
+                $qty = round($qty - $after, 6);
             }
             $saved = $counts[$s->currency_code] ?? null;
             $rate = $rates[$s->currency_code] ?? 0.0;
