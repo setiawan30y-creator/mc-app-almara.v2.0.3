@@ -179,6 +179,7 @@ Route::post('/goaml/alerts/{alert}/ltkm', [GoamlComplianceController::class, 'cr
 
     Route::get('/closing/day', [ClosingDailyController::class, 'day']);
     Route::get('/closing/history', [ClosingDailyController::class, 'history']);
+    Route::get('/dashboard/position', [\App\Http\Controllers\DashboardPositionController::class, 'show']); // kartu Kas/Bank/Valas per tanggal @2026-Alifiandra
     Route::get('/valas/valuation', [\App\Http\Controllers\ValasValuationController::class, 'show']); // nilai valas (Rp) satu sumber @2026-Alifiandra
     Route::get('/closing/report', [ClosingDailyController::class, 'report'])->middleware('role:owner,superadmin,admin,supervisor'); // Laporan Rekonsiliasi Harian @2026-Alifiandra
     Route::post('/closing', [ClosingDailyController::class, 'save']);

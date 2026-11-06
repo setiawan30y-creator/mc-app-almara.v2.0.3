@@ -93,6 +93,14 @@ function getDashboardReconciliationSummary(closings, targetDate, isFiltered) {
 }
 
 // Nilai stok valas (Rp) dari server: satu perhitungan untuk semua halaman. @2026-Alifiandra
+window.mcDashboardPosition = async function (date) {
+    const doFetch = window.authFetch || window.fetch;
+    const res = await doFetch('/api/dashboard/position' + (date ? '?date=' + encodeURIComponent(date) : ''), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin', cache: 'no-store' });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.status !== 'success') throw new Error(json.message || ('HTTP ' + res.status));
+    return json.data;
+};
+
 window.mcValasValuation = async function (date) {
     const doFetch = window.authFetch || window.fetch;
     const res = await doFetch('/api/valas/valuation' + (date ? '?date=' + encodeURIComponent(date) : ''), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin', cache: 'no-store' });
@@ -257,38 +265,44 @@ async function loadDashboard() {
     let sumExp = 0;
     todayExpenses.forEach(e => sumExp += e.nominal);
 
-    document.getElementById('dashTotalKas').textContent = utils.formatIdr(totalKas);
-    document.getElementById('dashTotalBank').textContent = utils.formatIdr(totalBank);
-    if(document.getElementById('dashBCA')) document.getElementById('dashBCA').textContent = utils.formatIdr(store.getBankBCA());
-    if(document.getElementById('dashMandiri')) document.getElementById('dashMandiri').textContent = utils.formatIdr(store.getBankMandiri());
-    // Saldo bank diambil dari buku besar server (sama dengan halaman Mutasi Bank). @2026-Alifiandra
-    if (typeof window.mcLoadBankLedgerSummary === 'function') {
-        window.mcLoadBankLedgerSummary().then(sum => {
-            if (!sum) return;
-            document.getElementById('dashTotalBank').textContent = utils.formatIdr(sum.total);
-            if(document.getElementById('dashBCA')) document.getElementById('dashBCA').textContent = utils.formatIdr(sum.BCA);
-            if(document.getElementById('dashMandiri')) document.getElementById('dashMandiri').textContent = utils.formatIdr(sum.MANDIRI);
-        }).catch(() => {});
-    }
-    // Nilai valas (Rp) dari SATU sumber di server (sama dengan Live Stok Valuta, Closing, Rekonsiliasi).
-    // Tanpa filter = stok saat ini; dengan filter tanggal = nilai saat closing tanggal itu. @2026-Alifiandra
-    const valEl = document.getElementById('dashTotalValuta');
+    // Saat tanggal dipilih, angka sekarang tidak ditampilkan dulu (menunggu posisi tanggal itu dari server).
+    const wait = isFiltered ? '…' : null;
+    document.getElementById('dashTotalKas').textContent = wait || utils.formatIdr(totalKas);
+    document.getElementById('dashTotalBank').textContent = wait || utils.formatIdr(totalBank);
+    if(document.getElementById('dashBCA')) document.getElementById('dashBCA').textContent = wait || utils.formatIdr(store.getBankBCA());
+    if(document.getElementById('dashMandiri')) document.getElementById('dashMandiri').textContent = wait || utils.formatIdr(store.getBankMandiri());
+    if (isFiltered && document.getElementById('dashTotalValuta')) document.getElementById('dashTotalValuta').textContent = '…';
+    // Kas, Bank, dan Valas (Rp) dari buku besar server, mengikuti filter tanggal. @2026-Alifiandra
+    // Tanpa tanggal = posisi saat ini; tanggal lalu = akhir hari itu (nilai beku bila closing dikunci).
+    const posKey = isFiltered ? targetDate : '';
+    window.__dashPosKey = posKey;
+    const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    const ensureHint = (valueId, hintId) => {
+        let h = document.getElementById(hintId);
+        const v = document.getElementById(valueId);
+        if (!h && v) { h = document.createElement('small'); h.id = hintId; h.className = 'dsh-hint'; v.insertAdjacentElement('afterend', h); }
+        return h;
+    };
     const valHint = document.getElementById('dashTotalValutaHint');
-    if (typeof window.mcValasValuation === 'function') {
-        if (valHint) valHint.textContent = 'Menghitung...';
-        window.mcValasValuation(isFiltered ? targetDate : '').then(v => {
-            if (!v) return;
-            if (valEl) valEl.textContent = utils.formatIdr(v.total);
-            if (valHint) {
-                const tgl = window.formatDateToDMY(v.date);
-                valHint.textContent = v.source === 'closing' ? `Nilai saat closing ${tgl}`
-                    : v.source === 'end_of_day' ? `Stok akhir ${tgl} (belum dikunci)`
-                    : 'Stok saat ini × modal rata-rata';
+    if (valHint) valHint.textContent = 'Menghitung...';
+    if (typeof window.mcDashboardPosition === 'function') {
+        window.mcDashboardPosition(posKey).then(p => {
+            if (!p || window.__dashPosKey !== posKey) return;
+            const tgl = window.formatDateToDMY(p.date);
+            const label = p.source === 'closing' ? `Saat closing ${tgl}` : p.source === 'end_of_day' ? `Akhir hari ${tgl} (belum dikunci)` : 'Saat ini';
+            setTxt('dashTotalKas', utils.formatIdr(p.cash));
+            setTxt('dashTotalBank', utils.formatIdr(p.bank.total));
+            setTxt('dashBCA', utils.formatIdr(p.bank.BCA));
+            setTxt('dashMandiri', utils.formatIdr(p.bank.MANDIRI));
+            setTxt('dashTotalValuta', utils.formatIdr(p.valas.total));
+            const kh = ensureHint('dashTotalKas', 'dashTotalKasHint'); if (kh) kh.textContent = label;
+            if (valHint) valHint.textContent = (p.source === 'live' ? 'Stok saat ini' : label) + ' × modal rata-rata';
+            if (!isFiltered) {
+                // Salinan tampilan di browser ikut disamakan dengan server.
+                if (Math.round(store.getBankBCA()) !== Math.round(p.bank.BCA)) store.saveBankBCA(Math.round(p.bank.BCA));
+                if (Math.round(store.getBankMandiri()) !== Math.round(p.bank.MANDIRI)) store.saveBankMandiri(Math.round(p.bank.MANDIRI));
             }
         }).catch(() => { if (valHint) valHint.textContent = 'Belum bisa dimuat dari server'; });
-    } else {
-        if (valEl) valEl.textContent = utils.formatIdr(estimasiValutaIdr);
-        if (valHint) valHint.textContent = estimasiValutaQty > 0 ? 'Berdasarkan rata-rata kurs pembelian' : 'Belum ada stok valuta';
     }
     // Profit hanya ditulis untuk akun yang diberi hak "Kartu Profit Hari Ini" (Pengaturan > Hak Akses).
     const canSeeProfit = typeof window.mcCanAction !== 'function' || window.mcCanAction('profit');
