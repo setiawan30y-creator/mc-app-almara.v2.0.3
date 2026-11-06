@@ -2347,14 +2347,19 @@ window.updateCustomer = async function() {
             ? (String($('#update_modalCustIdExpiry').val() || '').trim() || null) : null
     };
 
-    // Update Array & Local Storage (Perbaiki Key ke mc_customers)
+    // Database dulu (aturan terkunci): bila server menolak, tidak ada yang berubah. @2026-Alifiandra
+    const updRes = typeof window.saveToMySQL_Customer === 'function'
+        ? await window.saveToMySQL_Customer(updatedData)
+        : { ok: false, message: 'Modul sinkronisasi belum termuat. Muat ulang halaman (Ctrl+F5).' };
+    if (!updRes || !updRes.ok) {
+        Swal.fire({ icon: 'error', title: 'Data nasabah BELUM tersimpan', text: 'Server/database menolak atau tidak bisa dihubungi: ' + ((updRes && updRes.message) || '-') + '. Tidak ada data yang berubah, coba simpan lagi.', background: '#1e293b', color: '#f8fafc' });
+        return;
+    }
+    if (updRes.data && updRes.data.foto_id) updatedData.foto_id = updRes.data.foto_id;
+
+    // Salinan di browser diperbarui setelah database menerima.
     customers[index] = updatedData;
     localStorage.setItem('mc_customers', JSON.stringify(customers));
-
-    // Sinkronisasi ke MySQL
-    if (typeof window.saveToMySQL_Customer === 'function') {
-        await window.saveToMySQL_Customer(updatedData);
-    }
 
     Swal.fire({
         icon: 'success',
@@ -2979,10 +2984,16 @@ async function saveCustomer() {
         if (typeof window.suppressTransactionNotifications === 'function') {
             window.suppressTransactionNotifications(8000);
         }
-        saveCustomers(customers);
-        if(typeof window.saveToMySQL_Customer === 'function') {
-            await window.saveToMySQL_Customer(customerData);
+ // Database dulu (aturan terkunci): bila server menolak, form tetap terbuka & tidak ada yang berubah. @2026-Alifiandra
+        const addRes = typeof window.saveToMySQL_Customer === 'function'
+            ? await window.saveToMySQL_Customer(customerData)
+            : { ok: false, message: 'Modul sinkronisasi belum termuat. Muat ulang halaman (Ctrl+F5).' };
+        if (!addRes || !addRes.ok) {
+            Swal.fire({ icon: 'error', title: 'Nasabah BELUM tersimpan', text: 'Server/database menolak atau tidak bisa dihubungi: ' + ((addRes && addRes.message) || '-') + '. Data di form tidak hilang, coba simpan lagi.', background: '#1e293b', color: '#f8fafc' });
+            return;
         }
+        if (addRes.data && addRes.data.foto_id) customerData.foto_id = addRes.data.foto_id;
+        saveCustomers(customers);
         
         // Clear photo identity after clicking save
         document.getElementById('modalCustPhoto').value = '';
