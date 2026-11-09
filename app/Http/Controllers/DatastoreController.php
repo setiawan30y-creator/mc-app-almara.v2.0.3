@@ -16,6 +16,13 @@ class DatastoreController extends Controller
     /** Pengaturan AI per perangkat: tidak pernah disimpan / dibagikan lewat datastore. */
     public const DEVICE_ONLY_KEYS = ['mc_gemini_api_key', 'mc_openai_api_key', 'mc_openai_model', 'mc_ai_provider'];
 
+    /** Saldo yang hanya boleh berasal dari buku besar ERP (aturan terkunci). @2026-Alifiandra */
+    public const LEDGER_OWNED_KEYS = [
+        'mc_cash', 'mc_bank_bca', 'mc_bank_mandiri',
+        'mc_initial_cash', 'mc_initial_bank_bca', 'mc_initial_bank_mandiri',
+        'mc_erp_payment_totals', 'mc_erp_settlement_totals',
+    ];
+
     public function index()
     {
         $stores = Datastore::all();
@@ -100,7 +107,24 @@ class DatastoreController extends Controller
             'settled' => (int) ErpSettlement::query()->where('status', 'settled')->count(),
         ];
 
-        return response()->json(['status' => 'success', 'data' => $data]);
+        // Versi setiap kunci (kunci optimistis): browser mengirim balik versi ini saat menyimpan,
+        // supaya perubahan dari akun lain tidak tertimpa diam-diam. @2026-Alifiandra
+        $versions = [];
+        foreach ($stores as $item) {
+            $versions[$item->store_key] = self::versionOf($item);
+        }
+
+        return response()->json(['status' => 'success', 'data' => $data, 'versions' => $versions]);
+    }
+
+    /** Versi isi satu kunci datastore (berubah setiap kali isinya berubah). */
+    private static function versionOf(?Datastore $row): string
+    {
+        if (!$row) {
+            return '';
+        }
+        $raw = $row->getRawOriginal('json_data');
+        return substr(md5(is_string($raw) ? $raw : json_encode($raw)), 0, 16);
     }
 
     /** PIN karyawan tidak pernah disimpan/dikirim lewat datastore (ada di tabel hash terpisah). */
@@ -184,6 +208,12 @@ class DatastoreController extends Controller
             $validated['json_data'] = self::stripPins($incoming);
         }
 
+        // ATURAN TERKUNCI: saldo kas/bank & saldo awal hanya diubah lewat buku besar (endpoint ERP),
+        // tidak pernah dari salinan di browser. @2026-Alifiandra
+        if (in_array($validated['store_key'], self::LEDGER_OWNED_KEYS, true)) {
+            return response()->json(['status' => 'success', 'message' => 'Diabaikan (saldo dikelola buku besar server).']);
+        }
+
         if (str_starts_with($validated['store_key'], 'security_')) {
             return response()->json(['status' => 'error', 'message' => 'Kunci ini dikelola lewat pengaturan khusus.'], 403);
         }
@@ -197,13 +227,29 @@ class DatastoreController extends Controller
                 }
             }
 
-            Datastore::updateOrCreate(
-                ['store_key' => $validated['store_key']],
-                ['json_data' => $jsonData]
-            );
+            $key = $validated['store_key'];
+            $base = $request->input('base_version');
+            $result = \Illuminate\Support\Facades\DB::transaction(function () use ($key, $base, $jsonData) {
+                $current = Datastore::query()->whereKey($key)->lockForUpdate()->first();
+                // Kunci sudah ada tetapi browser mengirim versi lama / tanpa versi => tolak (409).
+                if ($current && (!is_string($base) || $base === '' || !hash_equals(self::versionOf($current), $base))) {
+                    return ['conflict' => true, 'current' => $current->json_data, 'version' => self::versionOf($current)];
+                }
+                $row = Datastore::updateOrCreate(['store_key' => $key], ['json_data' => $jsonData]);
+                return ['conflict' => false, 'version' => self::versionOf($row->fresh())];
+            });
+            if ($result['conflict']) {
+                return response()->json([
+                    'status' => 'conflict',
+                    'message' => "Data {$key} sudah diubah dari akun/perangkat lain. Muat ulang lalu ulangi.",
+                    'current' => $result['current'],
+                    'version' => $result['version'],
+                ], 409);
+            }
             return response()->json([
                 'status' => 'success',
-                'message' => "Datastore {$validated['store_key']} tersimpan (Laravel)!"
+                'message' => "Datastore {$key} tersimpan (Laravel)!",
+                'version' => $result['version'],
             ]);
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);

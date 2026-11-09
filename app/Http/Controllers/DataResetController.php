@@ -226,6 +226,13 @@ class DataResetController extends Controller
                 break;
             case 'operations':
                 $n += $this->delRef('erp_bank_movements', 'manual_mutation');
+                // Jurnal ekuitas & kasbon kini tercatat di buku besar; ikut dihapus bersama daftarnya. @2026-Alifiandra
+                foreach (['adjustment', 'kasbon'] as $ref) {
+                    $n += $this->delRef('erp_cash_movements', $ref);
+                    $n += $this->delRef('erp_bank_movements', $ref);
+                }
+                $n += $this->del('erp_cash_closing_bank_counts');
+                $n += $this->del('erp_cash_closing_valuations');
                 $n += $this->del('erp_cash_closing_stock_counts');
                 $n += $this->del('erp_cash_closing_logs');
                 $n += $this->del('erp_cash_closing_denominations');
@@ -245,6 +252,8 @@ class DataResetController extends Controller
                 $n += $this->del('goaml_alerts');
                 break;
             case 'bookingDemo':
+                $n += $this->delRef('erp_cash_movements', 'booking_dp');
+                $n += $this->delRef('erp_bank_movements', 'booking_dp');
                 $n += $this->clearKeys('bookingDemo');
                 break;
             case 'oldMoney':

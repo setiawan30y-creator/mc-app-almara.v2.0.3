@@ -15,7 +15,13 @@ Developer signature di kode/halaman: `@2026-Alifiandra`.
 4. **Kirim satu baris, bukan seluruh daftar.** Simpan/hapus hanya mengirim baris yang berubah
    (daftar di browser bisa usang dan menimpa data akun lain).
 5. **Edit/hapus = baris koreksi** di buku besar (idempotent per nomor), baris lama tidak diubah.
-6. **Antar akun otomatis** lewat `GET /api/live/version` (cek tiap 3 detik di `sync.js`);
+6. **Tidak ada upload ulang otomatis dari browser.** Saat menarik data, database selalu menang:
+   tabel kosong / kunci hilang (mis. sesudah Reset) => salinan browser dikosongkan, TIDAK dikirim balik
+   (nasabah, valuta, transaksi, datastore). Tombol sidebar "Muat Ulang Data" hanya menarik.
+7. **Datastore pakai versi (kunci optimistis).** `GET /api/datastore` mengirim `versions`; setiap simpan
+   wajib membawa `base_version`; versi beda => 409 + data server dipasang + pengguna diberi tahu.
+   Penulisan server-side langsung ke `mc_datastore` boleh (versi ikut berubah).
+8. **Antar akun otomatis** lewat `GET /api/live/version` (cek tiap 3 detik di `sync.js`);
    tabel baru yang berisi uang wajib ditambahkan ke `LiveSyncController::WATCH`.
 
 Endpoint yang dipakai: transaksi `api/transactions/bulk` (+ `TransactionLedgerSync`),

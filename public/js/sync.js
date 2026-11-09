@@ -127,7 +127,10 @@ if (!window.__almaraRealtimeStoragePatch) {
         clearTimeout(window.__almaraRealtimePushTimers?.[key]);
         window.__almaraRealtimePushTimers = window.__almaraRealtimePushTimers || {};
         window.__almaraLastLocalDatastoreWriteAt = Date.now();
+        window.__dsLocalWriteAt = window.__dsLocalWriteAt || {};
+        window.__dsLocalWriteAt[key] = Date.now();
         window.__almaraRealtimePushTimers[key] = setTimeout(() => {
+            delete window.__almaraRealtimePushTimers[key];
             pushToUniversalDatastore(key, parseRealtimeStorageValue(value));
         }, 250);
     };
@@ -159,52 +162,14 @@ async function syncFromMySQL_Currencies(options = {}) {
                 return;
             }
 
-            if (localCurrencies.length > 0 && (!data || data.length === 0)) {
-                console.log(
-                    `Ditemukan ${localCurrencies.length} mata uang di lokal. Sinkronisasi ke MySQL...`
-                );
-
-                const failedCurrencies = [];
-
-                for (const curr of localCurrencies) {
-                    if (!curr || !String(curr.code || '').trim()) {
-                        failedCurrencies.push({
-                            code: '(kode kosong)',
-                            message: 'Data valuta tidak memiliki kode.'
-                        });
-                        continue;
-                    }
-
-                    const result = await saveToMySQL_Currency(curr);
-
-                    if (!result || result.ok !== true) {
-                        failedCurrencies.push({
-                            code: curr.code,
-                            message: result?.message ||
-                                'Server belum mengonfirmasi penyimpanan.'
-                        });
-                    }
+            // ATURAN TERKUNCI @2026-Alifiandra: daftar valuta di server kosong => salinan browser ikut
+            // dikosongkan. Data browser TIDAK PERNAH dikirim balik (mencegah data reset muncul lagi).
+            if (!data || data.length === 0) {
+                if (localCurrencies.length > 0) {
+                    try { window.__almaraApplyingRemoteSync = true; localStorage.setItem('mc_currencies', '[]'); }
+                    finally { window.__almaraApplyingRemoteSync = false; }
+                    if (refreshUi) refreshActiveRealtimeViews();
                 }
-
-                if (failedCurrencies.length > 0) {
-                    console.error(
-                        '[Sync] Sebagian valuta gagal disimpan ke MySQL:',
-                        failedCurrencies
-                    );
-
-                    if (!silent) {
-                        console.warn(
-                            `Sinkronisasi belum selesai: ${failedCurrencies.length} valuta gagal disimpan.`
-                        );
-                    }
-
-                    return;
-                }
-
-                console.log(
-                    '[Sync] Seluruh valuta lokal berhasil dikirim ke MySQL.'
-                );
-
                 return;
             }
 
@@ -519,66 +484,14 @@ async function syncUniversalDatastore(options = {}) {
                         continue;
                     }
                     const value = normalizeDatastoreValue(rawValue);
-                    // Cek selisih panjang (kalau array) untuk menghindari Wipe Offline Data saat internet putus.
-                    // Jika data lokal lebih banyak (offline record), kita berpotensi Auto-Push daripada REPLACE.
-                    // Cek selisih panjang (kalau array) untuk menghindari Wipe Offline Data saat internet putus.
-                    // Jika data lokal lebih banyak (offline record), kita berpotensi Auto-Push daripada REPLACE.
-                    const localRaw = localStorage.getItem(key);
-                    if (localRaw) {
-                        try {
-                            const localParsed = JSON.parse(localRaw);
-                            
-                            // PROTEKSI KHUSUS PROFIL: Jangan timpa data lokal jika data server kosong/invalid
-                            if (key === 'mc_profile') {
-                                if (!value || !value.name || value.name === 'MC-ALMARA' || value.name === '') {
-                                    console.log("[Sync-Skip] Mengabaikan profil kosong dari MySQL untuk melindungi data lokal.");
-                                    continue;
-                                }
-                            }
-                            
-                            // PROTEKSI LOGIN: Jangan biarkan datastore MySQL memaksa logout user yang sedang aktif
-                            // atau menghancurkan daftar mc_users (biarkan app.js menanganinya atau timpa dengan data lokal)
-                            if (key === 'mc_currentUser' || key === 'mc_users') {
-                                console.log(`[Sync-Skip] Mengabaikan ${key} dari MySQL untuk melindungi sesi aktif.`);
-                                continue;
-                            }
-
-                            if (preferLocalKeys.includes(key)) {
-                                if (JSON.stringify(localParsed) !== JSON.stringify(value)) {
-                                    const isLocalEmpty = 
-                                        (Array.isArray(localParsed) && localParsed.length === 0) ||
-                                        (key === 'mc_old_money_cash' && parseFloat(localParsed) === 0) ||
-                                        (key === 'mc_initial_cash' && parseFloat(localParsed) === 0) ||
-                                        (key === 'mc_initial_bank_bca' && parseFloat(localParsed) === 0) ||
-                                        (key === 'mc_initial_bank_mandiri' && parseFloat(localParsed) === 0);
-                                    
-                                    const isServerNotEmpty = 
-                                        (Array.isArray(value) && value.length > 0) ||
-                                        (key === 'mc_old_money_cash' && parseFloat(value) > 0) ||
-                                        (key === 'mc_initial_cash' && parseFloat(value) > 0) ||
-                                        (key === 'mc_initial_bank_bca' && parseFloat(value) > 0) ||
-                                        (key === 'mc_initial_bank_mandiri' && parseFloat(value) > 0);
-
-                                    if (isLocalEmpty && isServerNotEmpty) {
-                                        console.log(`[Auto-Pull] Server memiliki data ${key} tetapi lokal kosong. Menarik dari server...`);
-                                    } else {
-                                        console.log(`[Auto-Push] ${key} lokal berbeda dari MySQL. Mempertahankan data lokal...`);
-                                        await pushToUniversalDatastore(key, localParsed);
-                                        continue;
-                                    }
-                                }
-                            }
-
-                            if (!preferRemote && Array.isArray(localParsed) && Array.isArray(value)) {
-                                if (localParsed.length > value.length) {
-                                    // Lokal memiliki entri offline lebih banyak! Auto-Push seluruh array lokal.
-                                    console.log(`[Auto-Push] ${key} lokal > MySQL. Pushing ke Datastore...`);
-                                    await pushToUniversalDatastore(key, localParsed);
-                                    continue; // Skip overwriting from MySQL this time
-                                }
-                            }
-                        } catch(e) {}
-                    }
+                    // ATURAN TERKUNCI @2026-Alifiandra: database selalu menang. Salinan browser tidak pernah
+                    // dikirim balik saat menarik data (dulu: "Auto-Push" bila daftar lokal lebih panjang /
+                    // berbeda, yang membuat data yang sudah dihapus/direset muncul kembali).
+                    if (key === 'mc_currentUser' || key === 'mc_users') continue; // sesi login per perangkat
+                    // Perubahan dari browser ini yang sedang dikirim jangan ditimpa (versinya juga belum diperbarui).
+                    if (isDatastoreKeyPending(key)) continue;
+                    window.__dsVersions = window.__dsVersions || {};
+                    if (result.versions && result.versions[key]) window.__dsVersions[key] = result.versions[key];
                     // Timpa dengan data dari MySQL
                     const nextRaw = JSON.stringify(value);
                     if (localStorage.getItem(key) !== nextRaw) {
@@ -592,52 +505,34 @@ async function syncUniversalDatastore(options = {}) {
                     }
                 }
 
-                // PUSH DATA LOKAL KE DATABASE UNTUK KUNCI-KUNCI YANG BELUM ADA DI DATABASE (SEPERTI SAAT SWAP KE DATABASE BARU)
-                const localOnlyKeys = new Set([
-                    'mc_currentUser',
-                    'mc_users',
-                    'mc_light_theme',
-                    'mc_sidebar_collapsed',
-                    'mc_pos_booking_import_v1',
-                    'mc_om_seq',
-                    'mc_invoice_seq',
-                    'mc_booking_seq',
-                    'mc_customers_reset_at',
-                    'mc_bi_rates_reset_at',
-                    'mc_rekap_valuta_permission_migrated_v2',
-                    'mc_master_jobs_seed_version',
-                    'mc_master_citizens_seed_version',
-                    'mc_pos_draft_sessions_v1',
-                    'mc_pos_active_draft_id_v1',
-                    'mc_gemini_api_key', 'mc_openai_api_key', 'mc_openai_model', 'mc_ai_provider'
+                // Kunci yang TIDAK ada di database (mis. sesudah Reset) => salinan browser ikut dihapus.
+                // TIDAK dikirim ulang ke server. @2026-Alifiandra
+                const keepLocal = new Set([
+                    'mc_currentUser', 'mc_users', 'mc_light_theme', 'mc_sidebar_collapsed', 'mc_pos_booking_import_v1',
+                    'mc_om_seq', 'mc_invoice_seq', 'mc_booking_seq', 'mc_customers_reset_at', 'mc_bi_rates_reset_at',
+                    'mc_rekap_valuta_permission_migrated_v2', 'mc_master_jobs_seed_version', 'mc_master_citizens_seed_version',
+                    'mc_pos_draft_sessions_v1', 'mc_pos_active_draft_id_v1',
+                    'mc_gemini_api_key', 'mc_openai_api_key', 'mc_openai_model', 'mc_ai_provider',
+                    'mc_vision_api_key', 'mc_wa_gateway',
+                    'mc_currencies', 'mc_transactions', 'mc_customers'
                 ]);
-                const mysqlTableKeys = new Set(['mc_currencies', 'mc_transactions', 'mc_customers']);
-
+                const staleKeys = [];
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
                     if (!String(key || '').startsWith('mc_')) continue;
-                    if (String(key).startsWith('mc_seen_transaction_keys_v1_')) continue;
-                    if (localOnlyKeys.has(key) || mysqlTableKeys.has(key)) continue;
-
-                    if (!(key in result.data)) {
-                        const localRaw = localStorage.getItem(key);
-                        if (localRaw) {
-                            try {
-                                const localParsed = JSON.parse(localRaw);
-                                const isLocalEmpty = 
-                                    localParsed === null ||
-                                    (Array.isArray(localParsed) && localParsed.length === 0) ||
-                                    (typeof localParsed === 'object' && Object.keys(localParsed).length === 0) ||
-                                    ((key === 'mc_old_money_cash' || key === 'mc_initial_cash' || key === 'mc_initial_bank_bca' || key === 'mc_initial_bank_mandiri') && parseFloat(localParsed) === 0);
-
-                                if (!isLocalEmpty) {
-                                    console.log(`[Auto-Push] Kunci ${key} belum ada di server. Sinkronisasi data lokal ke MySQL...`);
-                                    await pushToUniversalDatastore(key, localParsed);
-                                }
-                            } catch(e) {}
-                        }
-                    }
+                    if (String(key).startsWith('mc_seen_transaction_keys_v1_') || String(key).startsWith('mc_closing_draft_') || String(key).startsWith('mc_settings_card_')) continue;
+                    if (keepLocal.has(key) || (key in result.data) || isDatastoreKeyPending(key)) continue;
+                    staleKeys.push(key);
                 }
+                if (window.__dsPulledOnce) {
+                    staleKeys.forEach((key) => {
+                        try { window.__almaraApplyingRemoteSync = true; localStorage.removeItem(key); }
+                        finally { window.__almaraApplyingRemoteSync = false; }
+                        if (window.__dsVersions) delete window.__dsVersions[key];
+                        hasChanges = true;
+                    });
+                }
+                window.__dsPulledOnce = true;
 
                 if (!silent) console.log("SUKSES: Universal Datastore tersinkronisasi!");
                 
@@ -651,13 +546,34 @@ async function syncUniversalDatastore(options = {}) {
     }
 }
 
+// Kunci yang baru diubah di browser ini dan belum selesai terkirim.
+function isDatastoreKeyPending(key) {
+    const timers = window.__almaraRealtimePushTimers || {};
+    if (timers[key]) return true;
+    if ((window.__dsInFlight || {})[key]) return true;
+    return Date.now() - ((window.__dsLocalWriteAt || {})[key] || 0) < 3000;
+}
+
+// Simpan satu kunci ke database dengan VERSI (kunci optimistis). Bila kunci itu sudah diubah akun lain
+// sejak terakhir ditarik, server menolak (409), data terbaru dari server dipasang, dan pengguna diberi tahu
+// — tidak ada lagi perubahan akun lain yang tertimpa diam-diam. @2026-Alifiandra
 async function pushToUniversalDatastore(storeKey, jsonData) {
+    window.__dsPushChain = window.__dsPushChain || {};
+    const prev = window.__dsPushChain[storeKey] || Promise.resolve();
+    const run = prev.catch(() => {}).then(() => pushToUniversalDatastoreNow(storeKey, jsonData));
+    window.__dsPushChain[storeKey] = run;
+    return run;
+}
+
+async function pushToUniversalDatastoreNow(storeKey, jsonData) {
     if (storeKey === 'mc_customers') {
         console.log('[Datastore-Skip] mc_customers tidak disimpan ke Universal Datastore.');
         return { status: 'skipped' };
     }
 
     window.__almaraDatastorePushes = (window.__almaraDatastorePushes || 0) + 1;
+    window.__dsInFlight = window.__dsInFlight || {};
+    window.__dsInFlight[storeKey] = (window.__dsInFlight[storeKey] || 0) + 1;
     try {
         const response = await fetch('api/datastore', {
             method: 'POST',
@@ -670,18 +586,43 @@ async function pushToUniversalDatastore(storeKey, jsonData) {
             },
             body: JSON.stringify({
                 store_key: storeKey,
-                json_data: JSON.stringify(jsonData)
+                json_data: JSON.stringify(jsonData),
+                base_version: (window.__dsVersions || {})[storeKey] || null
             })
         });
         const result = await response.json().catch(() => ({}));
+        if (response.status === 409 && result.status === 'conflict') {
+            window.__dsVersions = window.__dsVersions || {};
+            window.__dsVersions[storeKey] = result.version || null;
+            try {
+                window.__almaraApplyingRemoteSync = true;
+                localStorage.setItem(storeKey, JSON.stringify(normalizeDatastoreValue(result.current)));
+            } finally { window.__almaraApplyingRemoteSync = false; }
+            console.warn(`[Konflik] ${storeKey} sudah diubah akun lain; data terbaru dari server dipasang.`);
+            if (window.__dsPulledOnce && typeof Swal !== 'undefined' && Swal.fire) {
+                Swal.fire({ icon: 'warning', toast: true, position: 'top-end', timer: 6000, showConfirmButton: false,
+                    title: 'Data baru saja diubah dari akun lain', text: 'Perubahan terakhir Anda belum tersimpan. Data terbaru sudah ditampilkan — silakan ulangi.' });
+            }
+            refreshActiveRealtimeViews({ live: true });
+            return { status: 'conflict' };
+        }
         if (!response.ok || result.status === 'error') {
             throw new Error(result.message || `Server merespons HTTP ${response.status}.`);
         }
+        if (result.version) { window.__dsVersions = window.__dsVersions || {}; window.__dsVersions[storeKey] = result.version; }
         console.log(`Update ${storeKey} ke MySQL:`, result.message);
     } catch (error) {
         console.error(`Gagal menyimpan ${storeKey} ke MySQL:`, error);
+        // Tidak tersimpan di database => beri tahu pengguna; tampilan akan kembali ke data server
+        // pada penarikan berikutnya (database = sumber data). @2026-Alifiandra
+        if (window.__dsPulledOnce && typeof Swal !== 'undefined' && Swal.fire) {
+            Swal.fire({ icon: 'error', toast: true, position: 'top-end', timer: 7000, showConfirmButton: false,
+                title: 'Perubahan BELUM tersimpan ke database', text: (error && error.message ? error.message + ' — ' : '') + 'Periksa koneksi lalu ulangi.' });
+        }
     } finally {
         window.__almaraDatastorePushes = Math.max(0, (window.__almaraDatastorePushes || 1) - 1);
+        window.__dsInFlight[storeKey] = Math.max(0, (window.__dsInFlight[storeKey] || 1) - 1);
+        if (!window.__dsInFlight[storeKey]) delete window.__dsInFlight[storeKey];
     }
 }
 
@@ -1539,8 +1480,11 @@ window.suppressTransactionNotifications = function(milliseconds = 8000) {
 };
 
 async function syncFromMySQL_Transactions(options = {}) {
-    const { pushLocal = true, refreshUi = false, silent = false, force = false } = options;
-    if (!force && !pushLocal && shouldSkipRealtimeTransactionPull()) {
+    // ATURAN TERKUNCI @2026-Alifiandra: transaksi hanya DITARIK dari database. Transaksi yang ada di
+    // browser tetapi tidak ada di server TIDAK dikirim ulang (bisa jadi sudah dihapus/void akun lain).
+    const { refreshUi = false, silent = false, force = false } = options;
+    const pushLocal = false;
+    if (!force && shouldSkipRealtimeTransactionPull()) {
         return;
     }
 
@@ -1602,7 +1546,7 @@ async function syncFromMySQL_Transactions(options = {}) {
                 const localPending = adjustedLocalTrx.filter(t => pendingKeys.has(getRealtimeTransactionKey(t)) || recentKeys.has(getRealtimeTransactionKey(t)));
                 const nextTransactions = force
                     ? sortRealtimeTransactions(formattedTrx)
-                    : mergeRealtimeTransactions([...localPending, ...adjustedLocalTrx], formattedTrx);
+                    : mergeRealtimeTransactions(localPending, formattedTrx); // server = sumber; hanya yang sedang dikirim dari browser ini yang dipertahankan
                 const normalizedTransactions = normalizeStoredTransactions(nextTransactions);
                 const beforeTransactions = JSON.parse(localStorage.getItem('mc_transactions') || '[]');
                 const beforeSignature = getRealtimeTransactionsSignature(beforeTransactions);
@@ -1626,24 +1570,11 @@ async function syncFromMySQL_Transactions(options = {}) {
                     }
                 }
             } else {
-                const localTrx = JSON.parse(localStorage.getItem('mc_transactions')) || [];
-                const trulyUnsynced = localTrx.filter(t => t.synced !== true);
-                if (pushLocal && trulyUnsynced.length > 0) {
-                    console.log(`Database transaksi kosong. Mengirim ${trulyUnsynced.length} transaksi lokal ke MySQL...`);
-                    for (const t of trulyUnsynced) {
-                        await saveToMySQL_Transaction(t);
-                    }
-                    return;
-                } else if (localTrx.length > 0) {
-                    console.warn("[Sync] Database transaksi kosong, tetapi cache lokal dipertahankan demi keamanan data.");
-                    if (refreshUi) {
-                        const reportsView = document.getElementById('reports-view');
-                        const dashboardView = document.getElementById('dashboard-view');
-                        const harianView = document.getElementById('harian-view');
-                        if (reportsView && reportsView.classList.contains('active') && typeof loadReportsTable === 'function') loadReportsTable();
-                        if (dashboardView && dashboardView.classList.contains('active') && typeof loadDashboard === 'function') loadDashboard();
-                        if (harianView && harianView.classList.contains('active') && typeof loadLaporanHarian === 'function') loadLaporanHarian();
-                    }
+                // Database transaksi kosong (mis. sesudah reset) => salinan browser ikut dikosongkan.
+                if (localTrx.length > 0) {
+                    try { window.__almaraApplyingRemoteSync = true; localStorage.setItem('mc_transactions', '[]'); }
+                    finally { window.__almaraApplyingRemoteSync = false; }
+                    if (refreshUi) refreshActiveRealtimeViews();
                 }
             }
 
@@ -1872,7 +1803,7 @@ window.manualSyncAll = async function() {
     if (typeof Swal !== 'undefined') {
         Swal.fire({
             title: 'Memeriksa Sinkronisasi',
-            text: 'Memeriksa koneksi dan pengiriman data ke MySQL. Mohon tunggu.',
+            text: 'Memuat ulang semua data dari database server. Mohon tunggu.',
             icon: 'info',
             allowOutsideClick: false,
             allowEscapeKey: false,
@@ -1905,11 +1836,9 @@ window.manualSyncAll = async function() {
             remoteData.map(row => String(row && (row.itemId || row.id) || '').trim()).filter(Boolean)
         );
 
-        // Kirim transaksi yang tidak ditemukan di server dan belum ditandai tersinkron.
-        const pendingTransactions = localData.filter(row => {
-            const key = String(row && (row.itemId || row.id) || '').trim();
-            return key && !remoteKeys.has(key) && row.synced !== true;
-        });
+        // ATURAN TERKUNCI @2026-Alifiandra: tombol sinkron hanya MEMUAT ULANG dari database.
+        // Data di browser tidak dikirim ulang ke server.
+        const pendingTransactions = [];
 
         let pushedCount = 0;
         if (pendingTransactions.length > 0) {
@@ -1971,7 +1900,7 @@ window.manualSyncAll = async function() {
         await showMessage({
             icon: 'success',
             title: 'Verifikasi Transaksi Berhasil',
-            text: `${verifiedData.length} transaksi ditemukan di MySQL. ${pushedCount} transaksi lokal baru berhasil dikirim dan diverifikasi.`,
+            text: `Semua data dimuat ulang dari database (${verifiedData.length} transaksi).`,
             timer: 3500,
             showConfirmButton: true
         });

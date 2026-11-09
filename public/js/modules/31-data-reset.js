@@ -101,7 +101,8 @@
             }
         }
         if (scopes.includes('currencyStock') && typeof getCurrencies === 'function' && typeof saveCurrencies === 'function') {
-            saveCurrencies(getCurrencies().map(c => ({ ...c, stock: 0, initialStock: 0, initial_rate_locked: 0, initial_rate_source: '', avg_buy_rate: 0, modalRate: 0, avgCost: 0, costRate: 0, modalValue: 0 })));
+            // Server sudah meng-nol-kan stok valas; cukup samakan cache browser tanpa kirim ulang.
+            localStorage.setItem('mc_currencies', JSON.stringify(getCurrencies().map(c => ({ ...c, stock: 0, initialStock: 0, initial_rate_locked: 0, initial_rate_source: '', avg_buy_rate: 0, modalRate: 0, avgCost: 0, costRate: 0, modalValue: 0 }))));
         }
         if (scopes.includes('expenses')) add('mc_expenses');
         if (scopes.includes('operations')) add('mc_mutations', 'mc_closings', 'mc_adjustments', 'mc_assets', 'mc_investors', 'mc_hris_employees', 'mc_hris_attendance', 'mc_hris_kasbon', 'mc_hris_bpjs', 'mc_hris_leave');
@@ -128,8 +129,9 @@
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Membuat backup &amp; menghapus...'; }
         try {
             const r = await api('/api/data-reset', { method: 'POST', body: JSON.stringify({ scopes, password, confirm: word }) });
-            clearLocal(scopes);
-            if (typeof pushToUniversalDatastore === 'function') {
+            // Server sudah menghapus datanya. Salinan browser hanya disamakan, TIDAK dikirim ulang. @2026-Alifiandra
+            try { window.__almaraApplyingRemoteSync = true; clearLocal(scopes); } finally { window.__almaraApplyingRemoteSync = false; }
+            if (false) {
                 const cleared = ['mc_expenses', 'mc_mutations', 'mc_closings', 'mc_adjustments', 'mc_assets', 'mc_investors', 'mc_bookings', 'mc_gantungans', 'mc_old_money_stock', 'mc_old_money_suppliers', 'mc_old_money_trxs', 'mc_bi_rates', 'mc_demo_transactions', 'mc_demo_stock', 'mc_demo_customers', 'mc_hris_employees', 'mc_hris_attendance', 'mc_hris_kasbon', 'mc_hris_bpjs', 'mc_hris_leave'];
                 const map = { expenses: ['mc_expenses'], operations: ['mc_mutations', 'mc_closings', 'mc_adjustments', 'mc_assets', 'mc_investors', 'mc_hris_employees', 'mc_hris_attendance', 'mc_hris_kasbon', 'mc_hris_bpjs', 'mc_hris_leave'], bookingDemo: ['mc_bookings', 'mc_demo_transactions', 'mc_demo_stock', 'mc_demo_customers'], gantungan: ['mc_gantungans'], oldMoney: ['mc_old_money_stock', 'mc_old_money_suppliers', 'mc_old_money_trxs'], biRates: ['mc_bi_rates'] };
                 scopes.forEach(s => (map[s] || []).forEach(k => { try { pushToUniversalDatastore(k, []); } catch (e) {} }));

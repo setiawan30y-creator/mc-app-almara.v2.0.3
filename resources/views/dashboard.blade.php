@@ -556,8 +556,8 @@
                     <i class="fa-solid fa-user-circle"></i>
                     <span>Admin Kasir<br><small>Shift 1</small></span>
                 </div>
-                <button type="button" class="sb-sync" onclick="manualSyncAll()" title="Kirim data lokal ke server MySQL secara manual">
-                    <i class="fa-solid fa-cloud-arrow-up"></i> <span>Sinkronkan Data</span>
+                <button type="button" class="sb-sync" onclick="manualSyncAll()" title="Muat ulang semua data dari database server">
+                    <i class="fa-solid fa-cloud-arrow-down"></i> <span>Muat Ulang Data</span>
                 </button>
                 <div class="dev-credit">&#64;2026-Alifiandra</div>
             </div>
