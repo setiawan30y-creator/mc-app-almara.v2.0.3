@@ -113,6 +113,14 @@ class CustomerController extends Controller
         $failedCount = 0;
         $errors = [];
 
+        // Jejak audit: siapa mengirim data nasabah massal (impor Excel, DTOTT, dsb). @2026-Alifiandra
+        \Illuminate\Support\Facades\Log::info('Nasabah massal diterima', [
+            'user' => optional($request->user())->username ?? optional($request->user())->id,
+            'jumlah' => count($customers),
+            'ip' => $request->ip(),
+            'agent' => substr((string) $request->userAgent(), 0, 120),
+        ]);
+
         \Illuminate\Support\Facades\DB::beginTransaction();
         try {
             foreach ($customers as $index => $input) {

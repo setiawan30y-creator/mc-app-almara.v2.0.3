@@ -820,25 +820,10 @@ async function syncFromMySQL_Customers(options = {}) {
                 if (before !== (localStorage.getItem('mc_customers') || '[]') && refreshUi) refreshActiveRealtimeViews();
                 if (!silent) console.log("SUKSES: Data Nasabah berhasil ditarik dari MySQL!");
             } else {
-                const localCustomers = JSON.parse(localStorage.getItem('mc_customers')) || [];
-                if (localCustomers.length > 0) {
-                    const resetLocked = await hasCustomerResetLock();
-                    if (resetLocked) {
-                        console.log('Reset nasabah masih aktif. Cache lokal tidak akan dipush kembali ke MySQL.');
-                        const before = localStorage.getItem('mc_customers') || '[]';
-                        localStorage.removeItem('mc_customers');
-                        window.__mcCustomersMemory = [];
-                        if (before !== '[]' && refreshUi) refreshActiveRealtimeViews();
-                        if (!silent) console.log('Data Nasabah kosong setelah reset. Cache lokal dibersihkan tanpa sinkron ulang.');
-                        return;
-                    }
-                    console.log(`Ditemukan ${localCustomers.length} nasabah di lokal. Sinkronisasi ke MySQL secara massal...`);
-                    await saveBulkToMySQL_Customers(localCustomers);
-                    // Tarik kembali data nasabah untuk menyinkronkan status
-                    await syncFromMySQL_Customers({ refreshUi, silent });
-                    return;
-                }
-
+                // ATURAN TERKUNCI @2026-Alifiandra: database = sumber data. Bila tabel nasabah di server
+                // kosong (mis. sesudah Reset), salinan di browser DIKOSONGKAN — TIDAK PERNAH dikirim
+                // kembali ke server. (Dulu cache lama di browser/akun lain otomatis di-upload ulang,
+                // sehingga data yang sudah direset muncul kembali.)
                 const before = localStorage.getItem('mc_customers') || '[]';
                 localStorage.removeItem('mc_customers');
                 window.__mcCustomersMemory = [];
