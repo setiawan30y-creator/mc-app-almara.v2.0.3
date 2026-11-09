@@ -188,9 +188,9 @@
             const response = await fetch('/api/user-chats/poll?last_id=0');
             if (response.ok) {
                 const result = await response.json();
-                if (result.status === 'success' && result.data && result.data.length > 0) {
-                    const maxId = Math.max(...result.data.map(m => m.id));
-                    globalLastMessageId = maxId;
+                if (result.status === 'success') {
+                    const ids = (result.data || []).map(m => Number(m.id));
+                    globalLastMessageId = Math.max(Number(result.max_id) || 0, ...ids, globalLastMessageId || 0);
                 }
             }
         } catch (e) {
@@ -231,7 +231,7 @@
             `;
 
             users.forEach(u => {
-                const isSelected = activeChatType === 'private' && activeUserId === u.id;
+                const isSelected = activeChatType === 'private' && String(activeUserId) === String(u.id);
                 const initials = u.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
                 const roleColor = u.role === 'owner' || u.role === 'superadmin' ? '#ef4444' : (u.role === 'admin' ? '#38bdf8' : '#cbd5e1');
                 const photoHtml = u.photo 
@@ -371,15 +371,21 @@
     }
 
     // Render message bubbles in container
+    // Pesan yang sudah tampil (agar pembaruan otomatis tidak menampilkan dobel). @2026-Alifiandra
+    let renderedIds = new Set();
     function renderMessagesList(messages, append = false) {
         const body = document.getElementById('userChatMessagesBody');
         if (!body) return;
+        if (!append) renderedIds = new Set();
+        messages = (messages || []).filter(m => m && !renderedIds.has(String(m.id)));
+        messages.forEach(m => renderedIds.add(String(m.id)));
+        if (append && !messages.length) return;
 
         const currentUser = getCurrentUser();
         const currentUserId = currentUser ? currentUser.id : '';
 
         const html = messages.map(m => {
-            const isMe = m.sender_id === currentUserId;
+            const isMe = String(m.sender_id) === String(currentUserId);
             const date = new Date(m.created_at);
             const timeStr = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
             
@@ -513,7 +519,7 @@
         if (pollInterval) clearInterval(pollInterval);
         
         pollInterval = setInterval(async () => {
-            if (isPolling) return;
+            if (isPolling || document.hidden) return;
             isPolling = true;
 
             try {
@@ -529,14 +535,17 @@
                     const otherRoomMessages = [];
 
                     result.data.forEach(m => {
-                        const isMe = false; // Polling endpoint only returns other users' messages
-                        const isForActiveRoom = (activeChatType === 'public' && m.receiver_id === null) || 
-                                                (activeChatType === 'private' && m.sender_id === activeUserId && m.receiver_id !== null);
+                        const me = getCurrentUser();
+                        const isMe = me && String(m.sender_id) === String(me.id);
+                        const isPublic = m.receiver_id === null || m.receiver_id === undefined || m.receiver_id === '';
+                        const otherId = isMe ? m.receiver_id : m.sender_id;
+                        const isForActiveRoom = (activeChatType === 'public' && isPublic) ||
+                                                (activeChatType === 'private' && !isPublic && String(otherId) === String(activeUserId));
 
                         if (isForActiveRoom) {
                             currentRoomMessages.push(m);
-                        } else {
-                            otherRoomMessages.push(m);
+                        } else if (!isMe) {
+                            otherRoomMessages.push(m); // pesan sendiri dari perangkat lain tidak perlu notifikasi
                         }
                     });
 
@@ -555,8 +564,10 @@
                             }
                         } else {
                             // If chat is not open but we received messages for the active target, treat as unread/notify
-                            currentRoomMessages.forEach(m => showToastChatNotification(m));
-                            playChatChime();
+                            const me2 = getCurrentUser();
+                            const fromOthers = currentRoomMessages.filter(m => !(me2 && String(m.sender_id) === String(me2.id)));
+                            fromOthers.forEach(m => showToastChatNotification(m));
+                            if (fromOthers.length) playChatChime();
                         }
                     }
 
@@ -570,7 +581,7 @@
                     loadChatUsers();
 
                     // Update global tracker to largest ID received
-                    const maxId = Math.max(...result.data.map(m => m.id));
+                    const maxId = Math.max(...result.data.map(m => Number(m.id)));
                     if (maxId > globalLastMessageId) {
                         globalLastMessageId = maxId;
                     }
@@ -583,8 +594,10 @@
             } finally {
                 isPolling = false;
             }
-        }, 5000);
+        }, 2500);
     }
+    // Tab dibuka lagi -> langsung cek pesan baru. @2026-Alifiandra
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && pollInterval) { startChatPolling(); } });
 
     // Display floating toast notification at bottom right
     function showToastChatNotification(m) {

@@ -49,8 +49,8 @@ class UserChatController extends Controller
             $query->where('id', '>', $lastId);
         }
 
-        // We fetch up to 150 messages, ordered oldest to newest for chronological chat
-        $messages = $query->orderBy('created_at', 'asc')->limit(150)->get();
+        // 150 pesan TERBARU, ditampilkan urut lama -> baru. @2026-Alifiandra
+        $messages = $query->orderBy('id', 'desc')->limit(150)->get()->reverse()->values();
 
         // Map sender details
         $messages = $messages->map(function($m) {
@@ -276,13 +276,20 @@ class UserChatController extends Controller
 
         // Fetch any message with ID > lastId that was NOT sent by the current user
         // and is EITHER broadcast/public (receiver_id is null) OR addressed to current user
+        // Awal halaman: cukup kirim ID pesan terakhir (tanpa memuat semua pesan lama).
+        if ($lastId <= 0) {
+            return response()->json(['status' => 'success', 'data' => [], 'max_id' => (int) DB::table('mc_user_chats')->max('id')]);
+        }
+
+        // Termasuk pesan milik sendiri dari perangkat lain (browser membuang yang sudah tampil). @2026-Alifiandra
         $newMessages = DB::table('mc_user_chats')
             ->where('id', '>', $lastId)
-            ->where('sender_id', '!=', $user->id)
             ->where(function($q) use ($user) {
                 $q->where('receiver_id', $user->id)
-                  ->orWhereNull('receiver_id');
+                  ->orWhereNull('receiver_id')
+                  ->orWhere('sender_id', $user->id);
             })
+            ->limit(200)
             ->orderBy('id', 'asc')
             ->get();
 
